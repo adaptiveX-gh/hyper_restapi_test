@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hyperliquid Test</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    textarea { width: 100%; height: 100px; }
+    pre { background: #f0f0f0; padding: 1rem; }
+    #download { margin-left: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Hyperliquid /api/check-trades Test</h1>
+
+  <label>Addresses (one per line):</label><br>
+  <textarea id="addrs" placeholder="0xabc…"></textarea><br>
+
+  <label>Hours:</label>
+  <input type="number" id="hours" value="24" min="1" max="168" /><br><br>
+
+  <button onclick="fetchData()">Check Trades</button>
+  <!-- download link, hidden until data is loaded -->
+  <a id="download" style="display:none;" download>Download JSON</a>
+
+  <h2>Results:</h2>
+  <pre id="output"></pre>
+
+  <script>
+    let lastJson = null;
+
+    async function fetchData() {
+      const addrs = document.getElementById('addrs').value
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      const hours = Number(document.getElementById('hours').value) || 24;
+
+      document.getElementById('output').textContent = 'Loading…';
+      document.getElementById('download').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/check-trades', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: addrs, hours })
+        });
+        const data = await res.json();
+        lastJson = data;
+        document.getElementById('output').textContent =
+          JSON.stringify(data, null, 2);
+        makeDownloadLink(data);
+      } catch (err) {
+        document.getElementById('output').textContent =
+          'Error: ' + err.message;
+      }
+    }
+
+    function makeDownloadLink(data) {
+      const blob = new Blob(
+        [JSON.stringify(data, null, 2)],
+        { type: 'application/json' }
+      );
+      const url = URL.createObjectURL(blob);
+      const dl = document.getElementById('download');
+      dl.href = url;
+      dl.download = `hyperliquid-trades-${Date.now()}.json`;
+      dl.textContent = 'Download JSON';
+      dl.style.display = 'inline';
+    }
+  </script>
+</body>
+</html>
