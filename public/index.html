@@ -5,11 +5,12 @@
   <title>Hyperliquid API Test</title>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
-    textarea, input[type="text"] { width: 100%; }
+    textarea, input[type="text"], input[type="number"] { width: 100%; }
     textarea { height: 100px; }
     pre { background: #f0f0f0; padding: 1rem; overflow-x: auto; }
-    #download { margin-left: 1rem; }
-    button { margin-top: 0.5rem; }
+    a.download-link { margin-left: 1rem; text-decoration: none; color: #fff; background: #007bff; padding: .5rem 1rem; border-radius: 4px; display: none; }
+    button { margin-top: .5rem; padding: .5rem 1rem; }
+    section { margin-bottom: 2rem; }
   </style>
 </head>
 <body>
@@ -24,25 +25,27 @@
     <label>Hours:</label>
     <input type="number" id="hours" value="24" min="1" max="168" /><br>
     <button onclick="fetchTrades()">Check Trades</button>
+    <a id="downloadTrades" class="download-link" download>Download Trades JSON</a>
+  </section>
+
+  <!-- Portfolio -->
+  <section>
+    <h2>/api/portfolio/:address</h2>
+    <label>Address:</label><br>
+    <input type="text" id="portfolioAddr" placeholder="0xabc…" /><br>
+    <button onclick="fetchPortfolio()">Get Portfolio</button>
+    <a id="downloadPortfolio" class="download-link" download>Download Portfolio JSON</a>
   </section>
 
   <hr>
 
-  <!-- Check Portfolio -->
-  <section>
-    <h2>/api/portfolio/:address</h2>
-    <label>Single Ethereum Address:</label><br>
-    <input type="text" id="portfolioAddr" placeholder="0xabc…" /><br>
-    <button onclick="fetchPortfolio()">Check Portfolio</button>
-  </section>
-
-  <!-- Result output -->
+  <!-- Results -->
   <h2>Results:</h2>
   <pre id="output">Results will appear here...</pre>
-  <a id="download" style="display:none;" download>Download JSON</a>
 
   <script>
     let lastJson = null;
+    let lastJsonType = null;
 
     async function fetchTrades() {
       const addrs = document.getElementById('addrs').value
@@ -56,6 +59,7 @@
       }
 
       displayLoading('Checking trades…');
+      lastJsonType = 'trades';
 
       try {
         const res = await fetch('/api/check-trades', {
@@ -63,6 +67,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ addresses: addrs, hours })
         });
+
+        if (!res.ok) {
+          throw new Error(`${res.status} ${res.statusText}`);
+        }
 
         const data = await res.json();
         displayResult(data);
@@ -72,51 +80,64 @@
     }
 
     async function fetchPortfolio() {
-      const address = document.getElementById('portfolioAddr').value.trim();
-
-      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        return displayError('❌ Invalid Ethereum address.');
+      const addr = document.getElementById('portfolioAddr').value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+        return displayError('Please enter a valid Ethereum address.');
       }
 
       displayLoading('Fetching portfolio…');
+      lastJsonType = 'portfolio';
 
       try {
-        const res = await fetch(`/api/portfolio/${address}`);
+        const res = await fetch(`/api/portfolio/${addr}`);
+        if (!res.ok) {
+          throw new Error(`${res.status} ${res.statusText}`);
+        }
         const data = await res.json();
-
         displayResult(data);
       } catch (err) {
         displayError('Error fetching portfolio: ' + err.message);
       }
     }
 
-    function displayLoading(message) {
-      document.getElementById('output').textContent = message;
-      document.getElementById('download').style.display = 'none';
+    function displayLoading(msg) {
+      document.getElementById('output').textContent = msg;
+      hideDownloads();
     }
 
     function displayResult(data) {
       lastJson = data;
-      const output = document.getElementById('output');
-      output.textContent = JSON.stringify(data, null, 2);
+      const out = document.getElementById('output');
+      out.textContent = JSON.stringify(data, null, 2);
       makeDownloadLink(data);
     }
 
     function displayError(msg) {
-      document.getElementById('output').textContent = msg;
-      document.getElementById('download').style.display = 'none';
+      const out = document.getElementById('output');
+      out.textContent = msg;
+      hideDownloads();
+    }
+
+    function hideDownloads() {
+      document.getElementById('downloadTrades').style.display = 'none';
+      document.getElementById('downloadPortfolio').style.display = 'none';
     }
 
     function makeDownloadLink(data) {
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: 'application/json'
-      });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const dl = document.getElementById('download');
-      dl.href = url;
-      dl.download = `hyperliquid-${Date.now()}.json`;
-      dl.textContent = 'Download JSON';
-      dl.style.display = 'inline';
+
+      if (lastJsonType === 'trades') {
+        const dl = document.getElementById('downloadTrades');
+        dl.href = url;
+        dl.download = `hyperliquid-trades-${Date.now()}.json`;
+        dl.style.display = 'inline-block';
+      } else if (lastJsonType === 'portfolio') {
+        const dl = document.getElementById('downloadPortfolio');
+        dl.href = url;
+        dl.download = `hyperliquid-portfolio-${Date.now()}.json`;
+        dl.style.display = 'inline-block';
+      }
     }
   </script>
 </body>

@@ -1,15 +1,13 @@
 {
-    "name": "hyperliquid-api",
-    "version": "1.0.0",
-    "main": "index.js",
-    "scripts": {
-      "start": "node index.js"
-    },
-    "dependencies": {
-      "axios": "^1.0.0",
-      "cors": "^2.8.5",
-      "dotenv": "^16.0.0",
-      "express": "^4.18.1",
-      "p-limit": "^3.1.0"
-    }
+  "name": "hyper-restapi-vercel",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.5",
+    "p-limit": "^4.0.0",
+    "@vendia/serverless-express": "^4.12.4",
+    "dotenv": "^16.3.1"
   }
+}
