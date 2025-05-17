@@ -2,143 +2,234 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hyperliquid API Test</title>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
-    textarea, input[type="text"], input[type="number"] { width: 100%; }
+    textarea, input[type="text"], input[type="number"], select { width: 100%; margin-bottom: .5rem; }
     textarea { height: 100px; }
-    pre { background: #f0f0f0; padding: 1rem; overflow-x: auto; }
-    a.download-link { margin-left: 1rem; text-decoration: none; color: #fff; background: #007bff; padding: .5rem 1rem; border-radius: 4px; display: none; }
-    button { margin-top: .5rem; padding: .5rem 1rem; }
+    pre { background: #f0f0f0; padding: 1rem; overflow-x: auto; white-space: pre-wrap; }
+    button { padding: .5rem 1rem; margin: .25rem 0; }
     section { margin-bottom: 2rem; }
+    #desc { font-style: italic; margin-bottom: .5rem; color: #333; }
+    #logs, #stats { height: 200px; }
+
+    /* new two-column layout for params */
+    .params-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .params-editor, .params-recommend {
+      border: 1px solid #ccc;
+      padding: .5rem;
+      border-radius: 4px;
+    }
+    .params-recommend pre { height: 100px; }
+    .params-recommend p { margin-top: .5rem; font-size: .9rem; }
   </style>
 </head>
 <body>
-
   <h1>Hyperliquid API Test Page</h1>
 
-  <!-- Check Trades -->
   <section>
-    <h2>/api/check-trades</h2>
-    <label>Addresses (one per line):</label><br>
-    <textarea id="addrs" placeholder="0xabc…"></textarea><br>
-    <label>Hours:</label>
-    <input type="number" id="hours" value="24" min="1" max="168" /><br>
-    <button onclick="fetchTrades()">Check Trades</button>
-    <a id="downloadTrades" class="download-link" download>Download Trades JSON</a>
+    <h2>POST /api/hyperliquid</h2>
+
+    <label for="mode">Mode:</label><br>
+    <select id="mode">
+      <option value="positionDeltaPulse">positionDeltaPulse</option>
+      <option value="openInterestPulse">openInterestPulse</option>
+      <option value="trendBias">trendBias</option>
+      <option value="divergenceRadar">divergenceRadar</option>
+      <option value="compressionRadar">compressionRadar</option>
+      <option value="liquidationSniper">liquidationSniper</option>
+      <option value="topTraders">topTraders</option>
+    </select><br>
+
+    <label for="addrs">Addresses (one per line, leave blank to load from Google Sheet):</label><br>
+    <textarea id="addrs" placeholder="0xabc… or leave blank"></textarea><br>
+
+    <h3>Sheet Filters (optional)</h3>
+    <label for="filter-pnlMin">Min Total PnL ($):</label><br>
+    <input type="number" id="filter-pnlMin" placeholder="e.g. 1000" /><br>
+    <label for="filter-winRateMin">Min Win Rate (%):</label><br>
+    <input type="number" id="filter-winRateMin" placeholder="e.g. 60" /><br>
+    <label for="filter-durationMin">Min Duration (hours):</label><br>
+    <input type="number" id="filter-durationMin" placeholder="e.g. 12" /><br>
+
+    <button id="load-addrs">Load from Google Sheet</button><br>
+
+    <label for="minutes">Lookback minutes:</label><br>
+    <input type="number" id="minutes" value="30" min="1" /><br>
+
+    <!-- two-column params -->
+    <div class="params-container">
+      <div class="params-editor">
+        <label for="params">Params (JSON):</label><br>
+        <textarea id="params"></textarea>
+      </div>
+      <div class="params-recommend">
+        <label>Recommended Settings:</label>
+        <pre id="recommended"></pre>
+        <label>Why?</label>
+        <p id="why"></p>
+      </div>
+    </div>
+
+    <button id="run-btn">Run Hyperliquid</button>
   </section>
 
-  <!-- Portfolio -->
-  <section>
-    <h2>/api/portfolio/:address</h2>
-    <label>Address:</label><br>
-    <input type="text" id="portfolioAddr" placeholder="0xabc…" /><br>
-    <button onclick="fetchPortfolio()">Get Portfolio</button>
-    <a id="downloadPortfolio" class="download-link" download>Download Portfolio JSON</a>
-  </section>
+  <hr />
 
-  <hr>
-
-  <!-- Results -->
   <h2>Results:</h2>
   <pre id="output">Results will appear here...</pre>
 
+  <h2>Logs:</h2>
+  <pre id="logs">Logs will appear here...</pre>
+  <button id="copy-logs">Copy Logs</button>
+  <button id="download-logs">Download Logs</button>
+  <button id="clear-logs">Clear Logs</button>
+
+  <h2>Stats / Processing Details:</h2>
+  <pre id="stats">Stats, flows, and processing details will appear here...</pre>
+  <button id="copy-stats">Copy Stats</button>
+  <button id="download-stats">Download Stats</button>
+  <button id="clear-stats">Clear Stats</button>
+
   <script>
-    let lastJson = null;
-    let lastJsonType = null;
+    // mirror console.log into Logs pane
+    (function() {
+      const origLog = console.log.bind(console);
+      const logsEl = document.getElementById('logs');
+      console.log = (...args) => {
+        origLog(...args);
+        const text = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+        logsEl.textContent += text + "\n";
+      };
+    })();
 
-    async function fetchTrades() {
-      const addrs = document.getElementById('addrs').value
-        .split(/\r?\n/)
-        .map(s => s.trim())
-        .filter(Boolean);
-      const hours = Number(document.getElementById('hours').value) || 24;
+    const defaultParams = {
+      positionDeltaPulse: { trimUsd:100000, addUsd:100000, newUsd:100000, maxHits:5 },
+      openInterestPulse:  { deltaUsd:250000, minWallets:3, side:"both" },
+      trendBias:          { topN:5, minNotional:0 },
+      divergenceRadar:    { closeNotional:50000, buildNotional:50000, minClosers:2, minBuilders:2 },
+      compressionRadar:   { rangeBp:30, netBuildUsd:75000, minWallets:3, minTicks:50 },
+      liquidationSniper:  { liqThreshold:1000000, buildThreshold:100000, minWallets:5 },
+      topTraders:         { winRateMin:80, durationMin:43200000, pnlMin:10000 }
+    };
 
-      if (addrs.length === 0) {
-        return displayError('Please enter at least one address.');
+    const defaultDescriptions = {
+      positionDeltaPulse:
+        'Detects wallets trimming, adding, or opening positions above USD thresholds within the lookback window. Alpha: captures momentum shifts early.',
+      openInterestPulse:
+        'Identifies coins with large open interest changes and top builders. Alpha: surfaces whale-driven flows.',
+      trendBias:
+        'Aggregates net flows per coin to reveal market bias. Alpha: spots trend shifts before price moves.',
+      divergenceRadar:
+        'Finds coins where builders and closers diverge. Alpha: identifies reversal signals.',
+      compressionRadar:
+        'Detects low-volatility compression followed by whale builds. Alpha: anticipates breakouts.',
+      liquidationSniper:
+        'Spots whales sniping large liquidations. Alpha: leverages forced cascade volatility.',
+      topTraders:
+        'Filters sheet-based top traders by PnL, win rate, duration. Alpha: surfaces consistent performers.'
+    };
+
+    function updateParamsTemplate() {
+      const mode = document.getElementById('mode').value;
+      const params = defaultParams[mode] || {};
+      document.getElementById('params').value = JSON.stringify(params, null, 2);
+      document.getElementById('recommended').textContent = JSON.stringify(params, null, 2);
+      document.getElementById('why').textContent = defaultDescriptions[mode] || '';
+    }
+
+    document.getElementById('mode').addEventListener('focus', updateParamsTemplate);
+    document.getElementById('mode').addEventListener('change', updateParamsTemplate);
+    window.addEventListener('load', updateParamsTemplate);
+
+    async function loadAddrs() {
+      displayLoading('Loading addresses…');
+      try {
+        const pnlMin = document.getElementById('filter-pnlMin').value;
+        const winRateMin = document.getElementById('filter-winRateMin').value;
+        const durationH = document.getElementById('filter-durationMin').value;
+        const qs = [
+          pnlMin && `pnlMin=${pnlMin}`,
+          winRateMin && `winRateMin=${winRateMin}`,
+          durationH && `durationMin=${durationH * 3600000}`
+        ].filter(Boolean).join('&');
+        const res = await fetch('/api/traderAddresses' + (qs ? `?${qs}` : ''));
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const addrs = await res.json();
+        document.getElementById('addrs').value = addrs.join('\n');
+        displayResult({ loaded: `${addrs.length} addresses` });
+        console.log('Loaded addresses:', addrs.length);
+      } catch (err) {
+        displayError('Error loading addresses: ' + err.message);
       }
+    }
 
-      displayLoading('Checking trades…');
-      lastJsonType = 'trades';
+    async function runHL() {
+      const mode = document.getElementById('mode').value;
+      const raw = document.getElementById('addrs').value;
+      const addrs = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const minutes = Number(document.getElementById('minutes').value) || undefined;
+      let params;
+      try { params = JSON.parse(document.getElementById('params').value || '{}'); }
+      catch { return displayError('Invalid JSON in params'); }
+
+      const payload = { mode, minutes, params };
+      if (addrs.length) payload.addresses = addrs;
+      console.log('Run payload:', payload);
+
+      document.getElementById('stats').textContent = '';
+      document.getElementById('output').textContent = 'Running…';
 
       try {
-        const res = await fetch('/api/check-trades', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ addresses: addrs, hours })
+        const res = await fetch('/api/hyperliquid', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-
         if (!res.ok) {
-          throw new Error(`${res.status} ${res.statusText}`);
-        }
-
-        const data = await res.json();
-        displayResult(data);
-      } catch (err) {
-        displayError('Error fetching trades: ' + err.message);
-      }
-    }
-
-    async function fetchPortfolio() {
-      const addr = document.getElementById('portfolioAddr').value.trim();
-      if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-        return displayError('Please enter a valid Ethereum address.');
-      }
-
-      displayLoading('Fetching portfolio…');
-      lastJsonType = 'portfolio';
-
-      try {
-        const res = await fetch(`/api/portfolio/${addr}`);
-        if (!res.ok) {
-          throw new Error(`${res.status} ${res.statusText}`);
+          let errMsg = `${res.status} ${res.statusText}`;
+          try { errMsg = (await res.json()).error || errMsg; } catch {};
+          throw new Error(errMsg);
         }
         const data = await res.json();
-        displayResult(data);
+        const { stats, flows, processingDetails, debugLogs, ...main } = data;
+        displayResult(main);
+        debugLogs?.forEach(l => console.log(l));
+
+        const combined = { stats, flows, processingDetails };
+        document.getElementById('stats').textContent = JSON.stringify(combined, null, 2);
       } catch (err) {
-        displayError('Error fetching portfolio: ' + err.message);
+        displayError('Error: ' + err.message);
+        console.log('Run error:', err.message);
       }
     }
 
-    function displayLoading(msg) {
-      document.getElementById('output').textContent = msg;
-      hideDownloads();
-    }
+    function displayLoading(msg) { document.getElementById('output').textContent = msg; }
+    function displayResult(d) { document.getElementById('output').textContent = JSON.stringify(d, null, 2); }
+    function displayError(msg) { document.getElementById('output').textContent = msg; }
 
-    function displayResult(data) {
-      lastJson = data;
-      const out = document.getElementById('output');
-      out.textContent = JSON.stringify(data, null, 2);
-      makeDownloadLink(data);
-    }
-
-    function displayError(msg) {
-      const out = document.getElementById('output');
-      out.textContent = msg;
-      hideDownloads();
-    }
-
-    function hideDownloads() {
-      document.getElementById('downloadTrades').style.display = 'none';
-      document.getElementById('downloadPortfolio').style.display = 'none';
-    }
-
-    function makeDownloadLink(data) {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    document.getElementById('copy-logs').addEventListener('click', () =>
+      navigator.clipboard.writeText(document.getElementById('logs').textContent)
+    );
+    document.getElementById('download-logs').addEventListener('click', () => {
+      const blob = new Blob([document.getElementById('logs').textContent], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'hyperliquid_logs.txt'; a.click(); URL.revokeObjectURL(url);
+    });
+    document.getElementById('clear-logs').addEventListener('click', () => { document.getElementById('logs').textContent = ''; });
 
-      if (lastJsonType === 'trades') {
-        const dl = document.getElementById('downloadTrades');
-        dl.href = url;
-        dl.download = `hyperliquid-trades-${Date.now()}.json`;
-        dl.style.display = 'inline-block';
-      } else if (lastJsonType === 'portfolio') {
-        const dl = document.getElementById('downloadPortfolio');
-        dl.href = url;
-        dl.download = `hyperliquid-portfolio-${Date.now()}.json`;
-        dl.style.display = 'inline-block';
-      }
-    }
+    document.getElementById('copy-stats').addEventListener('click', () =>
+      navigator.clipboard.writeText(document.getElementById('stats').textContent)
+    );
+    document.getElementById('download-stats').addEventListener('click', () => {
+      const blob = new Blob([document.getElementById('stats').textContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'hyperliquid_stats.txt'; a.click(); URL.revokeObjectURL(url);
+    });
+    document.getElementById('clear-stats').addEventListener('click', () => { document.getElementById('stats').textContent = ''; });
+
+    document.getElementById('load-addrs').addEventListener('click', loadAddrs);
+    document.getElementById('run-btn').addEventListener('click', runHL);
   </script>
 </body>
 </html>
