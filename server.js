@@ -1,631 +1,628 @@
 require('dotenv').config();
 const express = require('express');
-const cors    = require('cors');
+const cors = require('cors');
+const path = require('path');
+
 const axios   = require('axios');
-const pLimit  = require('p-limit');
-const path    = require('path');
+const pLimit = require('p-limit');
+const limit = pLimit(5);
 
 // Google Sheets helper
 const { fetchTraderAddresses } = require('./sheetHelper');
+// Hyperliquid SDK
+const { Hyperliquid } = require('hyperliquid');
 
 const app = express();
-const HL  = process.env.HL_API_BASE || 'https://api.hyperliquid.xyz';
-const limit = pLimit(5);
-
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── HTTP POST helper ─────────────────────────────────────────────
-async function hlPost(body) {
-  return (await axios.post(`${HL}/info`, body, { timeout: 6000 })).data;
-}
+// instantiate SDK
+const sdk = new Hyperliquid(
+  process.env.HL_PRIVATE_KEY || '',
+  false,
+  process.env.HL_API_WALLET || ''
+);
 
-// ── Retry wrapper with backoff on 429 ────────────────────────────
-async function hlPostWithRetry(body, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await hlPost(body);
-    } catch (err) {
-      if (err.response?.status === 429 && i < retries - 1) {
-        await new Promise(r => setTimeout(r, 500 * 2 ** i));
-        continue;
-      }
-      throw err;
+// -- Position-Delta Pulse Logic (Non-Stream) --------------------------------
+async function positionDeltaPulse(addresses = [], minutes = 10, params = {}) {
+  const { trimUsd = 0, addUsd = 0, newUsd = 0, maxHits = Infinity } = params;
+  const now = Date.now();
+  const startMs = now - minutes * 60_000;
+  let hits = 0;
+  const results = [];
+  const processingDetails = [];
+
+  for (const wallet of addresses) {
+    if (hits >= maxHits) break;
+    const fills = await sdk.info.getUserFillsByTime(wallet, startMs, now).catch(() => []);
+    const stateRes = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
+    const positions = stateRes.assetPositions || [];
+
+    const openNow = {};
+    for (const p of positions) {
+      const sz = Number(p.position.szi);
+      if (!sz) continue;
+      openNow[p.position.coin] = {
+        side: sz > 0 ? 'long' : 'short',
+        sizeUsd: Math.abs(sz) * Number(p.position.entryPx),
+        entry: Number(p.position.entryPx),
+        liqPx: Number(p.position.liquidationPx)
+      };
     }
-  }
-}
 
-// ── GraphQL helper ───────────────────────────────────────────────
-async function hlGQL(query, variables = {}) {
-  const resp = await axios.post(
-    `${HL}/graphql`,
-    { query, variables },
-    { timeout: 6000 }
-  );
-  return resp.data.data;
-}
-
-const LIQ_HISTORY = `
-  query ($start: DateTime!, $end: DateTime!) {
-    liquidationHistory(start: $start, end: $end) {
-      coin
-      side
-      sz
-      px
-      timestamp
+    const opened = {}, closed = {};
+    for (const f of fills) {
+      const val = Math.abs(Number(f.sz)) * Number(f.px);
+      if (f.dir.startsWith('Open')) opened[f.coin] = (opened[f.coin] || 0) + val;
+      if (f.dir.startsWith('Close')) closed[f.coin] = (closed[f.coin] || 0) + val;
     }
-  }
-`;
 
-async function fetchLiquidations(startSec, endSec) {
-  const start = new Date(startSec * 1000).toISOString();
-  const end   = new Date(endSec   * 1000).toISOString();
-  const data  = await hlGQL(LIQ_HISTORY, { start, end });
-  return data.liquidationHistory || [];
-}
+    const coins = new Set([...Object.keys(opened), ...Object.keys(closed)]);
+    for (const coin of coins) {
+      if (hits >= maxHits) break;
+      const oUsd = opened[coin] || 0;
+      const cUsd = closed[coin] || 0;
+      const st = openNow[coin];
 
-// ── Debugger collector ───────────────────────────────────────────
-function makeDebugger() {
-  const logs = [];
-  return {
-    log: (...args) => {
-      const msg = args.map(a =>
-        typeof a === 'object'
-          ? JSON.stringify(a, null, 2)
-          : a
-      ).join(' ');
-      console.log(msg);
-      logs.push(msg);
-    },
-    getLogs: () => logs
-  };
-}
-
-// ───────────────────────────────────────────────────────────────
-// Whale-Alpha Strategies
-// ───────────────────────────────────────────────────────────────
-const strategies = {
-
-  // 1. Position-Delta Pulse
-  async positionDeltaPulse({ addresses = [], minutes = 10, params = {}, dbg }) {
-    const { trimUsd = 0, addUsd = 0, newUsd = 0, maxHits = Infinity } = params;
-    const start = Date.now() - minutes * 60_000;
-
-    const results = [];
-    const processingDetails = [];
-    let hits = 0;
-
-    await Promise.all(
-      addresses.map(wallet => limit(async () => {
-        if (hits >= maxHits) return;
-
-        const dbgWallet = makeDebugger();
-        processingDetails.push({ wallet, coin: null, openedUsd: 0, closedUsd: 0, passes: false, reason: 'scanned' });
-
-        const allFills = await hlPostWithRetry({ type: 'userFills', user: wallet }).catch(() => []);
-        const fills    = allFills.filter(f => f.time >= start);
-        const state    = await hlPostWithRetry({ type: 'clearinghouseState', user: wallet })
-                           .then(d => d.assetPositions || [])
-                           .catch(() => []);
-
-        const openNow = {};
-        state.forEach(p => {
-          const sz = +p.position.szi;
-          if (!sz) return;
-          openNow[p.position.coin] = {
-            side:    sz > 0 ? 'long' : 'short',
-            sizeUsd: Math.abs(sz) * +p.position.entryPx,
-            entry:   +p.position.entryPx,
-            liqPx:   +p.position.liquidationPx
-          };
-        });
-
-        const opened = {}, closed = {};
-        const bump = (tbl, coin, fld, val) => {
-          tbl[coin] = { ...(tbl[coin] || { longUsd:0, shortUsd:0 }), [fld]: (tbl[coin]?.[fld] || 0) + val };
-        };
-        fills.forEach(f => {
-          const val  = Math.abs(+f.sz) * +f.px;
-          const coin = f.coin;
-          const fld  = f.dir.includes('Long') ? 'longUsd' : 'shortUsd';
-          if (f.dir.startsWith('Open'))  bump(opened, coin, fld, val);
-          if (f.dir.startsWith('Close')) bump(closed, coin, fld, val);
-        });
-
-        for (const coin of new Set([...Object.keys(opened), ...Object.keys(closed)])) {
-          if (hits >= maxHits) break;
-          const st = openNow[coin];
-          const oL = opened[coin]?.longUsd  || 0;
-          const oS = opened[coin]?.shortUsd || 0;
-          const cL = closed[coin]?.longUsd  || 0;
-          const cS = closed[coin]?.shortUsd || 0;
-
-          const reduced     = (st?.side==='long'  && cL>=trimUsd)
-                            || (st?.side==='short' && cS>=trimUsd)
-                            || (!st && (cL+cS)>=trimUsd);
-          const added       = st && ((st.side==='long'  && oL>=addUsd)
-                                   || (st.side==='short' && oS>=addUsd));
-          const openedFresh = !st && (oL + oS)>=newUsd;
-
-          dbgWallet.log(
-            `[${wallet}] ${coin}: openedUsd=${(oL+oS).toFixed(2)} ` +
-            `closedUsd=${(cL+cS).toFixed(2)} reduced=${reduced} ` +
-            `added=${added} openedFresh=${openedFresh}`
-          );
-
-          processingDetails.push({
-            wallet,
-            coin:      `${coin}-PERP`,
-            openedUsd: +(oL+oS).toFixed(2),
-            closedUsd: +(cL+cS).toFixed(2),
-            passes:    reduced||added||openedFresh,
-            reason:    reduced     ? 'reduced'
-                     : added       ? 'added'
-                     : openedFresh ? 'openedFresh'
-                     : 'none'
-          });
-
-          if (reduced || added || openedFresh) {
-            results.push({
-              wallet,
-              action: reduced ? 'reduced' : added ? 'added' : 'opened',
-              coin:   `${coin}-PERP`,
-              side:   st?.side || (oL>oS ? 'long' : 'short'),
-              sizeUsd: st ? +st.sizeUsd.toFixed(2) : 0,
-              avgEntry: st ? +st.entry.toFixed(2) : null,
-              liqPx:    st ? +st.liqPx.toFixed(2) : null
-            });
-            hits++;
-          }
-        }
-
-        dbgWallet.getLogs().forEach(line => dbg.log(line));
-      }))
-    );
-
-    return {
-      results: results.length ? results : [{ result: 'no-setup' }],
-      processingDetails
-    };
-  },
-
-  // 2. Open-Interest Pulse
-  async openInterestPulse({ addresses = [], minutes = 10, params = {}, dbg }) {
-    const { deltaUsd = 250000, minWallets = 3, side = 'both' } = params;
-    const start = Date.now() - minutes * 60_000;
-    const processingDetails = [];
-    const agg = {};
-
-    await Promise.all(
-      addresses.map(wallet => limit(async () => {
-        const dbgWallet = makeDebugger();
-        processingDetails.push({ wallet, stage: 'scanStart' });
-
-        const fills = await hlPostWithRetry({
-          type: 'userFillsByTime',
-          user: wallet,
-          startTime: start,
-          endTime: Date.now(),
-          aggregateByTime: false
-        }).catch(() => []);
-
-        let net = 0;
-        fills.forEach(f => {
-          const val = Math.abs(+f.sz) * +f.px;
-          const sign = f.dir.includes('Long')
-            ? (f.dir.startsWith('Close') ? -1 : 1)
-            : (f.dir.startsWith('Close') ? 1 : -1);
-          net += val * sign;
-
-          if (!agg[f.coin]) agg[f.coin] = { net: 0, wallets: new Set() };
-          agg[f.coin].net += val * sign;
-          agg[f.coin].wallets.add(wallet);
-        });
-
-        processingDetails.push({
-          wallet,
-          netFlowUsd: +net.toFixed(2),
-          passes:     Math.abs(net) >= deltaUsd,
-          reason:     'walletNet'
-        });
-        dbgWallet.log(`[[${wallet}]] netFlowUsd=${net.toFixed(2)}`);
-        dbgWallet.getLogs().forEach(line => dbg.log(line));
-      }))
-    );
-
-    for (const [coin, data] of Object.entries(agg)) {
-      const net = data.net;
-      const count = data.wallets.size;
-      const passesDelta   = Math.abs(net) >= deltaUsd;
-      const passesWallets = count >= minWallets;
-      const bias = net > 0 ? 'long' : net < 0 ? 'short' : 'flat';
+      const reduced = (st && st.side === 'long' && cUsd >= trimUsd)
+                    || (st && st.side === 'short' && cUsd >= trimUsd)
+                    || (!st && cUsd >= trimUsd);
+      const added = st && ((st.side === 'long' && oUsd >= addUsd) || (st.side === 'short' && oUsd >= addUsd));
+      const openedFresh = !st && oUsd >= newUsd;
 
       processingDetails.push({
-        coin:        `${coin}-PERP`,
-        netFlowUsd:  +net.toFixed(2),
-        walletCount: count,
-        passes:      passesDelta && passesWallets,
-        reason:      'aggregate'
+        wallet,
+        coin: `${coin}-PERP`,
+        openedUsd: +oUsd.toFixed(2),
+        closedUsd: +cUsd.toFixed(2),
+        reduced,
+        added,
+        openedFresh
       });
 
-      if (!passesDelta || !passesWallets) continue;
-      if ((bias === 'long' && !['long','both'].includes(side)) ||
-          (bias === 'short' && !['short','both'].includes(side))) continue;
-
-      const topBuilders = Array.from(data.wallets)
-        .slice(0,5)
-        .map(addr => ({ addr, deltaUsd: +net.toFixed(2) }));
-
-      return {
-        coin:         `${coin}-PERP`,
-        deltaOiUsd:   +net.toFixed(2),
-        side:         bias,
-        walletCount:  count,
-        topBuilders,
-        processingDetails
-      };
-    }
-
-    return { result: 'no-oi-move', processingDetails };
-  },
-
-  // 3. Trend Bias
-  async trendBias({ addresses = [], minutes = 15, params = {} }) {
-    const { topN = 5, minNotional = 0 } = params;
-    const start = Date.now() - minutes * 60_000;
-    const processingDetails = [];
-    const agg = {};
-
-    await Promise.all(addresses.map(addr => limit(async () => {
-      processingDetails.push({ wallet: addr, stage: 'scanStart' });
-
-      const fills = await hlPostWithRetry({
-        type: 'userFillsByTime',
-        user: addr,
-        startTime: start,
-        endTime: Date.now(),
-        aggregateByTime: false
-      }).catch(() => []);
-
-      const perCoin = fills.reduce((acc, f) => {
-        const val = Math.abs(+f.sz) * +f.px *
-          (f.dir.includes('Long')
-            ? (f.dir.startsWith('Close') ? -1 :  1)
-            : (f.dir.startsWith('Close') ?  1 : -1)
-          );
-        acc[f.coin] = (acc[f.coin] || 0) + val;
-        return acc;
-      }, {});
-
-      for (const [coin, delta] of Object.entries(perCoin)) {
-        const passes = Math.abs(delta) >= minNotional;
-        processingDetails.push({
-          wallet:      addr,
-          coin:        `${coin}-PERP`,
-          netNotional: +delta.toFixed(2),
-          passes,
-          reason:      'walletNet'
-        });
-
-        if (!agg[coin]) agg[coin] = { net: 0, wallets: new Set() };
-        agg[coin].net += delta;
-        agg[coin].wallets.add(addr);
-      }
-    })));
-
-    const results = Object.entries(agg)
-      .filter(([, v]) => Math.abs(v.net) >= minNotional)
-      .map(([coin, v]) => ({
-        coin:         `${coin}-PERP`,
-        netNotional:  +v.net.toFixed(2),
-        side:         v.net > 0 ? 'long' : 'short',
-        walletCount:  v.wallets.size
-      }))
-      .sort((a, b) => Math.abs(b.netNotional) - Math.abs(a.netNotional))
-      .slice(0, topN);
-
-    return {
-      results: results.length ? results : [{ result: 'no-trend' }],
-      processingDetails
-    };
-  },
-
-  // 4. Divergence Radar
-  async divergenceRadar({ addresses = [], minutes = 5, params = {} }) {
-    const {
-      closeNotional = 50000,
-      buildNotional = 50000,
-      minClosers    = 2,
-      minBuilders   = 2
-    } = params;
-    const end   = Date.now();
-    const start = end - minutes * 60_000;
-
-    console.log(`\n[DivergenceRadar] window: ${new Date(start)} → ${new Date(end)}`);
-
-    const fillsByWallet = await Promise.all(
-      addresses.map(addr => limit(async () => {
-        const all = await hlPostWithRetry({
-          type: 'userFillsByTime',
-          user: addr,
-          startTime: start,
-          endTime:   end,
-          aggregateByTime: false
-        }).catch(() => []);
-        console.log(`  wallet ${addr} → ${all.length} fills`);
-        return { addr, fills: all };
-      }))
-    );
-
-    const book = {};
-    for (const { addr, fills } of fillsByWallet) {
-      for (const f of fills) {
-        const bucket = f.dir.startsWith('Close')
-          ? 'closers'
-          : f.dir.startsWith('Open')
-            ? 'builders'
-            : null;
-        if (!bucket) continue;
-        const val = Math.abs(+f.sz) * +f.px;
-        book[f.coin] = book[f.coin] || { closers: {}, builders: {}, side: f.dir.includes('Long') ? 'long' : 'short' };
-        book[f.coin][bucket][addr] = (book[f.coin][bucket][addr] || 0) + val;
-      }
-    }
-
-    console.log('Built book for coins:', Object.keys(book).join(', '));
-    for (const [coin, data] of Object.entries(book)) {
-      const closers = Object.entries(data.closers)
-        .filter(([,v]) => v >= closeNotional)
-        .map(([addr,v]) => ({ addr, closed: +v.toFixed(2) }));
-      const builders = Object.entries(data.builders)
-        .filter(([,v]) => v >= buildNotional)
-        .map(([addr,v]) => ({ addr, opened: +v.toFixed(2) }));
-
-      console.log(`\n[${coin}] closers (${closers.length}):`, closers);
-      console.log(`[${coin}] builders (${builders.length}):`, builders);
-
-      if (closers.length >= minClosers && builders.length >= minBuilders) {
-        const totalClose = closers.reduce((s,c) => s + c.closed, 0);
-        const totalBuild = builders.reduce((s,b) => s + b.opened, 0);
-        return {
+      if (reduced || added || openedFresh) {
+        results.push({
+          wallet,
           coin: `${coin}-PERP`,
-          side: data.side,
-          closers: { walletCount: closers.length, notional: totalClose.toFixed(2), top: closers.slice(0,3) },
-          builders: { walletCount: builders.length, notional: totalBuild.toFixed(2), top: builders.slice(0,3) }
-        };
+          action: reduced ? 'reduced' : added ? 'added' : 'opened',
+          side: st?.side || (oUsd > cUsd ? 'long' : 'short'),
+          sizeUsd: st ? +st.sizeUsd.toFixed(2) : 0,
+          avgEntry: st ? +st.entry.toFixed(2) : null,
+          liqPx: st ? +st.liqPx.toFixed(2) : null
+        });
+        hits++;
       }
     }
-
-    console.log('[DivergenceRadar] no coin passed thresholds');
-    return { result: 'no-divergence' };
-  },
-
-  // 5. Compression Radar
-  async compressionRadar({ addresses = [], minutes = 8, params = {}, dbg = console }) {
-    const { rangeBp = 30, netBuildUsd = 75000, minWallets = 3, minTicks = 50 } = params;
-    const end   = Date.now();
-    const start = end - minutes * 60_000;
-    const startSec = Math.floor(start / 1000);
-    const endSec   = Math.floor(end   / 1000);
-
-    dbg.log(`compressionRadar window: ${startSec} → ${endSec}`);
-
-    let candles = await hlPostWithRetry({
-      type: 'candleSnapshot',
-      req: { coin: 'all', interval: '1s', startTime: startSec, endTime: endSec }
-    }).catch(() => []);
-    dbg.log(`1s-candles returned: ${candles.length}`);
-
-    if (!candles.length) {
-      dbg.log('⚠️ No 1s candles found, falling back to 1m');
-      candles = await hlPostWithRetry({
-        type: 'candleSnapshot',
-        req: { coin: 'all', interval: '1m', startTime: startSec, endTime: endSec }
-      }).catch(() => []);
-      dbg.log(`1m-candles returned: ${candles.length}`);
-    }
-
-    const stats = {};
-    candles.forEach(c => {
-      stats[c.coin] = stats[c.coin] || { hi: -Infinity, lo: Infinity, ticks: 0 };
-      const s = stats[c.coin];
-      s.hi = Math.max(s.hi, +c.h);
-      s.lo = Math.min(s.lo, +c.l);
-      s.ticks++;
-    });
-    dbg.log('compressionRadar stats:', stats);
-
-    const flows = {};
-    await Promise.all(addresses.map(addr => limit(async () => {
-      const fills = await hlPostWithRetry({
-        type: 'userFillsByTime',
-        user: addr,
-        startTime: start,
-        endTime: end,
-        aggregateByTime: false
-      }).catch(() => []);
-      fills.forEach(f => {
-        const val  = Math.abs(+f.sz) * +f.px;
-        const sign = f.dir.includes('Long')
-          ? (f.dir.startsWith('Close') ? -1 : +1)
-          : (f.dir.startsWith('Close') ? +1 : -1);
-        flows[f.coin] = flows[f.coin] || { net: 0, wallets: new Set(), details: {} };
-        flows[f.coin].net += val * sign;
-        flows[f.coin].wallets.add(addr);
-        flows[f.coin].details[addr] = (flows[f.coin].details[addr] || 0) + val * sign;
-      });
-    })));
-    dbg.log('compressionRadar flows:', flows);
-
-    for (const [coin, st] of Object.entries(stats)) {
-      if (st.ticks < minTicks) {
-        dbg.log(`skip ${coin}: ${st.ticks} ticks < ${minTicks}`);
-        continue;
-      }
-      const rangePct = 10000 * (st.hi - st.lo) / st.lo;
-      dbg.log(`evaluating ${coin}: rangePct=${rangePct.toFixed(1)}bps`);
-      if (rangePct > rangeBp) {
-        dbg.log(`skip ${coin}: rangePct ${rangePct.toFixed(1)} > ${rangeBp}`);
-        continue;
-      }
-      const f = flows[coin];
-      if (!f) {
-        dbg.log(`no flow data for ${coin}`);
-        continue;
-      }
-      dbg.log(`flow for ${coin}: net=${f.net.toFixed(2)}, wallets=${f.wallets.size}`);
-      if (Math.abs(f.net) < netBuildUsd) {
-        dbg.log(`skip ${coin}: abs(net) ${Math.abs(f.net).toFixed(2)} < ${netBuildUsd}`);
-        continue;
-      }
-      if (f.wallets.size < minWallets) {
-        dbg.log(`skip ${coin}: walletCount ${f.wallets.size} < ${minWallets}`);
-        continue;
-      }
-      dbg.log(`compressionRadar hit on ${coin}`);
-      const side = f.net > 0 ? 'long' : 'short';
-      const topBuilders = Object.entries(f.details)
-        .sort(([,a],[,b]) => Math.abs(b) - Math.abs(a))
-        .slice(0,5)
-        .map(([addr,v]) => ({ addr, delta: +v.toFixed(2) }));
-
-      return {
-        coin:         `${coin}-PERP`,
-        windowMinutes: minutes,
-        rangeBps:     rangePct.toFixed(1),
-        netBuild:     +f.net.toFixed(2),
-        side,
-        walletCount:  f.wallets.size,
-        topBuilders,
-        stats,
-        flows
-      };
-    }
-
-    dbg.log('compressionRadar result: no-compression');
-    return { result: 'no-compression', stats, flows };
-  },
-
-  // 6. Liquidation Sniper (GraphQL)
-  async liquidationSniper({ addresses = [], minutes = 2, params = {}, dbg }) {
-    const {
-      liqThreshold   = 1_000_000,
-      buildThreshold =   100_000,
-      minWallets     =         5
-    } = params;
-
-    const end   = Date.now();
-    const start = end - minutes * 60_000;
-    dbg.log(`→ liquidationSniper window: last ${minutes}m`, { start: new Date(start), end: new Date(end), params });
-
-    let events = [];
-    try {
-      dbg.log('fetching liquidations via GraphQL…');
-      events = await fetchLiquidations(
-        Math.floor(start / 1000),
-        Math.floor(end   / 1000)
-      );
-    } catch (err) {
-      dbg.log('⚠️ fetch liquidations failed:', err.message);
-    }
-    dbg.log(`raw liquidations: ${events.length}`, events.slice(0,3));
-
-    const cascadeTotals = {};
-    for (const ev of events) {
-      const sideKey = ev.side === 'long' ? 'longs' : 'shorts';
-      const val     = Math.abs(+ev.sz) * +ev.px;
-      cascadeTotals[ev.coin] = cascadeTotals[ev.coin] || { longs:0, shorts:0 };
-      cascadeTotals[ev.coin][sideKey] += val;
-    }
-    dbg.log('cascadeTotals:', cascadeTotals);
-
-    for (const [coin, totals] of Object.entries(cascadeTotals)) {
-      const cascadeSide = totals.longs  >= liqThreshold ? 'longs'
-                        : totals.shorts >= liqThreshold ? 'shorts'
-                        : null;
-      if (!cascadeSide) continue;
-      dbg.log(`→ detected cascade on ${coin}:`, totals);
-
-      const wantBuildSide = cascadeSide === 'longs' ? 'short' : 'long';
-      let totalBuild = 0;
-      const builds = {};
-
-      await Promise.all(addresses.map(addr => limit(async () => {
-        let fills = [];
-        try {
-          fills = await hlPostWithRetry({
-            type: 'userFillsByTime',
-            user: addr,
-            startTime: start,
-            endTime:   end,
-            aggregateByTime: false
-          }).then(d => d || []);
-        } catch {}
-        for (const f of fills) {
-          if (f.coin !== coin) continue;
-          if (f.dir.startsWith('Open') && f.dir.includes(wantBuildSide)) {
-            const v = Math.abs(+f.sz) * +f.px;
-            builds[addr] = (builds[addr] || 0) + v;
-            totalBuild += v;
-          }
-        }
-      })));
-
-      dbg.log(`builds for ${coin}:`, builds);
-      const builderAddrs = Object.entries(builds)
-        .filter(([,v]) => v >= buildThreshold)
-        .map(([addr]) => addr);
-      dbg.log(`qualifying builders (${builderAddrs.length}):`, builderAddrs);
-      if (builderAddrs.length < minWallets) {
-        dbg.log(`→ only ${builderAddrs.length} builders (need ${minWallets}), skipping ${coin}`);
-        continue;
-      }
-
-      const topBuilders = Object.entries(builds)
-        .sort((a,b) => b[1] - a[1])
-        .slice(0,5)
-        .map(([addr,v]) => ({ addr, add: +v.toFixed(2) }));
-
-      return {
-        coin:        `${coin}-PERP`,
-        cascadeSide,
-        liqNotional: +(totals[cascadeSide].toFixed(2)),
-        whaleBuild:  `${totalBuild.toFixed(2)} net ${wantBuildSide}`,
-        walletCount: builderAddrs.length,
-        topBuilders
-      };
-    }
-
-    dbg.log('→ no coin met liquidationSniper criteria');
-    return { result: 'no-setup' };
   }
 
-};
+  return { results: results.length ? results : [{ result: 'no-setup' }], processingDetails };
+}
 
-
-app.post('/api/hyperliquid', async (req, res) => {
-  const { mode, addresses, minutes, params } = req.body;
-  const dbg = makeDebugger();
-  if (!strategies[mode]) {
-    return res.status(400).json({ error: `Unknown mode: ${mode}` });
-  }
+// -- Position-Delta Pulse Non-Stream Endpoint -----------------------------
+app.post('/api/positionDeltaPulse', async (req, res) => {
+  const { minutes, params, addresses, filters } = req.body;
   try {
-    const result = await strategies[mode]({ addresses, minutes, params, dbg });
-    res.json({ ...result, debugLogs: dbg.getLogs() });
+    const addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(filters || {});
+    console.log(`→ positionDeltaPulse on ${addrs.length} addresses`);
+    const data = await positionDeltaPulse(addrs, minutes || 10, params || {});
+    res.json(data);
   } catch (err) {
-    console.error(`Error in ${mode}:`, err);
-    res.status(500).json({ error: err.message, debugLogs: dbg.getLogs() });
+    console.error('Error positionDeltaPulse:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
+// -- Position-Delta Pulse Streaming Endpoint ------------------------------
+app.post('/api/positionDeltaPulseStream', async (req, res) => {
+  const { minutes, params, addresses, filters } = req.body;
+  let addrs;
+  try {
+    addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(filters || {});
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    return res.status(500).json({ error: err.message });
+  }
+
+  console.log(`→ Streaming positionDeltaPulse on ${addrs.length} addresses`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+  const now      = Date.now();
+  const startMs  = now - (minutes || 10) * 60_000;
+  const maxHits  = params?.maxHits ?? Infinity;
+  const finalHits = [];                     // NEW
+  let hits = 0;
+
+  for (const wallet of addrs) {
+    if (hits >= (params?.maxHits ?? Infinity)) break;
+    res.write(JSON.stringify({ type:'log', wallet, stage:'starting scan' })+'\n');
+
+    const fills = await sdk.info.getUserFillsByTime(wallet, startMs, now).catch(() => []);
+    res.write(JSON.stringify({ type:'log', wallet, stage:'fetched fills', count:fills.length })+'\n');
+
+    const stateRes = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
+    const positions = stateRes.assetPositions || [];
+    res.write(JSON.stringify({ type:'log', wallet, stage:'fetched positions', count:positions.length })+'\n');
+
+    const openNow = {};
+    for (const p of positions) {
+      const sz = Number(p.position.szi);
+      if (!sz) continue;
+      openNow[p.position.coin] = {
+        side: sz > 0 ? 'long' : 'short',
+        sizeUsd: Math.abs(sz) * Number(p.position.entryPx),
+        entry: Number(p.position.entryPx),
+        liqPx: Number(p.position.liquidationPx)
+      };
+    }
+
+    const opened = {}, closed = {};
+    for (const f of fills) {
+      const val = Math.abs(Number(f.sz)) * Number(f.px);
+      if (f.dir.startsWith('Open')) opened[f.coin] = (opened[f.coin] || 0) + val;
+      if (f.dir.startsWith('Close')) closed[f.coin] = (closed[f.coin] || 0) + val;
+    }
+
+    const coins = new Set([...Object.keys(opened), ...Object.keys(closed)]);
+    for (const coin of coins) {
+      if (hits >= (params?.maxHits ?? Infinity)) break;
+      const oUsd = opened[coin] || 0;
+      const cUsd = closed[coin] || 0;
+      const st = openNow[coin];
+
+      const reduced = (st && st.side === 'long' && cUsd >= params.trimUsd) ||
+                      (st && st.side === 'short' && cUsd >= params.trimUsd) ||
+                      (!st && cUsd >= params.trimUsd);
+      const added = st && ((st.side === 'long' && oUsd >= params.addUsd) ||
+                           (st.side === 'short' && oUsd >= params.addUsd));
+      const openedFresh = !st && oUsd >= params.newUsd;
+
+      res.write(JSON.stringify({ type:'log', wallet, coin:`${coin}-PERP`, stage:'evaluated',openedUsd:+oUsd.toFixed(2), closedUsd:+cUsd.toFixed(2),reduced, added, openedFresh })+'\n');
+
+      if (reduced || added || openedFresh) {
+      const entry = {
+        type     : 'result',         // <-- NEW!
+        wallet,
+        coin     : `${coin}-PERP`,
+        action   : reduced ? 'reduced' : added ? 'added' : 'opened',
+        side     : st?.side || (oUsd > cUsd ? 'long' : 'short'),
+        sizeUsd  : st ? +st.sizeUsd.toFixed(2) : 0,
+          avgEntry : st ? +st.entry.toFixed(2) : null,
+        liqPx    : st ? +st.liqPx.toFixed(2) : null
+        };
+        res.write(JSON.stringify(entry) + '\n');
+        finalHits.push(entry);         // <-- save for the summary
+        hits++;
+      }
+    }
+  }
+  res.write(JSON.stringify({ type: 'summary', results: finalHits }) + '\n');
+  res.end();
+});
+
+// -- Aggressive Fills Endpoint --------------------------------------------
+async function aggressiveFills({ addresses = [], minutes = 5, params = {} }) {
+  const { minNotional = 100000 } = params;
+  const now = Date.now();
+  const start = now - minutes * 60_000;
+
+  // throttle to 5 concurrent calls
+  const fillsByWallet = await Promise.all(
+    addresses.map(addr =>
+      limit(() =>
+        sdk.info.getUserFillsByTime(addr, start, now).catch(() => [])
+      )
+    )
+  );
+
+  // 2️⃣ Filter “aggressive” market orders above threshold
+  const hits = [];
+  for (let i = 0; i < addresses.length; i++) {
+    const wallet = addresses[i];
+    for (const f of fillsByWallet[i]) {
+      const usd = Math.abs(Number(f.sz)) * Number(f.px);
+      if (usd >= minNotional) {
+        hits.push({
+          wallet,
+          coin: `${f.coin}-PERP`,
+          side: f.dir.includes('Long') ? 'buy' : 'sell',
+          sizeUsd: +usd.toFixed(2),
+          price: +Number(f.px).toFixed(2),
+          timestamp: f.time
+        });
+      }
+    }
+  }
+
+  return hits.length ? hits : { result: 'no-aggressive-fills' };
+}
+
+// … up near the top, after you define `async function aggressiveFills(...)`
+app.post('/api/aggressiveFills', async (req, res) => {
+  const { addresses = [], minutes = 5, params = {} } = req.body;
+  try {
+    // if you load from sheet when blank:
+    const addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(req.body.filters || {});
+    
+    console.log(`→ aggressiveFills on ${addrs.length} addresses, ${minutes}m, params=`, params);
+    const data = await aggressiveFills({ addresses: addrs, minutes, params });
+    res.json(data);
+  } catch (err) {
+    console.error('Error in aggressiveFills:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// helper to fetch L2 book snapshot
+async function getL2Book(coin) {
+  // most recent SDK calls expose something like:
+  if (sdk.info.orderbook?.getL2Book) {
+    return await sdk.info.orderbook.getL2Book({ market: coin, depth: 50 });
+  }
+  // fallback to REST
+  const res = await axios.get(`https://api.hyperliquid.xyz/l2Book?market=${encodeURIComponent(coin)}&limit=50`);
+  return res.data;
+}
+
+// 1) Simplify the signature: no more addresses
+async function volumeAbsorption({ coin, minutes = 5, surgeFactor = 2 }) {
+  if (!coin) throw new Error("`coin` param is required");
+
+  const now   = Date.now();
+  const start = now - minutes * 60_000;
+
+  // grab two L2 snapshots at start & now
+  const [book0, book1] = await Promise.all([
+    sdk.info.l2Book({ market: coin, ts: start }),
+    sdk.info.l2Book({ market: coin, ts: now })
+  ]);
+
+  // diff depth eaten
+  let bidEaten = 0, askEaten = 0;
+  for (const [px, sz0] of book0.bids) {
+    const sz1 = (book1.bids.find(b => b[0] === px)?.[1]) || 0;
+    if (sz1 < sz0) bidEaten += sz0 - sz1;
+  }
+  for (const [px, sz0] of book0.asks) {
+    const sz1 = (book1.asks.find(a => a[0] === px)?.[1]) || 0;
+    if (sz1 < sz0) askEaten += sz0 - sz1;
+  }
+
+  // fetch aggregate trades over window
+  const trades = await sdk.info.trades({ market: coin, startTime: start, endTime: now, aggregateByTime: false });
+  const totalVol = trades.reduce((sum, t) => sum + Math.abs(Number(t.sz)), 0);
+
+  const surgeDetected = (bidEaten + askEaten) > totalVol * surgeFactor;
+  return { coin, lookbackMinutes: minutes, depthDiff: { bidEaten, askEaten }, totalVol, surgeDetected };
+}
+
+// 2) Wire up the endpoint
+app.post('/api/volumeAbsorption', async (req, res) => {
+  const {
+    coin,
+    minutes = 5,
+    params: { surgeFactor = 2 } = {}
+  } = req.body;
+
+  try {
+    const out = await volumeAbsorption({ coin, minutes, surgeFactor });
+    res.json(out);
+  } catch (err) {
+    console.error("Error in volumeAbsorption:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// -- Coin Activity Logic & Streaming --------------------------------------
+async function streamCoinActivity(addresses = [], minutes = 15, params = {}, res) {
+  const { coin, minNotional = 0 } = params;
+  if (!coin) throw new Error('coinActivity requires a `coin` param');
+
+  const end = Date.now();
+  const start = end - minutes * 60_000;
+  let fillsWindow = [];
+
+  for (const addr of addresses) {
+    res.write(JSON.stringify({ trader: addr, stage: 'fetching' }) + '\n');
+    const fills = await sdk.info.getUserFillsByTime(addr, start, end).catch(() => []);
+    res.write(JSON.stringify({ trader: addr, stage: 'fetched', count: fills.length }) + '\n');
+
+    const matches = fills.filter(f => f.coin === coin && Math.abs(Number(f.sz)) * Number(f.px) >= minNotional);
+    fillsWindow = fillsWindow.concat(matches.map(f => ({ trader: addr, time: f.time*1000, side: f.dir.includes('Long') ? 'buy' : 'sell', sizeUsd: + (Math.abs(Number(f.sz)) * Number(f.px)).toFixed(2), price: +f.px })));
+    res.write(JSON.stringify({ trader: addr, stage: 'filtered', matches: matches.length }) + '\n');
+  }
+
+  // summary
+  const totalTrades = fillsWindow.length;
+  const totalNotional = fillsWindow.reduce((sum, t) => sum + t.sizeUsd, 0);
+  const uniqueTraders = new Set(fillsWindow.map(t => t.trader));
+  res.write(JSON.stringify({ coinActivitySummary: { coin: params.coin, lookbackMinutes: minutes, totalTrades, totalNotional: +totalNotional.toFixed(2), uniqueTraderCount: uniqueTraders.size } }) + '\n');
+}
+
+app.post('/api/coinActivityStream', async (req, res) => {
+  const { minutes, params, addresses, filters } = req.body;
+  let addrs;
+  try {
+    addrs = Array.isArray(addresses) && addresses.length ? addresses : await fetchTraderAddresses(filters || {});
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    return res.status(500).json({ error: err.message });
+  }
+
+  console.log(`→ Streaming coinActivity(${params.coin}) on ${addrs.length} addresses`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  await streamCoinActivity(addrs, minutes || 15, params || {}, res);
+  res.end();
+});
+
+// -- Coin Activity Non-Stream Endpoint -----------------------------------
+app.post('/api/coinActivity', async (req, res) => {
+  const { minutes, params, addresses, filters } = req.body;
+  try {
+    const addrs = Array.isArray(addresses) && addresses.length ? addresses : await fetchTraderAddresses(filters || {});
+    console.log(`→ coinActivity(${params.coin}) on ${addrs.length} addresses`);
+    const data = await (async () => {
+      const { coin, minNotional = 0 } = params;
+      const end = Date.now();
+      const start = end - (minutes || 15) * 60_000;
+      let fillsWindow = [];
+      for (const addr of addrs) {
+        const fills = await sdk.info.getUserFillsByTime(addr, start, end).catch(() => []);
+        fillsWindow = fillsWindow.concat(
+          fills.filter(f => f.coin === coin && Math.abs(Number(f.sz))*Number(f.px)>=minNotional)
+            .map(f => ({ trader: addr, time: f.time*1000, side: f.dir.includes('Long')?'buy':'sell', sizeUsd: +(Math.abs(Number(f.sz))*Number(f.px)).toFixed(2), price: +f.px }))
+        );
+      }
+      return {
+        coinActivity: {
+          coin: params.coin,
+          lookbackMinutes: minutes || 15,
+          totalTrades: fillsWindow.length,
+          totalNotional: +fillsWindow.reduce((s,t)=>s+t.sizeUsd,0).toFixed(2),
+          uniqueTraderCount: new Set(fillsWindow.map(t=>t.trader)).size,
+          recentFills: fillsWindow.slice(0,20)
+        }
+      };
+    })();
+    res.json(data);
+  } catch (err) {
+    console.error('Error in coinActivity:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -- Market Sentiment Logic (Non-Stream) ----------------------------------
+async function marketSentiment(addresses = []) {
+  let totalLong = 0;
+  let totalShort = 0;
+
+  for (const wallet of addresses) {
+    const state = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
+    const positions = state.assetPositions || [];
+    for (const p of positions) {
+      const sz = Number(p.position.szi);
+      const px = Number(p.position.entryPx);
+      const val = Math.abs(sz) * px;
+      if (sz > 0) totalLong += val;
+      else if (sz < 0) totalShort += val;
+    }
+  }
+
+  const grand = totalLong + totalShort;
+  const longPct = grand ? +(totalLong / grand * 100).toFixed(2) : 0;
+  const shortPct = grand ? +(totalShort / grand * 100).toFixed(2) : 0;
+
+  return {
+    sentiment: { longPct, shortPct, totalLongUsd: +totalLong.toFixed(2), totalShortUsd: +totalShort.toFixed(2) }
+  };
+}
+
+// -- Market Sentiment Endpoint -------------------------------------------
+app.post('/api/marketSentiment', async (req, res) => {
+  const { addresses, filters } = req.body;
+  try {
+    const addrs = Array.isArray(addresses) && addresses.length ? addresses : await fetchTraderAddresses(filters || {});
+    console.log(`→ marketSentiment on ${addrs.length} addresses`);
+    const data = await marketSentiment(addrs);
+    res.json(data);
+  } catch (err) {
+    console.error('Error marketSentiment:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -- Market Sentiment Streaming Endpoint ----------------------------------
+app.post('/api/marketSentimentStream', async (req, res) => {
+  const { addresses, filters } = req.body;
+  let addrs;
+  try {
+    addrs = Array.isArray(addresses) && addresses.length ? addresses : await fetchTraderAddresses(filters || {});
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    return res.status(500).json({ error: err.message });
+  }
+
+  console.log(`→ Streaming marketSentiment on ${addrs.length} addresses`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+  let totalLong = 0, totalShort = 0;
+  for (const wallet of addrs) {
+    res.write(JSON.stringify({ wallet, stage: 'fetching positions' }) + '\n');
+    const state = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
+    const positions = state.assetPositions || [];
+    res.write(JSON.stringify({ wallet, stage: 'positions count', count: positions.length }) + '\n');
+
+    for (const p of positions) {
+      const sz = Number(p.position.szi);
+      const px = Number(p.position.entryPx);
+      const val = Math.abs(sz) * px;
+      if (sz > 0) totalLong += val;
+      else if (sz < 0) totalShort += val;
+    }
+  }
+
+  const grand = totalLong + totalShort;
+  const longPct = grand ? +(totalLong / grand * 100).toFixed(2) : 0;
+  const shortPct = grand ? +(totalShort / grand * 100).toFixed(2) : 0;
+  res.write(JSON.stringify({ sentiment: { longPct, shortPct, totalLongUsd: +totalLong.toFixed(2), totalShortUsd: +totalShort.toFixed(2) } }) + '\n');
+  res.end();
+});
+
+// 8. Asset Concentration Logic (Non-Stream)
+async function assetConcentration(addresses = []) {
+  let counts = {};
+
+  for (const addr of addresses) {
+    const stateRes = await sdk.info.perpetuals.getClearinghouseState(addr).catch(() => ({}));
+    const positions = stateRes.assetPositions || [];
+
+    // sum sizes by coin
+    const netByCoin = {};
+    for (const p of positions) {
+      const sz = Number(p.position.szi);
+      if (!sz) continue;
+      netByCoin[p.position.coin] = (netByCoin[p.position.coin] || 0) + sz;
+    }
+
+    // update counts
+    for (const [coin, net] of Object.entries(netByCoin)) {
+      counts[coin] = counts[coin] || { longCount: 0, shortCount: 0 };
+      if (net > 0) counts[coin].longCount++;
+      else if (net < 0) counts[coin].shortCount++;
+    }
+  }
+
+  // format and sort
+  const result = Object.entries(counts)
+    .map(([coin, { longCount, shortCount }]) => ({
+      coin: `${coin}-PERP`, longCount, shortCount, total: longCount + shortCount
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  return { concentration: result };
+}
+
+// Asset Concentration Endpoint
+app.post('/api/assetConcentration', async (req, res) => {
+  const { addresses, filters } = req.body;
+  try {
+    const addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(filters || {});
+
+    console.log(`→ assetConcentration on ${addrs.length} addresses`);
+    const data = await assetConcentration(addrs);
+    res.json(data);
+  } catch (err) {
+    console.error('Error in assetConcentration:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────
+// 5.  🔥 NEW  –  Ticker Feed (liquidations + trades)
+// ──────────────────────────────────────────────────────────────────
+const GQL_ENDPOINT = 'https://api.hyperliquid.xyz/graphql';
+const LIQ_QUERY = `query($coin:String!,$start:DateTime!){\n  liquidationHistory(start:$start,end:null,coin:$coin){coin side sz px timestamp}\n}`;
+
+async function fetchLiquidations(coin, minutes=30){
+  const startISO = new Date(Date.now()-minutes*60_000).toISOString();
+  const resp = await axios.post(GQL_ENDPOINT,{query:LIQ_QUERY,variables:{coin,start:startISO}}).catch(()=>({data:{data:null}}));
+  return resp.data.data?.liquidationHistory || [];
+}
+
+// ───── NEW ─────
+// ──────────────────────────────────────────────────────────────────
+// 0.  UNIVERSAL TRADE‑FETCH HELPER (works on any SDK version)
+// ──────────────────────────────────────────────────────────────────
+const TRADES_HTTP = (coin, limit) =>
+  `https://api.hyperliquid.xyz/trades?market=${encodeURIComponent(coin)}&limit=${limit}`;
+
+const TRADES_GQL = `query($market:String!,$limit:Int!){\n  trades(market:$market,limit:$limit){px sz side timestamp}}`;
+
+async function fetchRecentTrades (coin, limit = 60) {
+  try {
+    /* ≥ 2024‑05 builds – sdk.info.trades({ market, limit }) */
+    if (typeof sdk.info.trades === 'function') {
+      const res = await sdk.info.trades({ market: coin, limit });
+      if (Array.isArray(res)) return res;
+    }
+    /* 2023‑12 → 2024‑03 – sdk.info.getTrades(...)  */
+    if (typeof sdk.info.getTrades === 'function') {
+      const res = sdk.info.getTrades.length === 1
+        ? await sdk.info.getTrades({ market: coin, limit })
+        : await sdk.info.getTrades(coin, limit);
+      if (Array.isArray(res)) return res;
+    }
+    /* older – sdk.info.market.getTrades(...)  */
+    if (sdk.info.market?.getTrades) {
+      const res = await sdk.info.market.getTrades(coin, limit);
+      if (Array.isArray(res)) return res;
+    }
+    /* very old – sdk.info.perpetuals.getTrades(...) */
+    if (sdk.info.perpetuals?.getTrades) {
+      const res = await sdk.info.perpetuals.getTrades(coin, limit);
+      if (Array.isArray(res)) return res;
+    }
+
+    /* ----------  no helper  →  public endpoints  ---------- */
+    console.warn('getTrades helper not found – falling back to HTTP / GQL');
+
+    // A. unauthenticated REST
+    const httpRes = await axios.get(TRADES_HTTP(coin, limit)).catch(() => null);
+    if (httpRes?.data && Array.isArray(httpRes.data)) return httpRes.data;
+
+    // B. last‑resort GraphQL
+    const gqlRes = await axios.post('https://api.hyperliquid.xyz/graphql', {
+      query     : TRADES_GQL,
+      variables : { market: coin, limit }
+    }).catch(() => null);
+    return gqlRes?.data?.data?.trades ?? [];
+  } catch (err) {
+    console.warn('fetchRecentTrades failed –', err.message);
+    return [];
+  }
+}
+
+
+async function tickerFeed(coin, params={}){
+  const { liqMinutes=30, tradeLimit=60 } = params;
+  console.log(`↪ fetching liquidations for ${coin} (${liqMinutes} m)`);    // ⚡
+  const liqs = await fetchLiquidations(coin.split('-')[0] || coin, liqMinutes);
+
+  console.log(`↪ fetching last ${tradeLimit} trades for ${coin}`);         // ⚡
+  const trades = await fetchRecentTrades(coin, tradeLimit);
+  return { coin, liqMinutes, tradeLimit, liquidations: liqs, trades };
+}
+
+//  🔥  tickerFeed endpoint
+app.post('/api/tickerFeed', async (req,res)=>{
+  const { coin, params } = req.body;
+  if (!coin) return res.status(400).json({ error:'coin is required' });
+  try {
+    console.log('→ tickerFeed request:', coin, params);
+    res.json(await tickerFeed(coin, params||{}));
+  } catch(err){
+    console.error('tickerFeed error', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -- Google Sheet Endpoint ------------------------------------------------
 app.get('/api/traderAddresses', async (req, res) => {
   try {
     const filters = {};
     if (req.query.pnlMin)      filters.pnlMin       = Number(req.query.pnlMin);
     if (req.query.winRateMin)  filters.winRateMin   = Number(req.query.winRateMin);
     if (req.query.durationMin) filters.durationMinMs = Number(req.query.durationMin);
-
     const addrs = await fetchTraderAddresses(filters);
     res.json(addrs);
   } catch (err) {
@@ -634,9 +631,8 @@ app.get('/api/traderAddresses', async (req, res) => {
   }
 });
 
+// -- Start Server ---------------------------------------------------------
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`🚀 Listening on http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`🚀 Server listening on http://localhost:${PORT}`));
 }
-
-module.exports = app;

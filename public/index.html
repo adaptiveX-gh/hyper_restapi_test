@@ -2,234 +2,453 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hyperliquid API Test</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Hyperliquid Test Page</title>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
-    textarea, input[type="text"], input[type="number"], select { width: 100%; margin-bottom: .5rem; }
-    textarea { height: 100px; }
+    textarea, input[type="number"], input[type="text"] { width: 100%; margin-bottom: .5rem; }
+    textarea { height: 80px; }
     pre { background: #f0f0f0; padding: 1rem; overflow-x: auto; white-space: pre-wrap; }
-    button { padding: .5rem 1rem; margin: .25rem 0; }
-    section { margin-bottom: 2rem; }
-    #desc { font-style: italic; margin-bottom: .5rem; color: #333; }
-    #logs, #stats { height: 200px; }
-
-    /* new two-column layout for params */
-    .params-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .params-editor, .params-recommend {
-      border: 1px solid #ccc;
-      padding: .5rem;
-      border-radius: 4px;
-    }
-    .params-recommend pre { height: 100px; }
-    .params-recommend p { margin-top: .5rem; font-size: .9rem; }
+    button { padding: .5rem 1rem; margin: .25rem 0; cursor: pointer; }
+    section { margin-bottom: 2rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
+    .inline { display: flex; gap: 1rem; }
+    .inline > * { flex: 1; }
+    .hidden { display: none; }
+    #strategy-buttons { margin-bottom: 2rem; }
   </style>
 </head>
 <body>
-  <h1>Hyperliquid API Test Page</h1>
+  <h1>Hyperliquid Test Page</h1>
 
-  <section>
-    <h2>POST /api/hyperliquid</h2>
+  <!-- Strategy Switch -->
+  <div id="strategy-buttons" class="inline">
+    <button id="btn-delta">Position-Delta Pulse</button>
+    <button id="btn-coin">Coin Activity</button>
+    <button id="btn-sentiment">Market Sentiment</button>
+    <button id="btn-conc">Asset Concentration</button>
+    <button id="btn-feed">Ticker Feed (Liq + Trades)</button>
+    <button id="btn-aggr">Aggressive Fills</button>
+    <button id="btn-absorption">Volume Absorption</button>
+  </div>
 
-    <label for="mode">Mode:</label><br>
-    <select id="mode">
-      <option value="positionDeltaPulse">positionDeltaPulse</option>
-      <option value="openInterestPulse">openInterestPulse</option>
-      <option value="trendBias">trendBias</option>
-      <option value="divergenceRadar">divergenceRadar</option>
-      <option value="compressionRadar">compressionRadar</option>
-      <option value="liquidationSniper">liquidationSniper</option>
-      <option value="topTraders">topTraders</option>
-    </select><br>
-
-    <label for="addrs">Addresses (one per line, leave blank to load from Google Sheet):</label><br>
-    <textarea id="addrs" placeholder="0xabc… or leave blank"></textarea><br>
-
+  <!-- Position Delta Pulse Streaming -->
+  <section id="delta-section">
+    <h2>Stream Position-Delta Pulse</h2>
+    <label>Addresses (one per line, blank to load sheet):</label>
+    <textarea id="delta-addrs"></textarea>
     <h3>Sheet Filters (optional)</h3>
-    <label for="filter-pnlMin">Min Total PnL ($):</label><br>
-    <input type="number" id="filter-pnlMin" placeholder="e.g. 1000" /><br>
-    <label for="filter-winRateMin">Min Win Rate (%):</label><br>
-    <input type="number" id="filter-winRateMin" placeholder="e.g. 60" /><br>
-    <label for="filter-durationMin">Min Duration (hours):</label><br>
-    <input type="number" id="filter-durationMin" placeholder="e.g. 12" /><br>
-
-    <button id="load-addrs">Load from Google Sheet</button><br>
-
-    <label for="minutes">Lookback minutes:</label><br>
-    <input type="number" id="minutes" value="30" min="1" /><br>
-
-    <!-- two-column params -->
-    <div class="params-container">
-      <div class="params-editor">
-        <label for="params">Params (JSON):</label><br>
-        <textarea id="params"></textarea>
+    <div class="inline">
+      <input type="number" id="delta-pnlMin" placeholder="Min PnL ($)" />
+      <input type="number" id="delta-winRateMin" placeholder="Min Win Rate (%)" />
+      <input type="number" id="delta-durationMin" placeholder="Min Duration (hrs)" />
+    </div>
+    <button id="delta-load">Load Addresses</button>
+    <label>Lookback Minutes:</label>
+    <input type="number" id="delta-minutes" value="10" min="1" />
+    <label>Params (JSON):</label>
+    <textarea id="delta-params">{ "trimUsd":0, "addUsd":0, "newUsd":0, "maxHits":5 }</textarea>
+    <div class="inline">
+      <div>
+        <h4>Recommended</h4>
+        <pre>{ "trimUsd":100000, "addUsd":100000, "newUsd":100000, "maxHits":5 }</pre>
       </div>
-      <div class="params-recommend">
-        <label>Recommended Settings:</label>
-        <pre id="recommended"></pre>
-        <label>Why?</label>
-        <p id="why"></p>
+      <div>
+        <h4>Why?</h4>
+        <p>Detect large trims/adds/opens on each wallet.</p>
       </div>
     </div>
+    <button id="delta-run">Run Stream</button>
+    <h3>Results (hits only)</h3>
+    <pre id="delta-results"></pre>
+    <button id="delta-copy-results">Copy Results</button>
 
-    <button id="run-btn">Run Hyperliquid</button>
+    <h3>Processing Details (live)</h3>
+    <pre id="delta-stats"></pre>
+    <button id="delta-clear-stats">Clear Stats</button>
+    <button id="delta-copy-stats">Copy Results</button>
+
   </section>
 
-  <hr />
+  <section id="aggr-section" class="hidden">
+  <h2>Aggressive Fills</h2>
+  <label>Addresses (one per line, blank to load sheet):</label>
+  <textarea id="aggr-addrs"></textarea>
+  <h3>Sheet Filters (optional)</h3>
+  <div class="inline">
+    <input type="number" id="aggr-pnlMin" placeholder="Min PnL ($)" />
+    <input type="number" id="aggr-winRateMin" placeholder="Min Win Rate (%)" />
+    <input type="number" id="aggr-durationMin" placeholder="Min Duration (hrs)" />
+  </div>
+  <button id="aggr-load">Load Addresses</button>
+  <label>Lookback Minutes:</label>
+  <input type="number" id="aggr-minutes" value="5" min="1" />
+  <label>Params (JSON):</label>
+  <textarea id="aggr-params">{ "minNotional":100000 }</textarea>
+  <div class="inline">
+    <div>
+      <h4>Recommended</h4>
+      <pre>{ "minNotional": 100000 }</pre>
+    </div>
+    <div>
+      <h4>Why?</h4>
+      <p>Catch any single fill ≥ threshold as “aggressive.”</p>
+    </div>
+  </div>
+  <button id="aggr-run">Fetch Aggressive Fills</button>
+  <h3>Results</h3>
+  <pre id="aggr-output"></pre>
+  <button id="aggr-copy-output">Copy Results</button>
+</section>
 
-  <h2>Results:</h2>
-  <pre id="output">Results will appear here...</pre>
+<section id="absorption-section" class="hidden">
+  <h2>Volume Surges & Absorption</h2>
+  <!-- similar address loader + lookback + params -->
+  <label>Coin:</label><input type="text" id="absorption-coin" value="BTC-PERP"/>
+  <label>Lookback (min):</label><input type="number" id="absorption-minutes" value="5" min="1"/>
+  <label>Params (JSON):</label>
+  <textarea id="absorption-params">{ "surgeFactor": 2 }</textarea>
+  <button id="absorption-run">Check Absorption</button>
+  <pre id="absorption-output"></pre>
+</section>
 
-  <h2>Logs:</h2>
-  <pre id="logs">Logs will appear here...</pre>
-  <button id="copy-logs">Copy Logs</button>
-  <button id="download-logs">Download Logs</button>
-  <button id="clear-logs">Clear Logs</button>
+  <!-- Coin Activity (Non-Streaming) -->
+  <section id="coin-section" class="hidden">
+    <h2>Coin Activity</h2>
+    <label>Addresses (one per line, blank to load sheet):</label>
+    <textarea id="coin-addrs"></textarea>
+    <h3>Sheet Filters (optional)</h3>
+    <div class="inline">
+      <input type="number" id="coin-pnlMin" placeholder="Min PnL ($)" />
+      <input type="number" id="coin-winRateMin" placeholder="Min Win Rate (%)" />
+      <input type="number" id="coin-durationMin" placeholder="Min Duration (hrs)" />
+    </div>
+    <button id="coin-load">Load Addresses</button>
+    <div class="inline">
+      <div>
+        <label>Lookback Minutes:</label>
+        <input type="number" id="coin-minutes" value="15" min="1" />
+      </div>
+      <div>
+        <label>Coin (e.g. BTC-PERP):</label>
+        <input type="text" id="coin-ticker" value="BTC-PERP" />
+      </div>
+      <div>
+        <label>Min Notional ($):</label>
+        <input type="number" id="coin-minNotional" value="0" />
+      </div>
+    </div>
+    <button id="coin-run">Fetch Activity</button>
+    <h3>Activity Result</h3>
+    <pre id="coin-output"></pre>
+    <button id="coin-copy-output">Copy Results</button>
 
-  <h2>Stats / Processing Details:</h2>
-  <pre id="stats">Stats, flows, and processing details will appear here...</pre>
-  <button id="copy-stats">Copy Stats</button>
-  <button id="download-stats">Download Stats</button>
-  <button id="clear-stats">Clear Stats</button>
+  </section>
+
+  <!-- Market Sentiment (Non-Streaming) -->
+  <section id="sentiment-section" class="hidden">
+    <h2>Market Sentiment</h2>
+    <label>Addresses (one per line, blank to load sheet):</label>
+    <textarea id="sentiment-addrs"></textarea>
+    <h3>Sheet Filters (optional)</h3>
+    <div class="inline">
+      <input type="number" id="sentiment-pnlMin" placeholder="Min PnL ($)" />
+      <input type="number" id="sentiment-winRateMin" placeholder="Min Win Rate (%)" />
+      <input type="number" id="sentiment-durationMin" placeholder="Min Duration (hrs)" />
+    </div>
+    <button id="sentiment-load">Load Addresses</button>
+    <button id="sentiment-run">Fetch Sentiment</button>
+    <h3>Sentiment Result</h3>
+    <pre id="sentiment-output"></pre>
+    <button id="sentiment-copy-output">Copy Results</button>
+  </section>
+
+  <!-- Asset Concentration (Non-Streaming) -->
+  <section id="conc-section" class="hidden">
+    <h2>Asset Concentration</h2>
+    <label>Addresses (one per line, blank to load sheet):</label>
+    <textarea id="conc-addrs"></textarea>
+    <h3>Sheet Filters (optional)</h3>
+    <div class="inline">
+      <input type="number" id="conc-pnlMin" placeholder="Min PnL ($)" />
+      <input type="number" id="conc-winRateMin" placeholder="Min Win Rate (%)" />
+      <input type="number" id="conc-durationMin" placeholder="Min Duration (hrs)" />
+    </div>
+    <button id="conc-load">Load Addresses</button>
+    <button id="conc-run">Fetch Concentration</button>
+    <h3>Concentration Result</h3>
+    <pre id="conc-output"></pre>
+    <button id="conc-copy-output">Copy Results</button>
+  </section>
+
+  <!-- 🔥 Ticker Feed (liquidations + recent trades) -->
+<section id="feed-section" class="hidden">
+  <h2>Ticker Feed – Liquidations &amp; Recent Trades</h2>
+
+  <div class="inline">
+    <div>
+      <label>Ticker (eg. <code>BTC-PERP</code>)</label>
+      <input type="text" id="feed-coin" value="BTC-PERP">
+    </div>
+    <div>
+      <label>Liq Look-back (minutes)</label>
+      <input type="number" id="feed-liqMin" value="30" min="1">
+    </div>
+    <div>
+      <label># Recent Trades</label>
+      <input type="number" id="feed-tradeLimit" value="60" min="1">
+    </div>
+  </div>
+
+  <button id="feed-run">Fetch Ticker Feed</button>
+
+  <h3>Feed Result</h3>
+  <pre id="feed-output"></pre>
+  <button id="feed-copy-output">Copy Results</button>
+</section>
+
+
+  <!-- Global Logs -->
+  <section id="logs-section">
+    <h2>Logs</h2>
+    <pre id="logs-global"></pre>
+    <button id="logs-clear">Clear Logs</button>
+  </section>
 
   <script>
-    // mirror console.log into Logs pane
-    (function() {
-      const origLog = console.log.bind(console);
-      const logsEl = document.getElementById('logs');
-      console.log = (...args) => {
-        origLog(...args);
-        const text = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
-        logsEl.textContent += text + "\n";
-      };
-    })();
+    // Override console.log to global logs
+    (function(){ const origLog = console.log; console.log = (...args) => { origLog(...args); document.getElementById('logs-global').textContent += args.map(x => typeof x==='object' ? JSON.stringify(x) : x).join(' ') + '\n'; }; })();
+    document.getElementById('logs-clear').onclick = () => { document.getElementById('logs-global').textContent = ''; };
 
-    const defaultParams = {
-      positionDeltaPulse: { trimUsd:100000, addUsd:100000, newUsd:100000, maxHits:5 },
-      openInterestPulse:  { deltaUsd:250000, minWallets:3, side:"both" },
-      trendBias:          { topN:5, minNotional:0 },
-      divergenceRadar:    { closeNotional:50000, buildNotional:50000, minClosers:2, minBuilders:2 },
-      compressionRadar:   { rangeBp:30, netBuildUsd:75000, minWallets:3, minTicks:50 },
-      liquidationSniper:  { liqThreshold:1000000, buildThreshold:100000, minWallets:5 },
-      topTraders:         { winRateMin:80, durationMin:43200000, pnlMin:10000 }
-    };
-
-    const defaultDescriptions = {
-      positionDeltaPulse:
-        'Detects wallets trimming, adding, or opening positions above USD thresholds within the lookback window. Alpha: captures momentum shifts early.',
-      openInterestPulse:
-        'Identifies coins with large open interest changes and top builders. Alpha: surfaces whale-driven flows.',
-      trendBias:
-        'Aggregates net flows per coin to reveal market bias. Alpha: spots trend shifts before price moves.',
-      divergenceRadar:
-        'Finds coins where builders and closers diverge. Alpha: identifies reversal signals.',
-      compressionRadar:
-        'Detects low-volatility compression followed by whale builds. Alpha: anticipates breakouts.',
-      liquidationSniper:
-        'Spots whales sniping large liquidations. Alpha: leverages forced cascade volatility.',
-      topTraders:
-        'Filters sheet-based top traders by PnL, win rate, duration. Alpha: surfaces consistent performers.'
-    };
-
-    function updateParamsTemplate() {
-      const mode = document.getElementById('mode').value;
-      const params = defaultParams[mode] || {};
-      document.getElementById('params').value = JSON.stringify(params, null, 2);
-      document.getElementById('recommended').textContent = JSON.stringify(params, null, 2);
-      document.getElementById('why').textContent = defaultDescriptions[mode] || '';
+    const sections = ['delta','coin','sentiment','conc','feed', 'aggr', 'absorption'];
+    function show(id){
+      sections.forEach(s=>document.getElementById(`${s}-section`)
+                      .classList.toggle('hidden', s!==id));
     }
+    document.getElementById('btn-delta')    .onclick = ()=>show('delta');
+    document.getElementById('btn-coin')     .onclick = ()=>show('coin');
+    document.getElementById('btn-sentiment').onclick = ()=>show('sentiment');
+    document.getElementById('btn-conc')     .onclick = ()=>show('conc');
+    document.getElementById('btn-feed')     .onclick = ()=>show('feed');
+    document.getElementById('btn-aggr')     .onclick = ()=>show('aggr');
+    document.getElementById('btn-absorption').onclick = () => show('absorption');
+    show('delta'); // Default to Position-Delta
 
-    document.getElementById('mode').addEventListener('focus', updateParamsTemplate);
-    document.getElementById('mode').addEventListener('change', updateParamsTemplate);
-    window.addEventListener('load', updateParamsTemplate);
-
-    async function loadAddrs() {
-      displayLoading('Loading addresses…');
-      try {
-        const pnlMin = document.getElementById('filter-pnlMin').value;
-        const winRateMin = document.getElementById('filter-winRateMin').value;
-        const durationH = document.getElementById('filter-durationMin').value;
-        const qs = [
-          pnlMin && `pnlMin=${pnlMin}`,
-          winRateMin && `winRateMin=${winRateMin}`,
-          durationH && `durationMin=${durationH * 3600000}`
-        ].filter(Boolean).join('&');
-        const res = await fetch('/api/traderAddresses' + (qs ? `?${qs}` : ''));
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const addrs = await res.json();
-        document.getElementById('addrs').value = addrs.join('\n');
-        displayResult({ loaded: `${addrs.length} addresses` });
-        console.log('Loaded addresses:', addrs.length);
-      } catch (err) {
-        displayError('Error loading addresses: ' + err.message);
-      }
+    // Shared load addresses
+    async function loadAddrs(prefix) {
+      console.log(`Loading addresses for ${prefix}...`);
+      const pnl = document.getElementById(`${prefix}-pnlMin`).value;
+      const wr  = document.getElementById(`${prefix}-winRateMin`).value;
+      const dh  = document.getElementById(`${prefix}-durationMin`).value;
+      const qs = [pnl&&`pnlMin=${pnl}`, wr&&`winRateMin=${wr}`, dh&&`durationMin=${dh*3600000}`].filter(Boolean).join('&');
+      const res = await fetch('/api/traderAddresses' + (qs ? `?${qs}` : ''));
+      const data = await res.json();
+      document.getElementById(`${prefix}-addrs`).value = data.map(t => t.address).join('\n');
+      console.log(`Loaded ${data.length} addresses for ${prefix}`);
     }
+    document.getElementById('delta-load').onclick = () => loadAddrs('delta');
+    document.getElementById('coin-load').onclick  = () => loadAddrs('coin');
+    document.getElementById('sentiment-load').onclick = () => loadAddrs('sentiment');
+    document.getElementById('conc-load').onclick = () => loadAddrs('conc');
+    document.getElementById('aggr-load').onclick = () => loadAddrs('aggr');
 
-    async function runHL() {
-      const mode = document.getElementById('mode').value;
-      const raw = document.getElementById('addrs').value;
-      const addrs = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      const minutes = Number(document.getElementById('minutes').value) || undefined;
-      let params;
-      try { params = JSON.parse(document.getElementById('params').value || '{}'); }
-      catch { return displayError('Invalid JSON in params'); }
 
-      const payload = { mode, minutes, params };
-      if (addrs.length) payload.addresses = addrs;
-      console.log('Run payload:', payload);
+    // Delta run
+    async function runDelta() {
+      console.log('Starting Position-Delta stream...');
+      document.getElementById('delta-stats').textContent = '';
+      const addrs   = document.getElementById('delta-addrs').value.split(/\r?\n/).filter(Boolean);
+      const minutes = Number(document.getElementById('delta-minutes').value);
+      const params  = JSON.parse(document.getElementById('delta-params').value || '{}');
+      console.log(`Scanning ${addrs.length} wallets for Position-Delta over ${minutes} min...`);
+      const res     = await fetch('/api/positionDeltaPulseStream', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ addresses: addrs, minutes, params }) });
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let   buf    = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-      document.getElementById('stats').textContent = '';
-      document.getElementById('output').textContent = 'Running…';
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n')) !== -1) {
+          const line = buf.slice(0, idx).trim();
+          buf        = buf.slice(idx + 1);
+          if (!line) continue;
 
-      try {
-        const res = await fetch('/api/hyperliquid', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          let errMsg = `${res.status} ${res.statusText}`;
-          try { errMsg = (await res.json()).error || errMsg; } catch {};
-          throw new Error(errMsg);
+          let msg;
+          try { msg = JSON.parse(line); } catch { continue; }
+
+          // route by type
+          if (msg.type === 'log') {
+            document.getElementById('delta-stats'   ).textContent += line + '\n';
+          } else if (msg.type === 'result') {
+            document.getElementById('delta-results' ).textContent += line + '\n';
+          } else if (msg.type === 'summary') {
+            console.log(`Stream finished – ${msg.results.length} hits`);
+
+            const resEl = document.getElementById('delta-results');
+            if (!resEl.textContent.trim()) {          // nothing was written
+              resEl.textContent = 'no-setup\n';       // show the placeholder
+            }
+          }
         }
-        const data = await res.json();
-        const { stats, flows, processingDetails, debugLogs, ...main } = data;
-        displayResult(main);
-        debugLogs?.forEach(l => console.log(l));
-
-        const combined = { stats, flows, processingDetails };
-        document.getElementById('stats').textContent = JSON.stringify(combined, null, 2);
-      } catch (err) {
-        displayError('Error: ' + err.message);
-        console.log('Run error:', err.message);
       }
+      console.log('Position-Delta stream complete.');
     }
+    document.getElementById('delta-run').onclick = runDelta;
+    document.getElementById('delta-clear-stats').onclick = () => document.getElementById('delta-stats').textContent = '';
+    document.getElementById('delta-copy-results').onclick = () => navigator.clipboard.writeText(document.getElementById('delta-results').textContent);
 
-    function displayLoading(msg) { document.getElementById('output').textContent = msg; }
-    function displayResult(d) { document.getElementById('output').textContent = JSON.stringify(d, null, 2); }
-    function displayError(msg) { document.getElementById('output').textContent = msg; }
+    // Aggressive Fills run
+    document.getElementById('aggr-run').onclick = async () => {
+      console.log('Starting Aggressive Fills fetch…');
+      const addrs   = document.getElementById('aggr-addrs').value
+                        .split(/\r?\n/).filter(Boolean);
+      const minutes = Number(document.getElementById('aggr-minutes').value);
+      const params  = JSON.parse(document.getElementById('aggr-params').value || '{}');
+      console.log(`Scanning ${addrs.length} wallets for fills ≥ $${params.minNotional} over ${minutes}m…`);
+      const res = await fetch('/api/aggressiveFills', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ addresses: addrs, minutes, params })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        document.getElementById('aggr-output').textContent = `❌ ${res.status}: ${err}`;
+        console.error('Aggressive Fills error:', err);
+        return;
+      }
+      const data = await res.json();
+      document.getElementById('aggr-output').textContent = JSON.stringify(data, null, 2);
+      console.log('Aggressive Fills fetch complete.');
+    };
+    document.getElementById('aggr-copy-output').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('aggr-output').textContent);
+      console.log('Aggressive Fills result copied to clipboard');
+    };
 
-    document.getElementById('copy-logs').addEventListener('click', () =>
-      navigator.clipboard.writeText(document.getElementById('logs').textContent)
-    );
-    document.getElementById('download-logs').addEventListener('click', () => {
-      const blob = new Blob([document.getElementById('logs').textContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'hyperliquid_logs.txt'; a.click(); URL.revokeObjectURL(url);
-    });
-    document.getElementById('clear-logs').addEventListener('click', () => { document.getElementById('logs').textContent = ''; });
+    document.getElementById('absorption-run').onclick = async () => {
+      const minutes = Number(document.getElementById('absorption-minutes').value);
+      const params  = JSON.parse(document.getElementById('absorption-params').value);
+      const coin    = document.getElementById('absorption-coin').value.trim();
 
-    document.getElementById('copy-stats').addEventListener('click', () =>
-      navigator.clipboard.writeText(document.getElementById('stats').textContent)
-    );
-    document.getElementById('download-stats').addEventListener('click', () => {
-      const blob = new Blob([document.getElementById('stats').textContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'hyperliquid_stats.txt'; a.click(); URL.revokeObjectURL(url);
-    });
-    document.getElementById('clear-stats').addEventListener('click', () => { document.getElementById('stats').textContent = ''; });
+      const res = await fetch('/api/volumeAbsorption', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ coin, minutes, params })
+      });
 
-    document.getElementById('load-addrs').addEventListener('click', loadAddrs);
-    document.getElementById('run-btn').addEventListener('click', runHL);
+      if (!res.ok) {
+        document.getElementById('absorption-output').textContent = `Error ${res.status}`;
+        return;
+      }
+      const data = await res.json();
+      document.getElementById('absorption-output').textContent = JSON.stringify(data, null, 2);
+    };
+
+
+
+    // Coin activity run
+    document.getElementById('coin-run').onclick = async () => {
+      console.log('Starting Coin Activity fetch...');
+      const addrs       = document.getElementById('coin-addrs').value.split(/\r?\n/).filter(Boolean);
+      const minutes     = Number(document.getElementById('coin-minutes').value);
+      const coin        = document.getElementById('coin-ticker').value;
+      const minNotional = Number(document.getElementById('coin-minNotional').value);
+      console.log(`Scanning ${addrs.length} wallets for ${coin} activity over ${minutes} min...`);
+      const res = await fetch('/api/coinActivity', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ addresses: addrs, minutes, params:{ coin, minNotional } }) });
+      const data = await res.json();
+      document.getElementById('coin-output').textContent = JSON.stringify(data.coinActivity, null, 2);
+      console.log('Coin Activity fetch complete.');
+    };
+
+    // Market sentiment run
+    document.getElementById('sentiment-run').onclick = async () => {
+      console.log('Starting Market Sentiment fetch...');
+      const addrs = document.getElementById('sentiment-addrs').value.split(/\r?\n/).filter(Boolean);
+      console.log(`Scanning ${addrs.length} wallets for market sentiment...`);
+      const res = await fetch('/api/marketSentiment', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ addresses: addrs }) });
+      const data = await res.json();
+      document.getElementById('sentiment-output').textContent = JSON.stringify(data.sentiment, null, 2);
+      console.log('Market Sentiment fetch complete.');
+    };
+
+    // Asset concentration run
+    document.getElementById('conc-run').onclick = async () => {
+      console.log('Starting Asset Concentration fetch...');
+      const addrs = document.getElementById('conc-addrs').value.split(/\r?\n/).filter(Boolean);
+      console.log(`Scanning ${addrs.length} wallets for asset concentration...`);
+      const res = await fetch('/api/assetConcentration', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ addresses: addrs }) });
+      const data = await res.json();
+      document.getElementById('conc-output').textContent = JSON.stringify(data.concentration, null, 2);
+      console.log('Asset Concentration fetch complete.');
+    };
+        // Ticker-feed run
+    // ───────────  Ticker-feed run  ───────────
+    document.getElementById('feed-run').onclick = async () => {
+      console.log('Starting ticker-feed fetch …');
+
+      /* ⚡ 1 — tell the user we started */
+      const outEl = document.getElementById('feed-output');
+      outEl.textContent = '⏳ Fetching ticker feed …';
+      
+      const coin        = document.getElementById('feed-coin').value.trim();
+      const liqMinutes  = Number(document.getElementById('feed-liqMin').value);
+      const tradeLimit  = Number(document.getElementById('feed-tradeLimit').value);
+
+      const res  = await fetch('/api/tickerFeed', {
+        method : 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body   : JSON.stringify({ coin, params:{ liqMinutes, tradeLimit } })
+      }).catch(err=>{
+        /* ⚡ 2 — network / server error */
+        outEl.textContent = '❌ Error: '+err.message;
+        throw err;
+      });
+
+      if (!res.ok) {                       /* ⚡ 3 — HTTP error from server */
+        const err = await res.text();
+        outEl.textContent = `❌ Server error ${res.status}: ${err}`;
+        return;
+      }
+
+      const data = await res.json();
+
+      /* ⚡ 4 — brief summary + full JSON underneath */
+      const liqCnt   = data.liquidations.length;
+      const tradeCnt = data.trades.length;
+      outEl.textContent =
+        `✅ Done (${liqCnt} liquidations, ${tradeCnt} trades)\n\n`+
+        JSON.stringify(data, null, 2);
+
+      console.log('Ticker-feed fetch complete.');
+    };
+    </script>
+
+  <!-- Copy Buttons for Outputs -->
+  <script>
+    // Copy-to-clipboard for result panes
+    document.getElementById('delta-copy-stats').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('delta-stats').textContent);
+      console.log('Delta stats copied to clipboard');
+    };
+    document.getElementById('coin-copy-output').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('coin-output').textContent);
+      console.log('Coin activity result copied to clipboard');
+    };
+    document.getElementById('sentiment-copy-output').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('sentiment-output').textContent);
+      console.log('Sentiment result copied to clipboard');
+    };
+    document.getElementById('conc-copy-output').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('conc-output').textContent);
+      console.log('Concentration result copied to clipboard');
+    };
+    // copy-to-clipboard
+    document.getElementById('feed-copy-output').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('feed-output').textContent);
+      console.log('Ticker-feed result copied to clipboard');
+    };    
   </script>
 </body>
 </html>

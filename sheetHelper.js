@@ -1,7 +1,8 @@
 /**
  * sheetHelper.js – helper to pull wallet addresses + stats
- * from columns C (URL), D (Total PnL), E (Winrate), F (Duration) of a public Google Sheet.
- * Optionally filters by min PnL, min Winrate, min Duration.
+ * from columns C (URL), D (Total PnL), E (Winrate), F (Duration)
+ * of a public Google Sheet. Optionally filters by min PnL, min Winrate,
+ * min Duration.
  */
 const axios = require('axios');
 
@@ -22,7 +23,7 @@ function parseDuration(str) {
 /**
  * Fetch and optionally filter traders from sheet.
  * @param {{pnlMin?: number, winRateMin?: number, durationMinMs?: number}} [filters]
- * @returns {Promise<string[]>} array of 0x... addresses
+ * @returns {Promise<Array<{address:string,pnl:number,winRate:number,durationMs:number}>>}
  */
 async function fetchTraderAddresses(filters = {}) {
   if (!GS_ID) throw new Error('Missing GS_ID env var');
@@ -32,34 +33,35 @@ async function fetchTraderAddresses(filters = {}) {
   const lines = csv.trim().split(/\r?\n/);
   const rows = lines.slice(1);
 
-  const addresses = [];
+  const traders = [];
   for (const row of rows) {
+    // simple CSV-split on commas (will break if your fields contain commas…)
     const cols = row.split(',');
     const urlField     = cols[2] || '';
     const pnlField     = cols[3] || '0';
     const winRateField = cols[4] || '0';
     const durField     = cols[5] || '';
 
-    // extract address from URL
-    const url      = urlField.replace(/^"|"$/g, '').trim();
-    const match    = url.match(/0x[0-9a-fA-F]{40}/);
+    // extract wallet address from the URL column
+    const url   = urlField.replace(/^"|"$/g, '').trim();
+    const match = url.match(/0x[0-9a-fA-F]{40}/);
     if (!match) continue;
-    const wallet   = match[0];
+    const address = match[0];
 
     // parse stats
-    const totalPnl = parseFloat(pnlField.replace(/"/g, '')) || 0;
+    const pnl      = parseFloat(pnlField.replace(/"/g, '')) || 0;
     const winRate  = parseFloat(winRateField.replace(/[^0-9.]/g, '')) || 0;
-    const duration = parseDuration(durField);
+    const durationMs = parseDuration(durField);
 
     // apply filters
-    if (filters.pnlMin != null && totalPnl < filters.pnlMin) continue;
-    if (filters.winRateMin != null && winRate < filters.winRateMin) continue;
-    if (filters.durationMinMs != null && duration < filters.durationMinMs) continue;
+    if (filters.pnlMin        != null && pnl       < filters.pnlMin)        continue;
+    if (filters.winRateMin    != null && winRate   < filters.winRateMin)    continue;
+    if (filters.durationMinMs != null && durationMs < filters.durationMinMs) continue;
 
-    addresses.push(wallet);
+    traders.push({ address, pnl, winRate, durationMs });
   }
 
-  return addresses;
+  return traders;
 }
 
 module.exports = { fetchTraderAddresses };
