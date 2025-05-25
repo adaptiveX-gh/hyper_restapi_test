@@ -1,44 +1,191 @@
+/*───────────────────────────────────────────────────────────────*
+ *  Hyperliquid Strategy API – 2025-05-fix-levels                *
+ *───────────────────────────────────────────────────────────────*/
 require('dotenv').config();
+/* ── NEW: bus that every client can tap via SSE ─────────────── */
+const { Transform } = require('stream');
+const { PassThrough } = require('stream');
+const flowBus = new PassThrough();        //  <-- THIS is what we write to
+module.exports.flowBus = flowBus;         //  re-use in other modules
+
+/* 🔸 heartbeat every 5 s so proxies & EventSource stay alive */
+setInterval(() => {
+  flowBus.write(`[${new Date().toLocaleTimeString()}] heartbeat\n`);
+}, 5000);
+
 const express = require('express');
-const cors = require('cors');
-const path = require('path');
-
+const cors    = require('cors');
+const path    = require('path');
 const axios   = require('axios');
-const pLimit = require('p-limit');
-const limit = pLimit(5);
+const WebSocket = require('ws');
+const pLimit  = require('p-limit');
 
-// Google Sheets helper
-const { fetchTraderAddresses } = require('./sheetHelper');
-// Hyperliquid SDK
-const { Hyperliquid } = require('hyperliquid');
+/* ── helpers ────────────────────────────────────────────────── */
+const limit       = pLimit(5);      // for fills, etc.
+const depthLimit  = pLimit(4);      // ≤4 concurrent /info snapshots
+const sleep       = ms => new Promise(r => setTimeout(r, ms));
 
+function retry(fn, { max = 4, delay = 300 } = {}) {
+  return (async () => {
+    let err;
+    for (let i = 0; i < max; i++) {
+      try { return await fn(); }
+      catch (e) {
+        if (e?.response?.status !== 429) throw e;   // not rate-limit
+        err = e;
+        await sleep(delay * (i + 1));               // back-off
+      }
+    }
+    throw err;
+  })();
+}
+
+/* ── express bootstrap ─────────────────────────────────────── */
 const app = express();
+app.get('/api/__debug', (_,res)=>res.json({pid:process.pid,build:'2025-05-fix-levels'}));
+app.use(express.json({ limit:'5mb' }));
 app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname,'public')));
 
-// instantiate SDK
+/* ── external deps ─────────────────────────────────────────── */
+const { fetchTraderAddresses } = require('./sheetHelper');
+const { Hyperliquid }         = require('hyperliquid');
 const sdk = new Hyperliquid(
-  process.env.HL_PRIVATE_KEY || '',
-  false,
-  process.env.HL_API_WALLET || ''
+  process.env.HL_PRIVATE_KEY || '', false, process.env.HL_API_WALLET || ''
 );
 
-// -- Position-Delta Pulse Logic (Non-Stream) --------------------------------
-async function positionDeltaPulse(addresses = [], minutes = 10, params = {}) {
-  const { trimUsd = 0, addUsd = 0, newUsd = 0, maxHits = Infinity } = params;
-  const now = Date.now();
-  const startMs = now - minutes * 60_000;
-  let hits = 0;
-  const results = [];
-  const processingDetails = [];
 
-  for (const wallet of addresses) {
+/*──────────────────────────────────────────────────────────────*
+ *  0.   SYMBOL NORMALISER                                      *
+ *──────────────────────────────────────────────────────────────*/
+const norm = s => s.replace(/-PERP$/i,'').toUpperCase();
+
+/*──────────────────────────────────────────────────────────────*
+ *  1.   BEST-EFFORT L2 BOOK SNAPSHOT                           *
+ *──────────────────────────────────────────────────────────────*/
+const bookCache = new Map();          // 250 ms rolling cache
+async function getL2Book(raw, depth = 50) {
+  const coin = norm(raw);
+  const key  = `${coin}:${depth}`;
+  const now  = Date.now();
+  const hit  = bookCache.get(key);
+  if (hit && now - hit.t < 250) return hit.data;        // ¼-s cache
+
+  const snap = await depthLimit(async () => {
+    /* 1 ▪ modern SDK */
+    if (typeof sdk.info?.getL2Book === 'function') {
+      try {
+        return sdk.info.getL2Book.length === 1
+          ? await sdk.info.getL2Book({ market:coin, depth })
+          : await sdk.info.getL2Book(coin, depth);
+      } catch {/* fall through */}
+    }
+    /* 2 ▪ March-24 alpha */
+    if (sdk.info?.orderbook?.getL2Book) {
+      try { return await sdk.info.orderbook.getL2Book({ market:coin, depth }); }
+      catch {/* fall through */}
+    }
+    /* 3 ▪ POST /info fallback */
+    const { data } = await retry(() => axios.post(
+      'https://api.hyperliquid.xyz/info',
+      { type:'l2Book', coin, depth },
+      { timeout:5_000 }
+    ));
+    if (!data?.levels?.length) throw new Error(`L2 snapshot for “${coin}-PERP” is empty`);
+    const toPair = ({ px, sz }) => [+px, +sz];
+    return { bids:data.levels[0].map(toPair), asks:data.levels[1].map(toPair) };
+  });
+
+  bookCache.set(key,{ t:now, data:snap });
+  return snap;
+}
+
+
+/* 2️⃣   Adaptive trade fetcher — works on every SDK vintage          */
+async function fetchTrades (coin, startMs, endMs) {
+  /* new helper (≥ 2024-05) */
+  if (typeof sdk.info?.trades === "function") {
+  try {
+      return await sdk.info.trades({ market: coin, startTime: startMs, endTime: endMs });
+    } catch {           // older param names
+      return await sdk.info.trades({ market: coin, startTimeMs: startMs, endTimeMs: endMs });
+    }
+  }
+  /* 2023-12 → 2024-02 helper */
+  if (typeof sdk.info?.getTrades === "function") {
+    return sdk.info.getTrades.length === 1
+      ? sdk.info.getTrades({ market: coin, startTime: startMs, endTime: endMs })
+      : sdk.info.getTrades(coin, 500);   // 2nd arg is ‘limit’ in old builds
+  }
+  /* GraphQL fallback (always available) */
+  const GQL = "https://api.hyperliquid.xyz/graphql";
+  const query = `
+    query($m:String!,$s:DateTime!,$e:DateTime!){
+      trades(market:$m,start:$s,end:$e){ sz }
+    }`;
+  const vars  = {
+    m: coin,
+    s: new Date(startMs).toISOString(),
+    e: new Date(endMs  ).toISOString()
+  };
+  const resp = await axios.post(GQL, { query, variables: vars });
+  return resp.data.data?.trades ?? [];
+}
+
+
+/*──────────────────────────────────────────────────────────────*
+ *  3.   OBI & depth utilities                                  *
+ *──────────────────────────────────────────────────────────────*/
+function depthDiff(a,b){
+  const m=arr=>new Map(arr.map(([p,s])=>[+p,+s]));
+  const aB=m(a.bids), bB=m(b.bids), aA=m(a.asks), bA=m(b.asks);
+  let bidEaten=0, askEaten=0;
+  for(const [px,sz] of aB) bidEaten+=Math.max(0,sz-(bB.get(px)||0));
+  for(const [px,sz] of aA) askEaten+=Math.max(0,sz-(bA.get(px)||0));
+  return { bidEaten, askEaten };
+}
+async function getObImbalance(c,depthLv=20){
+  const s = await getL2Book(c);
+  const take = arr=>arr.slice(0,depthLv).reduce((z,[,sz])=>z+ +sz,0);
+  const bid=take(s.bids), ask=take(s.asks);
+  return { ts:Date.now(), bidDepth:bid, askDepth:ask,
+           ratio:+(bid/ask).toFixed(2), trigger: bid/ask>=1.4||bid/ask<=0.6 };
+}
+
+app.post('/api/positionDeltaPulseStream', async (req, res) => {
+  const { minutes = 10, params = {}, addresses, filters } = req.body;
+  let addrs;
+  try {
+    addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(filters || {});
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    return res.status(500).json({ error: err.message });
+  }
+
+  console.log(`→ Streaming positionDeltaPulse on ${addrs.length} addresses`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+  const now     = Date.now();
+  const startMs = now - minutes * 60_000;
+  const maxHits = params.maxHits ?? Infinity;
+  let hits      = 0;
+  const finalHits = [];
+
+  for (const wallet of addrs) {
     if (hits >= maxHits) break;
+
+    // 1. tell UI how many fills we're fetching
     const fills = await sdk.info.getUserFillsByTime(wallet, startMs, now).catch(() => []);
+    res.write(JSON.stringify({ type:'log', wallet, stage:'fetched fills', count: fills.length }) + '\n');
+
+    // 2. fetch positions and then log their count
     const stateRes = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
     const positions = stateRes.assetPositions || [];
+    res.write(JSON.stringify({ type:'log', wallet, stage:'positions count', count: positions.length }) + '\n');
 
+    // 3. build openNow map
     const openNow = {};
     for (const p of positions) {
       const sz = Number(p.position.szi);
@@ -46,58 +193,65 @@ async function positionDeltaPulse(addresses = [], minutes = 10, params = {}) {
       openNow[p.position.coin] = {
         side: sz > 0 ? 'long' : 'short',
         sizeUsd: Math.abs(sz) * Number(p.position.entryPx),
-        entry: Number(p.position.entryPx),
-        liqPx: Number(p.position.liquidationPx)
+        entry:  Number(p.position.entryPx),
+        liqPx:  Number(p.position.liquidationPx)
       };
     }
 
+    // 4. aggregate opens/closes
     const opened = {}, closed = {};
     for (const f of fills) {
       const val = Math.abs(Number(f.sz)) * Number(f.px);
-      if (f.dir.startsWith('Open')) opened[f.coin] = (opened[f.coin] || 0) + val;
+      if (f.dir.startsWith('Open'))  opened[f.coin] = (opened[f.coin] || 0) + val;
       if (f.dir.startsWith('Close')) closed[f.coin] = (closed[f.coin] || 0) + val;
     }
 
-    const coins = new Set([...Object.keys(opened), ...Object.keys(closed)]);
-    for (const coin of coins) {
+    // 5. detect events per coin
+    for (const coin of new Set([...Object.keys(opened), ...Object.keys(closed)])) {
       if (hits >= maxHits) break;
       const oUsd = opened[coin] || 0;
       const cUsd = closed[coin] || 0;
-      const st = openNow[coin];
+      const st   = openNow[coin];
 
-      const reduced = (st && st.side === 'long' && cUsd >= trimUsd)
-                    || (st && st.side === 'short' && cUsd >= trimUsd)
-                    || (!st && cUsd >= trimUsd);
-      const added = st && ((st.side === 'long' && oUsd >= addUsd) || (st.side === 'short' && oUsd >= addUsd));
-      const openedFresh = !st && oUsd >= newUsd;
+      const reduced     = (st && st.side === 'long'  && cUsd >= params.trimUsd)
+                        || (st && st.side === 'short' && cUsd >= params.trimUsd)
+                        || (!st && cUsd >= params.trimUsd);
+      const added       = st && ((st.side === 'long'  && oUsd >= params.addUsd)
+                              || (st.side === 'short' && oUsd >= params.addUsd));
+      const openedFresh = !st && oUsd >= params.newUsd;
 
-      processingDetails.push({
+      res.write(JSON.stringify({
+        type:'log',
         wallet,
-        coin: `${coin}-PERP`,
-        openedUsd: +oUsd.toFixed(2),
-        closedUsd: +cUsd.toFixed(2),
-        reduced,
-        added,
-        openedFresh
-      });
+        coin:`${coin}-PERP`,
+        stage:'evaluated',
+        openedUsd:+oUsd.toFixed(2),
+        closedUsd:+cUsd.toFixed(2),
+        reduced, added, openedFresh
+      }) + '\n');
 
       if (reduced || added || openedFresh) {
-        results.push({
+        const entry = {
+          type   : 'result',
           wallet,
-          coin: `${coin}-PERP`,
-          action: reduced ? 'reduced' : added ? 'added' : 'opened',
-          side: st?.side || (oUsd > cUsd ? 'long' : 'short'),
+          coin   : `${coin}-PERP`,
+          action : reduced ? 'reduced' : added ? 'added' : 'opened',
+          side   : st?.side || (oUsd > cUsd ? 'long' : 'short'),
           sizeUsd: st ? +st.sizeUsd.toFixed(2) : 0,
           avgEntry: st ? +st.entry.toFixed(2) : null,
-          liqPx: st ? +st.liqPx.toFixed(2) : null
-        });
+          liqPx  : st ? +st.liqPx.toFixed(2) : null
+        };
+        res.write(JSON.stringify(entry) + '\n');
+        finalHits.push(entry);
         hits++;
       }
     }
   }
 
-  return { results: results.length ? results : [{ result: 'no-setup' }], processingDetails };
-}
+  // 6. summary
+  res.write(JSON.stringify({ type:'summary', results: finalHits }) + '\n');
+  res.end();
+});
 
 // -- Position-Delta Pulse Non-Stream Endpoint -----------------------------
 app.post('/api/positionDeltaPulse', async (req, res) => {
@@ -139,7 +293,9 @@ app.post('/api/positionDeltaPulseStream', async (req, res) => {
 
   for (const wallet of addrs) {
     if (hits >= (params?.maxHits ?? Infinity)) break;
-    res.write(JSON.stringify({ type:'log', wallet, stage:'starting scan' })+'\n');
+     res.write(JSON.stringify({ type:'log', wallet,
+                            stage:'positions count',
+                            count: positions.length })+'\n');
 
     const fills = await sdk.info.getUserFillsByTime(wallet, startMs, now).catch(() => []);
     res.write(JSON.stringify({ type:'log', wallet, stage:'fetched fills', count:fills.length })+'\n');
@@ -204,121 +360,119 @@ app.post('/api/positionDeltaPulseStream', async (req, res) => {
   res.end();
 });
 
-// -- Aggressive Fills Endpoint --------------------------------------------
-async function aggressiveFills({ addresses = [], minutes = 5, params = {} }) {
-  const { minNotional = 100000 } = params;
-  const now = Date.now();
-  const start = now - minutes * 60_000;
 
-  // throttle to 5 concurrent calls
-  const fillsByWallet = await Promise.all(
-    addresses.map(addr =>
-      limit(() =>
-        sdk.info.getUserFillsByTime(addr, start, now).catch(() => [])
-      )
-    )
-  );
 
-  // 2️⃣ Filter “aggressive” market orders above threshold
-  const hits = [];
-  for (let i = 0; i < addresses.length; i++) {
-    const wallet = addresses[i];
-    for (const f of fillsByWallet[i]) {
-      const usd = Math.abs(Number(f.sz)) * Number(f.px);
-      if (usd >= minNotional) {
-        hits.push({
-          wallet,
-          coin: `${f.coin}-PERP`,
-          side: f.dir.includes('Long') ? 'buy' : 'sell',
-          sizeUsd: +usd.toFixed(2),
-          price: +Number(f.px).toFixed(2),
-          timestamp: f.time
-        });
-      }
-    }
+/*───────────────────────────────────────────────────────────────*
+ *  3.  WEBSOCKET – initiative flow + live depth                 *
+ *───────────────────────────────────────────────────────────────*/
+
+const WS_URL = 'wss://api.hyperliquid.xyz/ws';
+const COIN   = (process.env.FLOW_COIN ?? 'BTC').toUpperCase();   // eg BTC
+const DEPTH_LEVELS = 50;                                         // keep ≤ 50
+
+const wss  = new WebSocket(WS_URL);
+
+/* ── 1. subscribe to trades *and* order-book depth ───────────── */
+wss.onopen = () => {
+  wss.send(JSON.stringify({
+    method: 'subscribe',
+    subscription: { type: 'trades', coin: COIN }
+  }));
+  wss.send(JSON.stringify({
+    method: 'subscribe',
+    subscription: { type: 'l2Book', coin: COIN, nLevels: DEPTH_LEVELS }
+  }));
+  console.log(`[flow] subscribed to ${COIN} trades & depth`);
+};
+
+/* ── rolling order-book cache ────────────────────────────────── */
+let depthReady = false;
+let book = { bids: [], asks: [] };             // bids: [[px,sz] …], asks: [[px,sz] …]
+
+/* helper to mutate a side with diff updates -------------------- */
+function patchSide(sideArr, px, sz) {
+  const idx = sideArr.findIndex(([p]) => p === px);
+  if (sz === 0) {            // remove level
+    if (idx !== -1) sideArr.splice(idx, 1);
+  } else if (idx === -1) {   // new level
+    sideArr.push([px, sz]);
+  } else {                   // size update
+    sideArr[idx][1] = sz;
   }
-
-  return hits.length ? hits : { result: 'no-aggressive-fills' };
 }
 
-// … up near the top, after you define `async function aggressiveFills(...)`
-app.post('/api/aggressiveFills', async (req, res) => {
-  const { addresses = [], minutes = 5, params = {} } = req.body;
-  try {
-    // if you load from sheet when blank:
-    const addrs = Array.isArray(addresses) && addresses.length
-      ? addresses
-      : await fetchTraderAddresses(req.body.filters || {});
-    
-    console.log(`→ aggressiveFills on ${addrs.length} addresses, ${minutes}m, params=`, params);
-    const data = await aggressiveFills({ addresses: addrs, minutes, params });
-    res.json(data);
-  } catch (err) {
-    console.error('Error in aggressiveFills:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+/* defensive depth-diff (guards against undefined) -------------- */
+function depthDiff(pre, post) {
+  const safe = x => Array.isArray(x) ? x : [];
+  const mm   = a => new Map(safe(a).map(([p, s]) => [+p, +s]));
 
+  const aB = mm(pre.bids),  bB = mm(post.bids);
+  const aA = mm(pre.asks),  bA = mm(post.asks);
 
-// helper to fetch L2 book snapshot
-async function getL2Book(coin) {
-  // most recent SDK calls expose something like:
-  if (sdk.info.orderbook?.getL2Book) {
-    return await sdk.info.orderbook.getL2Book({ market: coin, depth: 50 });
-  }
-  // fallback to REST
-  const res = await axios.get(`https://api.hyperliquid.xyz/l2Book?market=${encodeURIComponent(coin)}&limit=50`);
-  return res.data;
-}
-
-// 1) Simplify the signature: no more addresses
-async function volumeAbsorption({ coin, minutes = 5, surgeFactor = 2 }) {
-  if (!coin) throw new Error("`coin` param is required");
-
-  const now   = Date.now();
-  const start = now - minutes * 60_000;
-
-  // grab two L2 snapshots at start & now
-  const [book0, book1] = await Promise.all([
-    sdk.info.l2Book({ market: coin, ts: start }),
-    sdk.info.l2Book({ market: coin, ts: now })
-  ]);
-
-  // diff depth eaten
   let bidEaten = 0, askEaten = 0;
-  for (const [px, sz0] of book0.bids) {
-    const sz1 = (book1.bids.find(b => b[0] === px)?.[1]) || 0;
-    if (sz1 < sz0) bidEaten += sz0 - sz1;
-  }
-  for (const [px, sz0] of book0.asks) {
-    const sz1 = (book1.asks.find(a => a[0] === px)?.[1]) || 0;
-    if (sz1 < sz0) askEaten += sz0 - sz1;
-  }
-
-  // fetch aggregate trades over window
-  const trades = await sdk.info.trades({ market: coin, startTime: start, endTime: now, aggregateByTime: false });
-  const totalVol = trades.reduce((sum, t) => sum + Math.abs(Number(t.sz)), 0);
-
-  const surgeDetected = (bidEaten + askEaten) > totalVol * surgeFactor;
-  return { coin, lookbackMinutes: minutes, depthDiff: { bidEaten, askEaten }, totalVol, surgeDetected };
+  for (const [px, sz] of aB) bidEaten += Math.max(0, sz - (bB.get(px) ?? 0));
+  for (const [px, sz] of aA) askEaten += Math.max(0, sz - (bA.get(px) ?? 0));
+  return { bidEaten, askEaten };
 }
 
-// 2) Wire up the endpoint
-app.post('/api/volumeAbsorption', async (req, res) => {
-  const {
-    coin,
-    minutes = 5,
-    params: { surgeFactor = 2 } = {}
-  } = req.body;
+/* ── 2. main handler ─────────────────────────────────────────── */
+wss.onmessage = ({ data }) => {
+  const { channel, data: d } = JSON.parse(data);
 
-  try {
-    const out = await volumeAbsorption({ coin, minutes, surgeFactor });
-    res.json(out);
-  } catch (err) {
-    console.error("Error in volumeAbsorption:", err);
-    res.status(500).json({ error: err.message });
+  /*  a. order-book snapshots / diffs  -------------------------- */
+  if (channel.startsWith('l2Book')) {
+    if (d.levels) {                            // full snapshot
+      const toPair = ({ px, sz }) => [+px, +sz];
+      book = { bids: d.levels[0].map(toPair), asks: d.levels[1].map(toPair) };
+      depthReady = true;
+    } else if (d.updates) {                    // incremental diff array
+      d.updates.forEach(([side, px, sz]) =>
+        patchSide(side === 0 ? book.bids : book.asks, +px, +sz)
+      );
+    }
+    return;
   }
-});
+
+  /*  b. trades  ----------------------------------------------- */
+  if (channel !== 'trades' || !depthReady) return;
+
+  const trades = Array.isArray(d) ? d : d.trades ?? [];
+  if (!trades.length) return;
+
+  // quick console peek at first trade’s notional
+  const { sz, px } = trades[0];
+  console.log('[trade]', Math.abs(+sz) * +px);
+
+  trades.forEach(t => {
+    const notional = Math.abs(+t.sz) * +t.px;
+    if (notional < 15000) return;                  // ignore micro ticks
+
+    const pre = structuredClone(book);         // light copy (depth ≤ 50)
+
+    setTimeout(() => {
+      const post = structuredClone(book);
+      const { bidEaten, askEaten } = depthDiff(pre, post);
+
+      const sameSideDepth = t.side === 'buy'
+        ? post.bids.slice(0, 20).reduce((s, [, q]) => s + +q, 0)
+        : post.asks.slice(0, 20).reduce((s, [, q]) => s + +q, 0);
+
+      const refilled = sameSideDepth > notional * 0.2;  // α = 50 %
+      const flag     = refilled ? 'absorption' : 'exhaustion';
+
+      flowBus.write(JSON.stringify({
+        ts       : Date.now(),
+        coin     : COIN + '-PERP',
+        type     : flag,          // absorption | exhaustion
+        side     : t.side,        // buy | sell
+        notional,
+        price    : +t.px,
+        bidEaten,
+        askEaten
+      }) + '\n');
+    }, 100);                                    // 100 ms look-ahead window
+  });
+};
 
 
 // -- Coin Activity Logic & Streaming --------------------------------------
@@ -331,20 +485,39 @@ async function streamCoinActivity(addresses = [], minutes = 15, params = {}, res
   let fillsWindow = [];
 
   for (const addr of addresses) {
-    res.write(JSON.stringify({ trader: addr, stage: 'fetching' }) + '\n');
+    // 🔸 tell UI a new wallet is starting  (progress tick)
+    res.write(JSON.stringify({ type:'log', trader: addr, stage:'starting scan' })+'\n');
+
     const fills = await sdk.info.getUserFillsByTime(addr, start, end).catch(() => []);
-    res.write(JSON.stringify({ trader: addr, stage: 'fetched', count: fills.length }) + '\n');
+
+    res.write(JSON.stringify({ type:'log', trader: addr, stage:'fetched', count: fills.length })+'\n');
+
 
     const matches = fills.filter(f => f.coin === coin && Math.abs(Number(f.sz)) * Number(f.px) >= minNotional);
+
+      // 🔸 stream every qualifying fill (so UI mirrors Delta behaviour)
+      for (const hit of matches) {
+        const entry = {
+          type : 'result',
+          trader : addr,
+          coin,
+          side   : hit.dir.includes('Long') ? 'buy' : 'sell',
+          sizeUsd: +(Math.abs(+hit.sz) * +hit.px).toFixed(2),
+          price  : +(+hit.px).toFixed(2),
+          ts     : hit.time*1000
+        };
+        res.write(JSON.stringify(entry)+'\n');
+      }    
+
     fillsWindow = fillsWindow.concat(matches.map(f => ({ trader: addr, time: f.time*1000, side: f.dir.includes('Long') ? 'buy' : 'sell', sizeUsd: + (Math.abs(Number(f.sz)) * Number(f.px)).toFixed(2), price: +f.px })));
-    res.write(JSON.stringify({ trader: addr, stage: 'filtered', matches: matches.length }) + '\n');
+    res.write(JSON.stringify({ type:'log', trader: addr, stage:'filtered', matches: matches.length })+'\n');
   }
 
   // summary
   const totalTrades = fillsWindow.length;
   const totalNotional = fillsWindow.reduce((sum, t) => sum + t.sizeUsd, 0);
   const uniqueTraders = new Set(fillsWindow.map(t => t.trader));
-  res.write(JSON.stringify({ coinActivitySummary: { coin: params.coin, lookbackMinutes: minutes, totalTrades, totalNotional: +totalNotional.toFixed(2), uniqueTraderCount: uniqueTraders.size } }) + '\n');
+  res.write(JSON.stringify({ type:'summary', coinActivitySummary: { coin: params.coin, lookbackMinutes: minutes, totalTrades, totalNotional: +totalNotional.toFixed(2), uniqueTraderCount: uniqueTraders.size } }) + '\n');
 }
 
 app.post('/api/coinActivityStream', async (req, res) => {
@@ -439,12 +612,16 @@ app.post('/api/marketSentiment', async (req, res) => {
   }
 });
 
-// -- Market Sentiment Streaming Endpoint ----------------------------------
+// ── Market-Sentiment - STREAM — upgraded ───────────────────────────────
 app.post('/api/marketSentimentStream', async (req, res) => {
   const { addresses, filters } = req.body;
+
+  /* 1 ▪ resolve wallet list (sheet or explicit) */
   let addrs;
   try {
-    addrs = Array.isArray(addresses) && addresses.length ? addresses : await fetchTraderAddresses(filters || {});
+    addrs = Array.isArray(addresses) && addresses.length
+      ? addresses
+      : await fetchTraderAddresses(filters || {});
   } catch (err) {
     console.error('Error fetching addresses:', err);
     return res.status(500).json({ error: err.message });
@@ -452,29 +629,72 @@ app.post('/api/marketSentimentStream', async (req, res) => {
 
   console.log(`→ Streaming marketSentiment on ${addrs.length} addresses`);
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.flushHeaders();  
 
-  let totalLong = 0, totalShort = 0;
+  /* running totals */
+  let totalLong  = 0;
+  let totalShort = 0;
+  let processed  = 0;
+
+  /* 2 ▪ loop through wallets and stream progress */
   for (const wallet of addrs) {
-    res.write(JSON.stringify({ wallet, stage: 'fetching positions' }) + '\n');
-    const state = await sdk.info.perpetuals.getClearinghouseState(wallet).catch(() => ({}));
-    const positions = state.assetPositions || [];
-    res.write(JSON.stringify({ wallet, stage: 'positions count', count: positions.length }) + '\n');
+    /* — start cue (progress-bar tick) — */
+    res.write(JSON.stringify({ type:'log', wallet, stage:'starting scan' }) + '\n');
 
+    /* fetch positions */
+    const state = await sdk.info.perpetuals
+      .getClearinghouseState(wallet)
+      .catch(() => ({}));
+    const positions = state.assetPositions || [];
+
+    /* detail log (optional) */
+    res.write(
+      JSON.stringify({ type:'log', wallet, stage:'positions count', count: positions.length }) + '\n'
+    );
+
+    /* aggregate longs / shorts */
     for (const p of positions) {
-      const sz = Number(p.position.szi);
-      const px = Number(p.position.entryPx);
-      const val = Math.abs(sz) * px;
-      if (sz > 0) totalLong += val;
-      else if (sz < 0) totalShort += val;
+      const sz = +p.position.szi;
+      const px = +p.position.entryPx;
+      const usd = Math.abs(sz) * px;
+      if (sz > 0) totalLong  += usd;
+      else if (sz < 0) totalShort += usd;
+    }
+
+    processed++;
+    const grand = totalLong + totalShort;
+
+    /* — partial snapshot — */
+    if (grand) {
+      res.write(
+        JSON.stringify({
+          type      : 'partial',
+          longPct   : +(totalLong  / grand * 100).toFixed(2),
+          shortPct  : +(totalShort / grand * 100).toFixed(2),
+          processed,
+          total     : addrs.length
+        }) + '\n'
+      );
     }
   }
 
+  /* 3 ▪ final summary */
   const grand = totalLong + totalShort;
-  const longPct = grand ? +(totalLong / grand * 100).toFixed(2) : 0;
-  const shortPct = grand ? +(totalShort / grand * 100).toFixed(2) : 0;
-  res.write(JSON.stringify({ sentiment: { longPct, shortPct, totalLongUsd: +totalLong.toFixed(2), totalShortUsd: +totalShort.toFixed(2) } }) + '\n');
+  res.write(
+    JSON.stringify({
+      type      : 'summary',
+      sentiment : {
+        longPct       : grand ? +(totalLong  / grand * 100).toFixed(2) : 0,
+        shortPct      : grand ? +(totalShort / grand * 100).toFixed(2) : 0,
+        totalLongUsd  : +totalLong .toFixed(2),
+        totalShortUsd : +totalShort.toFixed(2)
+      }
+    }) + '\n'
+  );
+
   res.end();
 });
+
 
 // 8. Asset Concentration Logic (Non-Stream)
 async function assetConcentration(addresses = []) {
@@ -526,18 +746,6 @@ app.post('/api/assetConcentration', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// ──────────────────────────────────────────────────────────────────
-// 5.  🔥 NEW  –  Ticker Feed (liquidations + trades)
-// ──────────────────────────────────────────────────────────────────
-const GQL_ENDPOINT = 'https://api.hyperliquid.xyz/graphql';
-const LIQ_QUERY = `query($coin:String!,$start:DateTime!){\n  liquidationHistory(start:$start,end:null,coin:$coin){coin side sz px timestamp}\n}`;
-
-async function fetchLiquidations(coin, minutes=30){
-  const startISO = new Date(Date.now()-minutes*60_000).toISOString();
-  const resp = await axios.post(GQL_ENDPOINT,{query:LIQ_QUERY,variables:{coin,start:startISO}}).catch(()=>({data:{data:null}}));
-  return resp.data.data?.liquidationHistory || [];
-}
 
 // ───── NEW ─────
 // ──────────────────────────────────────────────────────────────────
@@ -593,28 +801,51 @@ async function fetchRecentTrades (coin, limit = 60) {
 }
 
 
-async function tickerFeed(coin, params={}){
-  const { liqMinutes=30, tradeLimit=60 } = params;
-  console.log(`↪ fetching liquidations for ${coin} (${liqMinutes} m)`);    // ⚡
-  const liqs = await fetchLiquidations(coin.split('-')[0] || coin, liqMinutes);
-
-  console.log(`↪ fetching last ${tradeLimit} trades for ${coin}`);         // ⚡
-  const trades = await fetchRecentTrades(coin, tradeLimit);
-  return { coin, liqMinutes, tradeLimit, liquidations: liqs, trades };
-}
-
-//  🔥  tickerFeed endpoint
-app.post('/api/tickerFeed', async (req,res)=>{
-  const { coin, params } = req.body;
-  if (!coin) return res.status(400).json({ error:'coin is required' });
+// --- Order-Book Imbalance STREAM ---------------------------------
+// ─── OBI snapshot ───────────────────────────────────────────────
+app.post('/api/obImbalance', async (req, res) => {
   try {
-    console.log('→ tickerFeed request:', coin, params);
-    res.json(await tickerFeed(coin, params||{}));
-  } catch(err){
-    console.error('tickerFeed error', err.message);
-    res.status(500).json({ error: err.message });
+    const { coin = 'BTC-PERP', depthLevels = 20 } = req.body || {};
+    const data = await getObImbalance(coin, depthLevels);
+    res.json(data);
+  } catch (e) {
+    console.error('obImbalance error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
+
+// after the existing POST /api/obImbalance   ⬇⬇
+app.post('/api/obImbalanceSnapshot', (req,res) =>
+  app._router.handle(req, res, () => {}, 'post', '/api/obImbalance')
+);
+
+// ─── OBI live stream ────────────────────────────────────────────
+app.post('/api/obImbalanceStream', async (req, res) => {
+  const {
+    coin = 'BTC-PERP',
+    depthLevels = 20,
+    periodSec   = 2,
+    durationSec = 30
+  } = req.body || {};
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  const loops = Math.ceil(durationSec / periodSec);
+
+  try {
+    for (let i = 0; i < loops; i++) {
+      const msg = await getObImbalance(coin, depthLevels);
+      res.write(JSON.stringify(msg) + '\n');   // normal tick
+      /* flush every tick */
+      await sleep(periodSec * 1000);
+    }
+    res.end();
+  } catch (e) {
+    console.error('obImbalanceStream:', e.message);
+    res.write(JSON.stringify({ type:'error', message: e.message }) + '\n');
+    res.end();
+  }
+});
+
 
 // -- Google Sheet Endpoint ------------------------------------------------
 app.get('/api/traderAddresses', async (req, res) => {
@@ -627,6 +858,140 @@ app.get('/api/traderAddresses', async (req, res) => {
     res.json(addrs);
   } catch (err) {
     console.error('Error fetching traders:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+//------------------------------------------------------------------
+//  GET /api/flowStream  – raw text stream
+//------------------------------------------------------------------
+app.get('/api/flowStream', (req, res) => {
+  const want = (req.query.coin || '').toUpperCase();   // blank ⇒ everything
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  // 0️⃣ tell EventSource we’re alive (1st comment keeps proxies open)
+  res.write(':ok\n\n');
+
+  // 1️⃣ tiny transform that keeps heartbeats & matching coin lines
+  const filter = new Transform({
+    transform(chunk, _, cb) {
+      if (!want) return cb(null, chunk);        // no filter
+      const str = chunk.toString();
+      try {
+        const j = JSON.parse(str);
+        return j.coin?.toUpperCase() === want ? cb(null, chunk) : cb();
+      } catch {
+        /* heartbeats or plain text → always forward */
+        return cb(null, chunk);
+      }
+    }
+  });
+
+// 2️⃣ pipe:  flowBus → filter → sseify → res
+const sseify = new Transform({
+  transform(chunk, _enc, cb) {
+    // chunk already filtered — just wrap as SSE frame
+    cb(null, 'data: ' + chunk.toString().trim() + '\n\n');
+  }
+});
+
+flowBus.pipe(filter).pipe(sseify).pipe(res);
+
+req.on('close', () => {
+  flowBus.unpipe(filter);
+  filter.destroy();
+});
+});
+
+/* ------------------------------------------------------------------
+   OI + funding helper (SDK first, HTTP fallback)
+   -----------------------------------------------------------------*/
+/* ── OI + funding snapshot ─────────────────────────────── */
+async function getOiFunding (raw = 'BTC-PERP') {
+  const want = raw.toUpperCase();                 // keep caller’s form
+  const { data } = await axios.post(
+    'https://api.hyperliquid.xyz/info',
+    { type: 'metaAndAssetCtxs' },
+    { timeout: 5_000 }
+  );
+
+    const names = data[0].universe.map(u =>
+      typeof u === 'string'
+        ? u.toUpperCase()
+        : (u.name || u.ticker || u.symbol || '').toUpperCase()
+    );
+
+  /* 1️⃣ exact match (“BTC-PERP”) */
+  // -- new, tolerant matcher ----------------------------------
+  const wantCore = want.toUpperCase().replace(/-PERP$/, '');
+  const idx = names.findIndex(n =>
+    n.toUpperCase() === wantCore ||              // exact
+    n.toUpperCase().replace(/-PERP$/, '') === wantCore
+  );
+
+  if (idx === -1)
+    throw new Error(`coin “${raw}” not found (universe=${names.join()})`);
+
+  const ctx = data[1][idx];                       // funding, oi, markPx …
+
+  return {
+    ts      : Date.now(),
+    coin    : names[idx],                         // canonical
+    oi      : +ctx.oi,
+    funding : +ctx.funding,
+    markPx  : +ctx.markPx
+  };
+}
+
+// helper to fetch a single coin’s meta & asset‐ctx from Hyperliquid
+// helper to fetch a single coin’s meta & asset‐ctx from Hyperliquid
+async function getCoinData(raw = 'BTC-PERP') {
+  // strip any “-PERP” suffix to get the core
+  const wantCore = raw.toUpperCase().replace(/-PERP$/, '');
+
+  // fetch the full meta + asset contexts
+  const { data } = await axios.post(
+    'https://api.hyperliquid.xyz/info',
+    { type: 'metaAndAssetCtxs' },
+    { timeout: 5_000 }
+  );
+
+  // build a normalized list of universe names (also stripping any "-PERP")
+  const names = data[0].universe.map(u => {
+    const n = typeof u === 'string' ? u : u.name || u.symbol || '';
+    return n.toUpperCase().replace(/-PERP$/, '');
+  });
+
+  // find the index of our core coin (e.g. "BTC")
+  const idx = names.findIndex(n => n === wantCore);
+  if (idx === -1) {
+    throw new Error(`coin ${raw} not found in universe [${names.join(', ')}]`);
+  }
+
+  // grab the matching asset context
+  const ctx = data[1][idx];
+
+  return {
+    // return as full perp symbol
+    coin: `${wantCore}-PERP`,
+    openInterest: +ctx.oi,
+    fundingRate:  +ctx.funding,
+    markPrice:    +ctx.markPx
+  };
+}
+// new endpoint:
+app.get('/api/coinData', async (req, res) => {
+  try {
+    const coin = (req.query.coin || 'BTC-PERP').trim().toUpperCase();
+    const info = await getCoinData(coin);
+    res.json(info);
+  } catch (err) {
+    console.error('coinData error', err);
     res.status(500).json({ error: err.message });
   }
 });
