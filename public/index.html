@@ -61,17 +61,20 @@
     </div>
 
     <button id="delta-run">Run Stream</button>
+    <button id="delta-stop" disabled>Stop Stream</button>
 
     <h3>Results (hits only)</h3>
+    <button id="delta-clear-results">Clear Results</button>
     <button id="delta-copy-results">Copy Results</button>
     <pre id="delta-results"></pre>
     
     <h3>Processing Details (live)</h3>
     <div id="delta-progress-anchor"></div>
 
-    <pre id="delta-stats"></pre>
     <button id="delta-clear-stats">Clear Stats</button>
     <button id="delta-copy-stats">Copy Stats</button>
+
+    <pre id="delta-stats"></pre>
   </section>
 
   <!-- ═══════════════════  COIN ACTIVITY  ═══════════════════ -->
@@ -104,10 +107,16 @@
       </div>
     </div>
 
-    <button id="coin-run">Fetch Activity</button>
+    <!-- Start / Stop pair -->
+    <button id="coin-run">Run Stream</button>
+    <button id="coin-stop" disabled>Stop Stream</button>
+
+
     <h3>Activity Result</h3>
-    <pre id="coin-output"></pre>
+    <!-- new result-pane controls -->
+    <button id="coin-clear-results">Clear Results</button>
     <button id="coin-copy-output">Copy Results</button>
+    <pre id="coin-output"></pre>
 
 
     <!-- just before <h3>Activity Result -->
