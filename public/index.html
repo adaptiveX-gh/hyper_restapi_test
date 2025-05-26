@@ -176,6 +176,11 @@
   <!-- ═══════════════════  OBI  ═══════════════════ -->
   <section id="obi-section" class="hidden">
     <h2>Order-Book Imbalance (depth-sum)</h2>
+    <div id="flow-metrics">
+      <div>Open Interest: <span id="flow-oi">–</span></div>
+      <div>Funding Rate:  <span id="flow-funding">–</span></div>
+      <div>Mark Price:    <span id="flow-mark">–</span></div>
+    </div>
 
     <div class="inline">
       <div>
@@ -197,7 +202,11 @@
     </div>
 
     <button id="obi-snap">Snapshot</button>
-    <button id="obi-run">Run Stream</button>
+    <!-- replace “Run Stream” + duration controls with: -->
+    <button id="obi-start">Start OBI Stream</button>
+    <button id="obi-stop">Stop OBI Stream</button>
+    <button id="obi-flow-start">Start Flow</button>
+    <button id="obi-flow-stop">Stop Flow</button>
 
     <h3>Output</h3>
     <pre id="obi-output"></pre>
