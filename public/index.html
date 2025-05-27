@@ -144,13 +144,16 @@
     </div>
     <button id="sentiment-load">Load Addresses</button>
 
-    <button id="sentiment-run">Fetch Sentiment</button>
+    
+    <button id="sentiment-run">Run Stream</button>
+    <button id="sentiment-stop" disabled>Stop Stream</button>    
 
     <h3>Sentiment Result</h3>
-    <pre id="sentiment-output"></pre>
-    <button id="sentiment-copy-output">Copy Results</button>
-
     <div id="sentiment-progress-anchor"></div>
+    <button id="sentiment-clear-results">Clear Results</button>
+    <button id="sentiment-copy-output">Copy Results</button>
+    <pre id="sentiment-output"></pre>
+       
 
     <h3>Processing Details (live)</h3>
     <pre id="sentiment-stats"></pre>
@@ -174,56 +177,63 @@
     </div>
     <button id="conc-load">Load Addresses</button>
 
-    <button id="conc-run">Fetch Concentration</button>
+    <button id="conc-run">Run Stream</button>
+    <button id="conc-stop" disabled>Stop Stream</button>   <!-- NEW -->
 
     <h3>Concentration Result</h3>
-    <pre id="conc-output"></pre>
+    <div id="conc-progress-anchor"></div>                  <!-- NEW -->
     <button id="conc-copy-output">Copy Results</button>
+    <pre id="conc-output"></pre>
+    
+
+    <h3>Processing Details (live)</h3>
+    <pre id="conc-stats"></pre>
+    <button id="conc-clear-stats">Clear Stats</button>      <!-- NEW -->
+    <button id="conc-copy-stats">Copy Stats</button>        <!-- NEW -->
   </section>
 
 
   <!-- ═══════════════════  OBI  ═══════════════════ -->
-  <section id="obi-section" class="hidden">
-    <h2>Order-Book Imbalance (depth-sum)</h2>
-    <div id="flow-metrics">
-      <div>Open Interest: <span id="flow-oi">–</span></div>
-      <div>Funding Rate:  <span id="flow-funding">–</span></div>
-      <div>Mark Price:    <span id="flow-mark">–</span></div>
-    </div>
+<section id="obi-section" class="hidden">
+  <h2>Order-Book Imbalance & Flow Tape</h2>
 
-    <div class="inline">
-      <div>
-        <label>Coin (e.g. BTC-PERP)</label>
-        <input type="text" id="obi-coin" value="BTC-PERP" />
-      </div>
-      <div>
-        <label>Depth Levels</label>
-        <input type="number" id="obi-depth" value="20" min="1" />
-      </div>
-      <div>
-        <label>Refresh (s)</label>
-        <input type="number" id="obi-period" value="2" min="1" />
-      </div>
-      <div>
-        <label>Duration (s)</label>
-        <input type="number" id="obi-duration" value="30" min="2" />
-      </div>
-    </div>
+  <div class="inline">
+    <label>Coin (e.g. BTC-PERP)</label>
+    <input type="text" id="obi-coin" value="BTC-PERP" />
+    <label>Depth</label>
+    <input type="number" id="obi-depth" value="20"  min="1" />
+    <label>Refresh (s)</label>
+    <input type="number" id="obi-period" value="2" min="1" />
+    <label>Duration (s)</label>
+    <input type="number" id="obi-duration" value="30" min="2" />
+  </div>
 
-    <button id="obi-snap">Snapshot</button>
-    <!-- replace “Run Stream” + duration controls with: -->
+  <!-- ─── 1. OBI controls ─── -->
+  <div class="inline">
     <button id="obi-start">Start OBI Stream</button>
-    <button id="obi-stop">Stop OBI Stream</button>
-    <button id="obi-flow-start">Start Flow</button>
-    <button id="obi-flow-stop">Stop Flow</button>
+    <button id="obi-stop"  disabled>Stop</button>
+    <button id="obi-clear">Clear</button>
+  </div>
 
-    <h3>Output</h3>
-    <pre id="obi-output"></pre>
-    <button id="obi-copy-output">Copy Results</button>
+  <!-- progress bar + timer mount-point -->
+  <div id="obi-progress-anchor"></div>
 
-    <!-- live flow tape (absorption / exhaustion) -->
-    <pre id="flow-tape" style="font-family:monospace; margin-bottom:4px"></pre>
-  </section>
+  <!-- two side-by-side outputs -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+    <pre id="obi-output" style="min-height:240px;overflow:auto"></pre>
+
+    <div>
+      <!-- ─── 2. FLOW controls ─── -->
+      <div class="inline" style="margin-bottom:4px">
+        <button id="flow-start">Start Flow</button>
+        <button id="flow-stop" disabled>Stop</button>
+        <button id="flow-clear">Clear</button>
+      </div>
+      <pre id="flow-tape" style="min-height:240px;overflow:auto;font-family:monospace"></pre>
+    </div>
+  </div>
+</section>
+
 
   <!-- ═════════════ FLOW TAPE ═════════════ -->
 <section id="flow-section" class="hidden">

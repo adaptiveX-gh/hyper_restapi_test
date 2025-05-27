@@ -15,7 +15,8 @@ const { Transform, PassThrough } = require('stream');
 const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
 const COIN         = (process.env.FLOW_COIN ?? 'BTC').toUpperCase();
 const DEPTH_LEVELS = 50;
-const wss          = new WebSocket(WS_URL);
+
+let wss;  
 
 // ─── Live order-book state for flowBus ─────────────────────────
 let liveBook = { bids: [], asks: [] };
@@ -90,20 +91,37 @@ app.get('/api/__debug', (_,res) => res.json({ pid:process.pid, build:'2025-05-fi
 
 /* ── SDK lazy-init ──────────────────────────────────────────────── */
 const { fetchTraderAddresses } = require('./sheetHelper');
-const { Hyperliquid }           = require('hyperliquid');
-let sdk = null, initPromise = null;
-async function getSdk() {
+// ── SDK lazy-init ─────────────────────────────────────────────
+const { Hyperliquid } = require('hyperliquid');
+let sdk, initPromise;
+
+async function getSdk () {
   if (sdk) return sdk;
   if (!initPromise) {
     initPromise = (async () => {
       const inst = new Hyperliquid(
-        process.env.HL_PRIVATE_KEY||'', false, process.env.HL_API_WALLET||''
+        process.env.HL_PRIVATE_KEY || '',
+        false,
+        process.env.HL_API_WALLET || ''
       );
-      for (let i=0; i<5; i++) {
-        try { await inst.connect(); sdk = inst; return sdk; }
-        catch (err) { if (err.code!==429) throw err; await sleep(500*(i+1)); }
+
+      for (let i = 0; i < 5; i++) {
+        try {
+          await inst.connect();                           // opens the WS & pulls meta
+
+          /* optional asset-map refresh (only if helper exists) */
+          if (typeof inst.refreshAssetMaps === 'function') {
+            await retry(() => inst.refreshAssetMaps(), { max: 3, delay: 700 });
+          }
+
+          sdk = inst;
+          return sdk;
+        } catch (err) {
+          if (err.code !== 429) throw err;                // bubble unexpected errors
+          await sleep(700 * (i + 1));                     // 0.7 s, 1.4 s, 2.1 s …
+        }
       }
-      throw new Error('Failed to initialize SDK');
+      throw new Error('Failed to initialise Hyperliquid SDK');
     })();
   }
   return initPromise;
@@ -174,72 +192,89 @@ async function getObImbalance(coin,depthLv=20) {
 /*───────────────────────────────────────────────────────────────*
  *  WebSocket handler for flow bus                            *
  *───────────────────────────────────────────────────────────────*/
-wss.onopen = () => {
-  wss.send(JSON.stringify({method:'subscribe',subscription:{type:'trades',coin:COIN}}));
-  wss.send(JSON.stringify({method:'subscribe',subscription:{type:'l2Book',coin:COIN,nLevels:DEPTH_LEVELS}}));
-  console.log(`[flow] subscribed to ${COIN}`);
-};
-wss.onmessage = (wsMsg) => {
-  if (!isFlowRunning) return;
 
-  // Parse the incoming JSON
-  const { channel, data: payload } = JSON.parse(wsMsg.data);
+/* ── WS with retry ─────────────────────────── */
 
-  // ── Order‐book snapshots / diffs ───────────────────────────
+function connectWs(attempt = 0) {
+  wss = new WebSocket(WS_URL);   // replaces old socket
+  wss.on('open', () => {
+    console.log('[flow] WS connected');
+    attempt = 0;                          // reset
+    if (isFlowRunning) {
+      wss.send(JSON.stringify({method:'subscribe',subscription:{type:'trades',coin:COIN}}));
+      wss.send(JSON.stringify({method:'subscribe',subscription:{type:'l2Book',coin:COIN,nLevels:DEPTH_LEVELS}}));
+    }
+  });
+
+  // Extracted from the old wss.onmessage block
+/**
+ * Unified message handler for the Hyperliquid WS.
+ * Keeps live L2 book state and emits absorption / exhaustion events
+ * to our flowBus when the flow stream is running.
+ */
+function handleWsMessage (wsMsg) {
+  if (!isFlowRunning) return;                       // stream paused → ignore
+
+  let j;
+  try { j = JSON.parse(wsMsg.data); }               // { channel, data }
+  catch { return; }
+
+  const { channel, data: payload } = j;
+
+  /* ── 1. Order-book snapshots / diffs ───────────────────────── */
   if (channel.startsWith('l2Book')) {
     if (payload.levels) {
       // full snapshot
-      liveBook.bids = payload.levels[0].map(x => [+x.px, +x.sz]);
-      liveBook.asks = payload.levels[1].map(x => [+x.px, +x.sz]);
+      liveBook.bids = payload.levels[0].map(l => [+l.px, +l.sz]);
+      liveBook.asks = payload.levels[1].map(l => [+l.px, +l.sz]);
       depthReady = true;
     } else if (payload.updates) {
-      // incremental updates
+      // incremental patch
       payload.updates.forEach(([side, px, sz]) => {
-        // side===0 → bids, side===1 → asks
+        // side 0 = bids, 1 = asks
         patchSide(side === 0 ? liveBook.bids : liveBook.asks, +px, +sz);
       });
     }
-    return;
+    return;                                         // nothing else to do
   }
 
-  // ── Trades + absorption/exhaustion logic ───────────────────
+  /* ── 2. Trades → absorption / exhaustion logic ─────────────── */
   if (channel === 'trades' && depthReady) {
-    // normalize: trades may come as { trades: [...] } or as an array
+    // payload may be an array OR { trades:[…] }
     const tradesArr = Array.isArray(payload)
       ? payload
-      : Array.isArray(payload.trades)
-      ? payload.trades
-      : [];
+      : Array.isArray(payload.trades) ? payload.trades : [];
 
     tradesArr.forEach(t => {
       const notional = Math.abs(+t.sz) * +t.px;
-      if (notional < 100_000) return; // skip small trades
+      if (notional < 100_000) return;               // skip small prints
 
-      // snapshot the book state
+      // snapshot book just BEFORE the trade
       const pre = {
         bids: structuredClone(liveBook.bids),
         asks: structuredClone(liveBook.asks)
       };
 
-      // after ~100ms, diff against the updated book
+      // after 100 ms snapshot again and diff depth eaten
       setTimeout(() => {
         const post = {
           bids: structuredClone(liveBook.bids),
           asks: structuredClone(liveBook.asks)
         };
+
         const { bidEaten, askEaten } = depthDiff(pre, post);
         const flag = bidEaten + askEaten > 0 ? 'absorption' : 'exhaustion';
 
-        // emit as SSE via flowBus
+        // forward as SSE frame via flowBus
         flowBus.write(
           `data: ${JSON.stringify({
-            ts:       Date.now(),
-            coin:     COIN + '-PERP',
-            type:     flag,
-            side:     t.side,
-            notional,
-            price:    +t.px,
-            bidEaten,
+            ts       : Date.now(),
+            coin     : COIN + '-PERP',
+            type     : flag,
+            side     : t.side,            // 'buy' | 'sell'
+            notional ,
+            price    : +t.px,
+            bidEaten ,
             askEaten
           })}\n\n`
         );
@@ -249,8 +284,30 @@ wss.onmessage = (wsMsg) => {
     return;
   }
 
-  // ignore other channels
-};
+  /* all other channels are ignored */
+}
+
+  wss.on('message', handleWsMessage);     // your existing onmessage logic
+
+  wss.on('close', () => {
+    const wait = Math.min(30, 2 ** attempt) * 1_000;   // 1s, 2s, 4s … max 30s
+    console.warn(`[flow] WS closed – retrying in ${wait/1000}s`);
+    setTimeout(() => connectWs(attempt + 1), wait);
+  });
+
+  wss.on('error', err => {
+    if (err.message.includes('429')) {
+      console.warn('[flow] WS rate-limited, will retry');
+      wss.close();                       // triggers the back-off retry
+    } else {
+      console.error('[flow] WS error:', err);
+    }
+  });
+}
+
+connectWs();     // <-- replace the single new WebSocket(...) line
+
+
 
 /*───────────────────────────────────────────────────────────────*
  *  SSE / JSON Streaming endpoints for OBI                     *
@@ -575,6 +632,64 @@ app.post('/api/assetConcentration', async (req, res) => {
     console.error('Error in assetConcentration:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+/*───────────────────────────────────────────────────────────────*
+ *  Asset-Concentration  –  STREAM                              *
+ *───────────────────────────────────────────────────────────────*/
+async function streamAssetConcentration (addresses = [], res) {
+  const sdk = await getSdk();
+
+  const counts = {};                          // { BTC:{longCount,shortCount}, … }
+  let processed = 0;
+
+  for (const wallet of addresses) {
+    /* progress-bar tick */
+    res.write(JSON.stringify({ type:'log', wallet, stage:'starting scan' }) + '\n');
+
+    const state = await sdk.info.perpetuals
+      .getClearinghouseState(wallet)
+      .catch(() => ({}));
+    const positions = state.assetPositions || [];
+
+    /* aggregate longs / shorts for this wallet */
+    const netByCoin = {};
+    for (const p of positions) {
+      const net = Number(p.position.szi);
+      if (!net) continue;
+      netByCoin[p.position.coin] = (netByCoin[p.position.coin] || 0) + net;
+    }
+
+    /* update global counts */
+    for (const [coin, net] of Object.entries(netByCoin)) {
+      counts[coin] = counts[coin] || { longCount:0, shortCount:0 };
+      if (net > 0) counts[coin].longCount++; else if (net < 0) counts[coin].shortCount++;
+    }
+
+    processed++;
+  }
+
+  /* final summary (sorted, prettified) */
+  const concentration = Object.entries(counts)
+    .map(([coin, { longCount, shortCount }]) => ({
+      coin:`${coin}-PERP`, longCount, shortCount,
+      total: longCount + shortCount
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  res.write(JSON.stringify({ type:'summary', concentration }) + '\n');
+}
+
+app.post('/api/assetConcentrationStream', async (req, res) => {
+  const { addresses, filters } = req.body || {};
+  const addrs = Array.isArray(addresses) && addresses.length
+    ? addresses
+    : await fetchTraderAddresses(filters || {});
+
+  console.log(`→ Streaming assetConcentration on ${addrs.length} wallets`);
+  res.setHeader('Content-Type','application/json; charset=utf-8');
+  await streamAssetConcentration(addrs, res);
+  res.end();
 });
 
 
