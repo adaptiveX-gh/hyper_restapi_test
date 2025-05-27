@@ -16,6 +16,7 @@ const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
 const COIN         = (process.env.FLOW_COIN ?? 'BTC').toUpperCase();
 const DEPTH_LEVELS = 50;
 
+
 let wss;  
 
 // ─── Live order-book state for flowBus ─────────────────────────
@@ -40,7 +41,7 @@ function startFlowStream() {
 
   // heartbeat
   heartbeatInterval = setInterval(() => {
-    flowBus.write(`data: heartbeat\n\n`);
+    flowBus.write(`heartbeat\n\n`);
   }, 5000);
 
   if (wss.readyState === WebSocket.OPEN) {
@@ -247,7 +248,7 @@ function handleWsMessage (wsMsg) {
 
     tradesArr.forEach(t => {
       const notional = Math.abs(+t.sz) * +t.px;
-      if (notional < 100_000) return;               // skip small prints
+      if (notional < 1000) return;               // skip small prints
 
       // snapshot book just BEFORE the trade
       const pre = {
@@ -267,7 +268,7 @@ function handleWsMessage (wsMsg) {
 
         // forward as SSE frame via flowBus
         flowBus.write(
-          `data: ${JSON.stringify({
+          `${JSON.stringify({
             ts       : Date.now(),
             coin     : COIN + '-PERP',
             type     : flag,
@@ -280,7 +281,7 @@ function handleWsMessage (wsMsg) {
         );
       }, 100);
     });
-
+    console.log('[server] flow event pushed');      // <= add this
     return;
   }
 
@@ -795,8 +796,11 @@ app.get('/api/flowStream', (req, res) => {
 // 2️⃣ pipe:  flowBus → filter → sseify → res
 const sseify = new Transform({
   transform(chunk, _enc, cb) {
-    // chunk already filtered — just wrap as SSE frame
-    cb(null, 'data: ' + chunk.toString().trim() + '\n\n');
+    const str = chunk.toString().trim();
+    // if the chunk already starts with "data:" don’t double-prefix
+    cb(null,
+       str.startsWith('data:') ? str + '\n\n'
+                               : 'data: ' + str + '\n\n');
   }
 });
 
