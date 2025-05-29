@@ -34,8 +34,14 @@ const sleep      = ms => new Promise(r => setTimeout(r, ms));
 let heartbeatInterval = null;
 let isFlowRunning     = false;
 
-function startFlowStream() {
-  if (isFlowRunning) return;
+let currentFlowCoin = 'BTC';  // default
+
+function startFlowStream(coin) {
+  if (isFlowRunning && coin === currentFlowCoin) return;
+  // if they asked for a different coin, unsubscribe & resubscribe:
+  if (isFlowRunning) stopFlowStream();
+
+  currentFlowCoin = coin.replace(/-PERP$/i,''); // wipe any ‘-PERP’
   isFlowRunning = true;
 
   // heartbeat
@@ -44,11 +50,18 @@ function startFlowStream() {
   }, 5000);
 
   if (wss.readyState === WebSocket.OPEN) {
-    wss.send(JSON.stringify({ method:'subscribe', subscription:{ type:'trades', coin:COIN }}));
-    wss.send(JSON.stringify({ method:'subscribe', subscription:{ type:'l2Book', coin:COIN, nLevels:DEPTH_LEVELS }}));
+    wss.send(JSON.stringify({
+      method:'subscribe',
+      subscription:{ type:'trades',    coin:currentFlowCoin }
+    }));
+    wss.send(JSON.stringify({
+      method:'subscribe',
+      subscription:{ type:'l2Book',   coin:currentFlowCoin, nLevels:DEPTH_LEVELS }
+    }));
   }
-  console.log('▶️ Flow stream started');
+  console.log(`▶️ Flow stream started for ${currentFlowCoin}`);
 }
+
 
 function stopFlowStream() {
   if (!isFlowRunning) return;
@@ -154,7 +167,11 @@ app.get('/flow', (req, res) => {
   flowBus.pipe(res);
   req.on('close', () => flowBus.unpipe(res));
 });
-app.post('/startFlow', (_,res) => { startFlowStream(); res.json({status:'started'}); });
+app.post('/startFlow', express.json(), (req, res) => {
+  const coinParam = (req.body.coin || 'BTC-PERP').toUpperCase();
+  startFlowStream(coinParam);
+  res.json({ status:'started', coin: coinParam });
+});
 app.post('/stopFlow',  (_,res) => { stopFlowStream();  res.json({status:'stopped'}); });
 
 /*───────────────────────────────────────────────────────────────*
@@ -882,17 +899,48 @@ async function getOiFunding (raw = 'BTC-PERP') {
   };
 }
 
-async function get24hMetrics(coin) {
-  const sdk = await getSdk();
-  // example SDK call; adjust to your actual method name:
-  const stats = await sdk.info.stats.get24hStats({ market: coin });
+/** 
+ * Try SDK first; if that fails (or SDK.stats isn't there),
+ * fall back to our getCoinData HTTP helper for OI + funding,
+ * and zero out volume/spot.
+ */
 
-  return {
-    volume24h:    +stats.volumeUsd24h,      // 24 h volume in USD
-    openInterest: +stats.openInterestUsd,   // maybe already in USD
-    fundingRate:  +stats.fundingRate,       // as a decimal (e.g. 0.00262)
-    spotVolume:   +stats.spotVolumeUsd24h   // if available; otherwise compute
-  };
+/**
+ * Try SDK first; if that fails, fall back to HTTP.
+ * Never lets an exception bubble out.
+ */
+async function get24hMetrics(coin) {
+  // 1) SDK path
+  try {
+    const sdk = await getSdk();
+    if (sdk.info.stats && typeof sdk.info.stats.get24hStats === 'function') {
+      const s = await sdk.info.stats.get24hStats({ market: coin });
+      return {
+        volume24h:    Number(s.volumeUsd24h   ) || 0,
+        openInterest: Number(s.openInterestUsd) || 0,
+        fundingRate:  Number(s.fundingRate    ) || 0,
+        spotVolume:   Number(s.spotVolumeUsd24h) || 0
+      };
+    }
+    // SDK present but no method
+    console.warn(`[get24hMetrics] SDK.stats.get24hStats missing for ${coin}`);
+  } catch (err) {
+    console.warn(`[get24hMetrics] SDK fetch failed for ${coin}:`, err.message);
+  }
+
+  // 2) HTTP fallback for OI & funding
+  try {
+    const info = await getCoinData(coin);
+    return {
+      volume24h:    0,
+      openInterest: info.openInterest,
+      fundingRate:  info.fundingRate,
+      spotVolume:   0
+    };
+  } catch (err) {
+    console.warn(`[get24hMetrics] HTTP fallback failed for ${coin}:`, err.message);
+    return { volume24h:0, openInterest:0, fundingRate:0, spotVolume:0 };
+  }
 }
 
 // helper to fetch a single coin’s meta & asset‐ctx from Hyperliquid
