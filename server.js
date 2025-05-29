@@ -200,7 +200,10 @@ function depthDiff(a,b){
 }
 async function getObImbalance(coin,depthLv=20) {
   const s = await getL2Book(coin);
-  const sum = arr=>arr.slice(0,depthLv).reduce((z,[,sz])=>z+sz,0);
+   // sum price*size (in USD)
+  const sum = arr => arr
+   .slice(0, depthLv)
+   .reduce((total, [px, sz]) => total + px * sz, 0);
   const bid=sum(s.bids), ask=sum(s.asks);
   return { ts:Date.now(), bidDepth:bid, askDepth:ask,
            ratio:+(bid/ask).toFixed(2), trigger: bid/ask>=1.4||bid/ask<=0.6 };
@@ -880,12 +883,18 @@ async function getOiFunding (raw = 'BTC-PERP') {
 }
 
 async function get24hMetrics(coin) {
-  // TODO: replace with real logic (e.g. query your database or replay the last 24h of flowBus events)
+  const sdk = await getSdk();
+  // example SDK call; adjust to your actual method name:
+  const stats = await sdk.info.stats.get24hStats({ market: coin });
+
   return {
-    squeezeWarnings: 0,
-    bigAbsorptions : 0
+    volume24h:    +stats.volumeUsd24h,      // 24 h volume in USD
+    openInterest: +stats.openInterestUsd,   // maybe already in USD
+    fundingRate:  +stats.fundingRate,       // as a decimal (e.g. 0.00262)
+    spotVolume:   +stats.spotVolumeUsd24h   // if available; otherwise compute
   };
 }
+
 // helper to fetch a single coin’s meta & asset‐ctx from Hyperliquid
 async function getCoinData(raw = 'BTC-PERP') {
   // strip any “-PERP” suffix to get the core
@@ -1011,8 +1020,13 @@ app.get('/api/liquidity-median/:symbol', async (req, res) => {
 app.get('/health', (req, res) => res.send('ok'));
 
 app.get('/api/24hMetrics', async (req,res)=>{
-  const coin=req.query.coin||'BTC-PERP';
-  res.json(await get24hMetrics(coin));  // ← you coded this in the flow bus section
+  try {
+    const coin = (req.query.coin||'BTC-PERP').toUpperCase();
+    const m    = await get24hMetrics(coin);
+    res.json(m);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // -- Start Server ---------------------------------------------------------
