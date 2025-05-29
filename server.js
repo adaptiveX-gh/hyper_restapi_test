@@ -2,7 +2,6 @@
  *  Hyperliquid Strategy API – 2025-05-fix-levels                *
  *───────────────────────────────────────────────────────────────*/
 require('dotenv').config();
-
 const express    = require('express');
 const cors       = require('cors');
 const path       = require('path');
@@ -128,6 +127,23 @@ async function getSdk () {
   return initPromise;
 }
 
+async function get30dMedianLiquidity(symbol) {
+  /* TODO: replace with real calculation or DB lookup */
+  console.warn('[liquidity-median] stubbed – always returns 0');
+  return 0;          // safe default
+}
+
+async function safeJson(resp) {
+  try {
+    return await resp.data              // axios already parses if JSON
+            ? resp.data                 // happy path
+            : JSON.parse(await resp.text()); // for fetch()
+  } catch (e) {
+    const txt = (await resp.text?.())?.slice?.(0,120) || '';
+    throw new Error('Upstream not JSON → ' + txt);
+  }
+}
+
 /*───────────────────────────────────────────────────────────────*
  *  SSE / Flow endpoints                                      *
  *───────────────────────────────────────────────────────────────*/
@@ -191,122 +207,133 @@ async function getObImbalance(coin,depthLv=20) {
 }
 
 /*───────────────────────────────────────────────────────────────*
- *  WebSocket handler for flow bus                            *
+ *  WebSocket handler for flowBus                                *
  *───────────────────────────────────────────────────────────────*/
 
-/* ── WS with retry ─────────────────────────── */
+function connectWs (attempt = 0) {
+  wss = new WebSocket(WS_URL);
 
-function connectWs(attempt = 0) {
-  wss = new WebSocket(WS_URL);   // replaces old socket
+  /* ── on open – resubscribe if the stream is running ───────── */
   wss.on('open', () => {
     console.log('[flow] WS connected');
-    attempt = 0;                          // reset
+    attempt = 0;         // reset back-off
     if (isFlowRunning) {
-      wss.send(JSON.stringify({method:'subscribe',subscription:{type:'trades',coin:COIN}}));
-      wss.send(JSON.stringify({method:'subscribe',subscription:{type:'l2Book',coin:COIN,nLevels:DEPTH_LEVELS}}));
+      wss.send(JSON.stringify({
+        method: 'subscribe',
+        subscription: { type: 'trades', coin: COIN }
+      }));
+      wss.send(JSON.stringify({
+        method: 'subscribe',
+        subscription: { type: 'l2Book', coin: COIN, nLevels: DEPTH_LEVELS }
+      }));
     }
   });
 
-  // Extracted from the old wss.onmessage block
-/**
- * Unified message handler for the Hyperliquid WS.
- * Keeps live L2 book state and emits absorption / exhaustion events
- * to our flowBus when the flow stream is running.
- */
-function handleWsMessage (wsMsg) {
-  if (!isFlowRunning) return;                       // stream paused → ignore
+  /* ── unified message handler ──────────────────────────────── */
+  wss.on('message', raw => {
+    // raw dump (helps when debugging)
+    console.log('[WS-raw]', raw.toString().slice(0, 110));
 
-  let j;
-  try { j = JSON.parse(wsMsg.data); }               // { channel, data }
-  catch { return; }
+    /* ignore everything while stream is paused */
+    if (!isFlowRunning) return;
 
-  const { channel, data: payload } = j;
+    let msg;
+    try { msg = JSON.parse(raw); }           // { channel, data }
+    catch { return; }
 
-  /* ── 1. Order-book snapshots / diffs ───────────────────────── */
-  if (channel.startsWith('l2Book')) {
-    if (payload.levels) {
-      // full snapshot
-      liveBook.bids = payload.levels[0].map(l => [+l.px, +l.sz]);
-      liveBook.asks = payload.levels[1].map(l => [+l.px, +l.sz]);
-      depthReady = true;
-    } else if (payload.updates) {
-      // incremental patch
-      payload.updates.forEach(([side, px, sz]) => {
-        // side 0 = bids, 1 = asks
-        patchSide(side === 0 ? liveBook.bids : liveBook.asks, +px, +sz);
-      });
+    const { channel, data: payload } = msg;
+
+    /* 1 ░ Order-book snapshots / patches ───────────────────── */
+    if (channel.startsWith('l2Book')) {
+      console.log('[l2]', payload.levels ? 'SNAP' : 'PATCH');
+
+      if (payload.levels) {                       // full snapshot
+        liveBook.bids = payload.levels[0].map(l => [+l.px, +l.sz]);
+        liveBook.asks = payload.levels[1].map(l => [+l.px, +l.sz]);
+        depthReady = true;
+      } else if (payload.updates) {               // incremental patch
+        payload.updates.forEach(([side, px, sz]) =>
+          patchSide(side === 0 ? liveBook.bids : liveBook.asks, +px, +sz)
+        );
+      }
+      return;                                     // nothing else to do
     }
-    return;                                         // nothing else to do
-  }
 
-  /* ── 2. Trades → absorption / exhaustion logic ─────────────── */
-  if (channel === 'trades' && depthReady) {
-    // payload may be an array OR { trades:[…] }
-    const tradesArr = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload.trades) ? payload.trades : [];
+    /* 2 ░ Trades  →  absorption / exhaustion ───────────────── */
+    if (channel === 'trades' && depthReady) {
+      /* Hyperliquid sometimes wraps trades in different keys */
+      const tradesArr =
+            Array.isArray(payload)        ? payload
+          : Array.isArray(payload.trades) ? payload.trades
+          : Array.isArray(payload.data)   ? payload.data
+          : [];
 
-    tradesArr.forEach(t => {
-      const notional = Math.abs(+t.sz) * +t.px;
-      if (notional < 1000) return;               // skip small prints
+      console.log('[trades] batch', tradesArr.length);
 
-      // snapshot book just BEFORE the trade
-      const pre = {
-        bids: structuredClone(liveBook.bids),
-        asks: structuredClone(liveBook.asks)
-      };
+      tradesArr.forEach(t => {
+        const notional = Math.abs(+t.sz) * +t.px;        // sz * price
+        if (notional < 50000) return;                        // spam guard (0 → emit all)
 
-      // after 100 ms snapshot again and diff depth eaten
-      setTimeout(() => {
-        const post = {
+        /* snapshot book just BEFORE the trade */
+        const pre = {
           bids: structuredClone(liveBook.bids),
           asks: structuredClone(liveBook.asks)
         };
 
-        const { bidEaten, askEaten } = depthDiff(pre, post);
-        const flag = bidEaten + askEaten > 0 ? 'absorption' : 'exhaustion';
+        /* after 100 ms take another snapshot and diff what was eaten */
+        setTimeout(() => {
+          const post = {
+            bids: structuredClone(liveBook.bids),
+            asks: structuredClone(liveBook.asks)
+          };
 
-        // forward as SSE frame via flowBus
-        flowBus.write(
-          `${JSON.stringify({
-            ts       : Date.now(),
-            coin     : COIN + '-PERP',
-            type     : flag,
-            side     : t.side,            // 'buy' | 'sell'
-            notional ,
-            price    : +t.px,
-            bidEaten ,
+          const { bidEaten, askEaten } = depthDiff(pre, post);
+
+          const flag     = bidEaten + askEaten > 0 ? 'absorption' : 'exhaustion';
+          const SIDE_MAP = { A: 'buy', B: 'sell', S: 'sell' };
+          const sideTxt  = SIDE_MAP[t.side] || t.side;
+
+          const json = JSON.stringify({
+            ts   : Date.now(),
+            coin : COIN + '-PERP',
+            type : flag,
+            side : sideTxt,
+            notional,
+            price: +t.px,
+            bidEaten,
             askEaten
-          })}\n\n`
-        );
-      }, 100);
-    });
-    console.log('[server] flow event pushed');      // <= add this
-    return;
-  }
+          });
 
-  /* all other channels are ignored */
-}
+          /* fan out to all SSE listeners */
+          flowBus.write(json + '\n\n');
+          console.log('[flowBus] wrote →', json.slice(0, 120));
+        }, 100);
+      });
 
-  wss.on('message', handleWsMessage);     // your existing onmessage logic
+      return;      // done for this message
+    }
 
+    /* ignore any other channel types */
+  });
+
+  /* ── reconnect with exponential back-off ─────────────────── */
   wss.on('close', () => {
-    const wait = Math.min(30, 2 ** attempt) * 1_000;   // 1s, 2s, 4s … max 30s
-    console.warn(`[flow] WS closed – retrying in ${wait/1000}s`);
+    const wait = Math.min(30, 2 ** attempt) * 1000;   // 1 s → 2 → 4 … 30
+    console.warn(`[flow] WS closed — retrying in ${wait / 1000}s`);
     setTimeout(() => connectWs(attempt + 1), wait);
   });
 
   wss.on('error', err => {
     if (err.message.includes('429')) {
-      console.warn('[flow] WS rate-limited, will retry');
-      wss.close();                       // triggers the back-off retry
+      console.warn('[flow] WS rate-limited, reconnecting…');
+      wss.close();      // triggers the back-off
     } else {
       console.error('[flow] WS error:', err);
     }
   });
 }
 
-connectWs();     // <-- replace the single new WebSocket(...) line
+connectWs();          // kick-start the first connection
 
 
 
@@ -852,6 +879,13 @@ async function getOiFunding (raw = 'BTC-PERP') {
   };
 }
 
+async function get24hMetrics(coin) {
+  // TODO: replace with real logic (e.g. query your database or replay the last 24h of flowBus events)
+  return {
+    squeezeWarnings: 0,
+    bigAbsorptions : 0
+  };
+}
 // helper to fetch a single coin’s meta & asset‐ctx from Hyperliquid
 async function getCoinData(raw = 'BTC-PERP') {
   // strip any “-PERP” suffix to get the core
@@ -926,6 +960,59 @@ app.get('/api/obImbalanceLive', async (req, res) => {
 
   // when client disconnects, clear the interval
   req.on('close', () => clearInterval(iv));
+});
+
+// 1. order-book snapshot -------------------------------------------------
+
+//------------------------------------------------------------------
+//  GET /books/:symbol  – order-book snapshot proxy
+//------------------------------------------------------------------
+app.get('/books/:symbol', async (req, res) => {
+  const coinCore = req.params.symbol.replace(/-PERP$/i, '').toUpperCase(); // "BTC"
+  const depth    = Math.max(5, Math.min(+req.query.depth || 40, 200));     // 5 … 200
+  const MAX_RETRY = 3;
+
+  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    try {
+      const { data } = await axios.post(
+        'https://api.hyperliquid.xyz/info',
+        { type: 'l2Book', coin: coinCore, depth },
+        { timeout: 4_000 }
+      );
+
+      if (!Array.isArray(data?.levels)) throw new Error('bad payload');
+
+      return res.json({
+        bids: data.levels[0].map(({ px, sz }) => [+px, +sz]),
+        asks: data.levels[1].map(({ px, sz }) => [+px, +sz])
+      });
+    } catch (err) {
+      /* 429 ⇒ short back-off and retry, everything else → break   */
+      if (err.response?.status === 429 && attempt < MAX_RETRY - 1) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      console.error('books proxy:', err.message);
+      break;
+    }
+  }
+  res.status(502).json({ error: 'Upstream unavailable' });
+});
+
+// 2. rolling 30-day median liquidity ------------------------------------
+app.get('/api/liquidity-median/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+
+  // however you compute / cache this metric server-side ⬇︎
+  const med = await get30dMedianLiquidity(symbol);   // your own helper
+  res.json({ symbol, medianDepth10k: med });
+});
+
+app.get('/health', (req, res) => res.send('ok'));
+
+app.get('/api/24hMetrics', async (req,res)=>{
+  const coin=req.query.coin||'BTC-PERP';
+  res.json(await get24hMetrics(coin));  // ← you coded this in the flow bus section
 });
 
 // -- Start Server ---------------------------------------------------------

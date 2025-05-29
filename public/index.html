@@ -23,7 +23,6 @@
     <button id="btn-sentiment">Market Sentiment</button>
     <button id="btn-conc">Asset Concentration</button>
     <button id="btn-obi">Order-Book Imbalance</button>
-    <button id="btn-flow">Flow Stream</button>
   </div>
 
   <!-- ═══════════════════  POSITION-DELTA  ═══════════════════ -->
@@ -192,69 +191,61 @@
     <button id="conc-copy-stats">Copy Stats</button>        <!-- NEW -->
   </section>
 
-
   <!-- ═══════════════════  OBI  ═══════════════════ -->
 <section id="obi-section" class="hidden">
   <h2>Order-Book Imbalance & Flow Tape</h2>
+  <div id="ticker-box" style="width:100%;overflow:hidden;background:#111">
+  <div id="ticker-inner" class="ticker-inner"></div>
+  </div>
 
   <div class="inline">
-    <label>Coin (e.g. BTC-PERP)</label>
-    <input type="text" id="obi-coin" value="BTC-PERP" />
-    <label>Depth</label>
-    <input type="number" id="obi-depth" value="20"  min="1" />
-    <label>Refresh (s)</label>
-    <input type="number" id="obi-period" value="2" min="1" />
-    <label>Duration (s)</label>
-    <input type="number" id="obi-duration" value="30" min="2" />
+    <label>Coin</label><input id="obi-coin"   type="text"   value="BTC-PERP">
+    <label>Depth</label><input id="obi-depth"  type="number" value="20" min="1">
+    <label>Refresh (s)</label><input id="obi-period" type="number" value="2" min="1">
   </div>
 
-  <!-- ─── 1. OBI controls ─── -->
-  <div class="inline">
-    <button id="obi-start">Start OBI Stream</button>
-    <button id="obi-stop"  disabled>Stop</button>
-    <button id="obi-clear">Clear</button>
+  <div class="inline" style="gap:16px; margin:8px 0;">
+    <button id="obi-start">Start OBI</button>
+    <button id="obi-stop"  disabled>Stop OBI</button>
+    <button id="obi-clear">Clear OBI</button>
+
+    <button id="flow-start">Start Flow</button>
+    <button id="flow-stop" disabled>Stop Flow</button>
+    <button id="flow-clear">Clear Flow</button>
   </div>
 
-  <!-- progress bar + timer mount-point -->
-  <div id="obi-progress-anchor"></div>
+<!-- ═══════════════════  METERS  ═══════════════════ -->
 
-  <!-- two side-by-side outputs -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
-    <pre id="obi-output" style="min-height:240px;overflow:auto"></pre>
-
-    <div>
-      <!-- ─── 2. FLOW controls ─── -->
-      <div class="inline" style="margin-bottom:4px">
-        <button id="flow-start">Start Flow</button>
-        <button id="flow-stop" disabled>Stop</button>
-        <button id="flow-clear">Clear</button>
-      </div>
-      <pre id="flow-tape" style="min-height:240px;overflow:auto;font-family:monospace"></pre>
-    </div>
-  </div>
-</section>
-
-
-  <!-- ═════════════ FLOW TAPE ═════════════ -->
-<section id="flow-section" class="hidden">
-  <h2>Live Flow Stream</h2>
-    <!-- live bias pill -->
-    <div id="flow-trend" class="trend-neutral">
-      <span class="trend-icon">→</span>
-      <span class="trend-label">Neutral</span>
-    </div>
-
-
-  <!-- controls for the flow tape -->
-  <div class="inline">
-    <label>Coin:</label>
-    <input id="flow-coin" value="BTC-PERP" style="width:110px">
-    <button id="flow-start">Start</button>
-    <button id="flow-stop">Stop</button>
+  <div class="meters-wrap">
+  <div>
+    <div class="meter-label">Confirmation</div>
+    <div id="meter-confirmation" class="meter"></div>
   </div>
 
-  <pre id="flow-output"></pre>
+  <div>
+    <div class="meter-label">Early Warning Reversal</div>
+    <div id="meter-earlywarn" class="meter"></div>
+  </div>
+
+  <div>
+    <div class="meter-label">Fake Out</div>
+    <div id="meter-falsebreak" class="meter"></div>
+  </div>  
+
+  <div>
+    <div class="meter-label">Squeeze</div>
+    <div id="meter-squeeze" class="meter"></div>
+  </div>  
+
   
+</div>
+
+
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div id="obi-output" style="min-height:240px;overflow:auto"></div>
+    <div id="flow-tape"  style="min-height:240px;overflow:auto"></div>
+  </div>
 </section>
 
   <!-- ═══════════════════  GLOBAL LOGS  ═══════════════════ -->

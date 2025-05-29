@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OBI/Flow Dashboard – Wider, Sharp Sidebar</title>
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/highcharts-more.js"></script>
+  <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: #f6f7fa;
+      color: #222;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #obi-alert-ticker {
+      width: 100vw;
+      background: #10161c;
+      color: #ffbe55;
+      height: 35px;
+      line-height: 35px;
+      font-size: 1.08rem;
+      font-weight: bold;
+      letter-spacing: .14em;
+      border-bottom: 1px solid #23272e;
+      white-space: nowrap;
+      overflow: hidden;
+      padding-left: 9px;
+      z-index: 1001;
+      position: sticky;
+      top: 0;
+      left: 0;
+    }
+    #obi-alert-ticker span {
+      display: inline-block;
+      padding-left: 100vw;
+      animation: obi-ticker 20s linear infinite;
+    }
+    @keyframes obi-ticker {
+      0%   {transform: translateX(0);}
+      100% {transform: translateX(-100%);}
+    }
+    .obi-dashboard-main {
+      display: flex;
+      align-items: flex-start;
+      width: 100vw;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .obi-sidebar {
+      width: 300px;
+      background: #222a36;
+      color: #fff;
+      /* No border-radius at all: */
+      border-radius: 0;
+      padding: 28px 18px 38px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-height: calc(100vh - 35px);
+      box-sizing: border-box;
+      margin-left: 0;
+    }
+    .obi-sidebar label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #c2d4ed;
+      display: block;
+      margin-top: 11px;
+      margin-bottom: 4px;
+    }
+    .obi-sidebar input, .obi-sidebar select {
+      width: 100%;
+      padding: 8px 8px;
+      border-radius: 5px;
+      border: none;
+      margin-bottom: 15px;
+      font-size: 15px;
+      color: #111;
+    }
+    .sidebar-section {
+      margin-bottom: 18px;
+    }
+    #toggle-advanced {
+      background: none;
+      border: none;
+      color: #7ac0ee;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 6px;
+      text-align: left;
+      display: flex;
+      align-items:center;
+      gap:3px;
+    }
+    #advanced-settings {
+      background: #16284d;
+      padding: 15px 13px 5px 13px;
+      border-radius: 10px;
+      margin-top: 2px;
+    }
+    #advanced-settings label {
+      color: #74bbf2;
+      margin-bottom: 2px;
+      font-size: 13px;
+      font-weight:500;
+    }
+    #advanced-settings input {
+      background: #fff;
+      border: none;
+      border-radius: 4px;
+      color: #191b1c;
+      padding: 5px 8px;
+      margin-bottom: 12px;
+      font-size:13px;
+    }
+    .obi-maincontent {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-sizing: border-box;
+      margin-right: 0;
+      min-width: 0;
+    }
+    .obi-headline-bar,
+    .obi-indicator-row {
+      display: flex;
+      flex: 1 1 0;
+      justify-content: space-between;
+      gap: 32px;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 1px 8px #e2e5ec60;
+      padding: 18px 30px;
+      margin-bottom: 0;
+      min-width: 525px;
+      box-sizing: border-box;
+    }
+    .obi-kpi,
+    .big-indicator-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1 1 0;
+      min-width: 140px;
+      position: relative;
+      padding-bottom: 5px;
+      box-sizing: border-box;
+    }
+    .obi-kpi-label,
+    .big-label {
+      font-size: 13px;
+      color: #777;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      font-weight: 600;
+    }
+    .obi-kpi-value,
+    .big-value {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #293d49;
+      margin-bottom: 4px;
+      text-align: center;
+    }
+    .obi-kpi-detail { font-size: 12px; color: #41967c; }
+    .big-status {
+      font-size: 1.09em;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 7px;
+      margin: 10px 0 0 0;
+      background: none;
+      padding: 0;
+      border-radius: 0;
+      justify-content: center;
+    }
+    .status-dot {
+      display:inline-block;
+      width:15px; height:15px;
+      border-radius:50%;
+      margin-right:3px;
+    }
+    .status-dot.green  { background: #4dff88; box-shadow:0 0 3px #51fa8c99; }
+    .status-dot.yellow { background: #ffbe55; box-shadow:0 0 3px #ffbe5599;}
+    .status-dot.red    { background: #ff4d4d; box-shadow:0 0 3px #ff4d4d99;}
+    .obi-gauges-row {
+      display: flex; gap: 32px; margin-bottom: 0;
+    }
+    .obi-gauge-col {
+      flex: 1 1 0;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 8px #e5e6e950;
+      padding: 18px 9px 0 9px;
+      text-align: center;
+      min-width: 140px;
+      overflow: visible !important;
+      position: relative;
+    }
+    .obi-gauge-label {
+      margin-top: 8px;
+      margin-bottom: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #2e5a85;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .obi-row {display: flex;gap: 24px;}
+    .obi-block {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 8px #e5e6e950;
+      padding: 18px 14px 12px 14px;
+      flex: 1 1 0;
+      min-height: 235px;
+      position: relative;
+      overflow: visible !important;
+    }
+    .obi-table {width: 100%;border-collapse: separate;border-spacing: 0 2px;font-size: 14px;margin-top: 5px;}
+    .obi-table th {background: #111a;color: #495;text-align: left;padding: 6px 8px;}
+    .obi-table td {padding: 5px 8px;border-bottom: 1px solid #eee;font-family: monospace;}
+    .obi-bar-cell {background: linear-gradient(90deg,#4dff88 0%,#fff 100%);border-radius: 3px;height: 12px;display: inline-block;}
+  </style>
+</head>
+<body>
+  <div id="obi-alert-ticker"><span>
+    VOL × / OI ⚡ / THIN bk • Upside pressure • SQUEEZE RISK UP! • Thin liquidity detected • Reactive buy absorption • Market flat •
+  </span></div>
+  <div class="obi-dashboard-main">
+    <div class="obi-sidebar">
+      <div class="sidebar-section">
+        <label>Instrument:</label>
+        <select>
+          <option>BTC-PERP</option>
+          <option>ETH-PERP</option>
+          <option>SOL-PERP</option>
+        </select>
+        <label>Depth window:</label>
+        <input type="number" min="5" max="50" value="20" />
+        <label>Refresh period (s):</label>
+        <input type="number" min="1" max="10" value="2" />
+      </div>
+
+      <button id="toggle-advanced">
+        <span>&#9881;</span> Advanced
+      </button>
+      <div id="advanced-settings" style="display:none;">
+        <label>Rolling window (ticks):</label>
+        <input type="number" min="5" max="100" value="20" />
+
+        <label>Confirmation bullish threshold:</label>
+        <input type="number" step="0.01" min="1.0" max="2.5" value="1.4" />
+
+        <label>Confirmation bearish threshold:</label>
+        <input type="number" step="0.01" min="0.3" max="1.0" value="0.6" />
+
+        <label>Squeeze High Ratio:</label>
+        <input type="number" step="0.01" min="1.0" max="3.0" value="1.8" />
+
+        <label>Squeeze Low Ratio:</label>
+        <input type="number" step="0.01" min="0.1" max="1.0" value="0.55" />
+
+        <label>Min Notional (USD):</label>
+        <input type="number" step="100" min="0" value="5000" />
+
+        <label>Big Absorption Notional (USD):</label>
+        <input type="number" step="1000" min="0" value="150000" />
+
+        <label>Neutral Time (sec):</label>
+        <input type="number" step="1" min="0" value="10" />
+
+        <label>Squeeze Validity (sec):</label>
+        <input type="number" step="1" min="0" value="5" />
+      </div>
+    </div>
+    <div class="obi-maincontent">
+      <div class="obi-headline-bar">
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Live OBI Ratio</span>
+          <span class="obi-kpi-value" id="obi-ratio-kpi">1.44</span>
+          <span class="obi-kpi-detail">Bid-Heavy (bullish)</span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Squeeze Warnings (24h)</span>
+          <span class="obi-kpi-value" id="obi-sq-kpi">9</span>
+          <span class="obi-kpi-detail">3 UP / 6 DOWN</span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Big Absorption Events</span>
+          <span class="obi-kpi-value" id="obi-abs-kpi">14</span>
+          <span class="obi-kpi-detail">&gt;$150k Notional</span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Book Bias (Rolling)</span>
+          <span class="obi-kpi-value" id="obi-bias-kpi">62%</span>
+          <span class="obi-kpi-detail">Bullish Past 20 Bars</span>
+        </div>
+      </div>
+      <div class="obi-indicator-row">
+        <div class="big-indicator-card">
+          <div class="big-label">Liquidity</div>
+          <span class="big-value">$102.5M</span>
+          <div class="big-status">
+            <span class="status-dot green"></span>Healthy
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <div class="big-label">Open Interest</div>
+          <span class="big-value">$1.44B</span>
+          <div class="big-status">
+            <span class="status-dot yellow"></span>Elevated
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <div class="big-label">Funding Rate</div>
+          <span class="big-value">+0.084%</span>
+          <div class="big-status">
+            <span class="status-dot red"></span>Extreme
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <div class="big-label">Spot Vol</div>
+          <span class="big-value">189%</span>
+          <div class="big-status">
+            <span class="status-dot green"></span>Elevated
+          </div>
+        </div>
+      </div>
+      <div class="obi-gauges-row">
+        <div class="obi-gauge-col">
+          <div id="gauge-confirm"></div>
+          <div class="obi-gauge-label">Confirmation</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gauge-earlywarn"></div>
+          <div class="obi-gauge-label">Early Warn</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gauge-squeeze"></div>
+          <div class="obi-gauge-label">Squeeze</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gauge-fakeout"></div>
+          <div class="obi-gauge-label">Fake-out</div>
+        </div>
+      </div>
+      <div class="obi-row">
+        <div class="obi-block" style="flex:2;">
+          <div id="obi-line-bias"></div>
+        </div>
+        <div class="obi-block">
+          <div id="obi-donut-flow"></div>
+        </div>
+        <div class="obi-block">
+          <div id="obi-donut-fakeout"></div>
+        </div>
+      </div>
+      <div class="obi-block">
+        <h4 style="margin-top:0;margin-bottom:7px;">Recent Big Flow Events</h4>
+        <table class="obi-table">
+          <thead>
+          <tr>
+            <th>Side</th>
+            <th>Notional</th>
+            <th>Type</th>
+            <th>Price</th>
+            <th>Time</th>
+            <th>Bias Snap</th>
+          </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:#44b42c;font-weight:bold;">BUY ▲</td>
+              <td>$421,700</td>
+              <td>Absorption</td>
+              <td>67,900</td>
+              <td>12:23:41</td>
+              <td><div class="obi-bar-cell" style="width:64px;background:linear-gradient(90deg,#4dff88 75%,#fff 25%);"></div></td>
+            </tr>
+            <tr>
+              <td style="color:#db3236;font-weight:bold;">SELL ▼</td>
+              <td>$253,000</td>
+              <td>Exhaustion</td>
+              <td>67,882</td>
+              <td>12:20:05</td>
+              <td><div class="obi-bar-cell" style="width:32px;background:linear-gradient(90deg,#ff4d4d 40%,#fff 60%);"></div></td>
+            </tr>
+            <tr>
+              <td style="color:#db3236;font-weight:bold;">SELL ▼</td>
+              <td>$162,000</td>
+              <td>Absorption</td>
+              <td>67,801</td>
+              <td>12:15:14</td>
+              <td><div class="obi-bar-cell" style="width:51px;background:linear-gradient(90deg,#ff4d4d 55%,#fff 45%);"></div></td>
+            </tr>
+            <tr>
+              <td style="color:#44b42c;font-weight:bold;">BUY ▲</td>
+              <td>$157,900</td>
+              <td>Fake-out</td>
+              <td>67,850</td>
+              <td>12:11:23</td>
+              <td><div class="obi-bar-cell" style="width:74px;background:linear-gradient(90deg,#4dff88 80%,#fff 20%);"></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById("toggle-advanced").onclick = function() {
+      const adv = document.getElementById("advanced-settings");
+      adv.style.display = adv.style.display === "none" ? "block" : "none";
+      this.innerHTML = adv.style.display === "block"
+        ? "<span>&#9881;</span> Advanced &#9650;"
+        : "<span>&#9881;</span> Advanced &#9660;";
+    };
+    function renderGauge(container, value, color, min=-1, max=1) {
+      Highcharts.chart(container, {
+        chart: { type: 'solidgauge', height: 150, backgroundColor: 'transparent' },
+        title: null,
+        exporting: { enabled: true },
+        pane: {
+          center: ['50%', '60%'],
+          size: '97%',
+          startAngle: -105,
+          endAngle: 105,
+          background: {
+            backgroundColor: '#eaeaea',
+            innerRadius: '85%',
+            outerRadius: '100%',
+            shape: 'arc'
+          }
+        },
+        tooltip: { enabled: false },
+        yAxis: {
+          min: min,
+          max: max,
+          stops: [
+            [0.49, '#ff4d4d'],
+            [0.5, '#999'],
+            [0.51, '#4dff88']
+          ],
+          lineWidth: 0, tickWidth: 0, labels: { enabled: false }
+        },
+        plotOptions: {
+          solidgauge: {
+            borderWidth: '12px',
+            dataLabels: {
+              enabled: true,
+              borderWidth: 0,
+              useHTML: true,
+              format:
+                `<div style="text-align:center;">
+                  <span style="font-size:1.6em;font-weight:700;color:${color}">${value > 0 ? '+' : ''}${value.toFixed(2)}</span>
+                  <br/>
+                  <span style="font-size:0.9em;color:#777;font-weight:600;">${value > 0.6 ? 'Bull' : value < -0.6 ? 'Bear' : 'Flat'}</span>
+                </div>`
+            }
+          }
+        },
+        series: [{
+          name: '',
+          data: [value],
+          dataLabels: { y: -18 }
+        }],
+        credits: { enabled: false }
+      });
+    }
+    renderGauge('gauge-confirm', 0.71, '#44b42c');
+    renderGauge('gauge-earlywarn', 0.24, '#bbb');
+    renderGauge('gauge-squeeze', -0.53, '#db3236');
+    renderGauge('gauge-fakeout', 0.28, '#bbb');
+    Highcharts.chart('obi-line-bias', {
+      chart: { type: 'line', height: 280, backgroundColor: 'transparent' },
+      title: { text: 'Book Bias Over Time', style: { fontSize: '15px' } },
+      exporting: { enabled: true },
+      xAxis: {
+        categories: ['12:10','12:12','12:14','12:16','12:18','12:20','12:22','12:24','12:26','12:28'],
+        labels: { style: { color: '#222' } }
+      },
+      yAxis: {
+        min: -1, max: 1, tickInterval: 0.5,
+        title: { text: 'Bias', style: { color: '#666' } },
+        plotBands: [
+          { from: 0.6, to: 1, color: 'rgba(77,255,136,0.13)' },
+          { from: -1, to: -0.6, color: 'rgba(255,77,77,0.13)' }
+        ],
+        labels: { style: { color: '#555' } }
+      },
+      tooltip: { valueSuffix: '', valueDecimals: 2 },
+      series: [{
+        name: 'Bias',
+        data: [-0.18, 0.32, 0.62, 0.44, -0.21, 0.79, 0.91, 0.41, 0.84, 0.73],
+        color: '#41967c',
+        marker: { symbol: 'circle', radius: 4 }
+      },
+      {
+        type: 'scatter',
+        name: 'Pulse Event',
+        color: '#ffbe55',
+        data: [
+          [2,0.62,"VOL×"], [5,0.79,"SQUEEZE"], [8,0.84,"OI⚡"]
+        ],
+        marker: {
+          symbol: 'triangle',
+          radius: 6,
+          fillColor: '#ffd166',
+          lineWidth: 2,
+          lineColor: '#efb501'
+        },
+        tooltip: { pointFormat:'Pulse: <b>{point[2]}</b>' }
+      }],
+      legend: { enabled: false },
+      credits: { enabled: false }
+    });
+    Highcharts.chart('obi-donut-flow', {
+      chart: { type: 'pie', height: 210, backgroundColor: 'transparent' },
+      title: { text: 'Absorption by Side', style: { fontSize:'14px'} },
+      exporting: { enabled: true },
+      plotOptions: {
+        pie: {
+          innerSize: '68%',
+          dataLabels: {
+            enabled: true,
+            format: '<b>{point.name}</b><br/>{point.percentage:.1f} %',
+            style: { fontWeight:'500', color:'#555' }
+          }
+        }
+      },
+      series: [{
+        name: 'Absorption',
+        data: [
+          { name:'Bullish', y: 62, color: '#4dff88' },
+          { name:'Bearish', y: 38, color: '#ff4d4d' }
+        ]
+      }],
+      credits: { enabled: false }
+    });
+    Highcharts.chart('obi-donut-fakeout', {
+      chart: { type: 'pie', height: 210, backgroundColor: 'transparent' },
+      title: { text: 'Flow Confirm vs Fake-out', style: { fontSize:'14px'} },
+      exporting: { enabled: true },
+      plotOptions: {
+        pie: {
+          innerSize: '68%',
+          dataLabels: {
+            enabled: true,
+            distance: 18,
+            format: '<b>{point.name}</b><br/>{point.percentage:.1f}%',
+            style: { color: '#444' }
+          }
+        }
+      },
+      series: [{
+        name: 'Flow',
+        data: [
+          { name:'Confirmed', y: 72, color: '#222a36' },
+          { name:'Fake-out', y: 28, color: '#ffbe55' }
+        ]
+      }],
+      credits: { enabled: false }
+    });
+  </script>
+</body>
+</html>
