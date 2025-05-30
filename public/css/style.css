@@ -1,0 +1,211 @@
+/* Global Styles */
+body {
+  font-family: sans-serif;
+  margin: 2rem;
+}
+textarea,
+input[type="number"],
+input[type="text"] {
+  width: 100%;
+  margin-bottom: .5rem;
+}
+textarea {
+  height: 80px;
+}
+pre {
+  background: #f0f0f0;
+  padding: 1rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+button {
+  padding: .5rem 1rem;
+  margin: .25rem 0;
+  cursor: pointer;
+}
+section {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 1rem;
+}
+.inline {
+  display: flex;
+  gap: 1rem;
+}
+.inline > * {
+  flex: 1;
+}
+.hidden {
+  display: none;
+}
+#strategy-buttons {
+  margin-bottom: 2rem;
+}
+
+/* Progress Bar */
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  margin: 4px 0 10px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0; /* JS drives this */
+  background: #2196f3;
+  transition: width .25s linear;
+}
+
+section.hidden { display: none; }
+
+/* Flow Stream Panel */
+#flow-section {
+  flex-direction: column;
+  /* adjust height as needed */
+  height: 70vh;
+  border: 1px solid #ccc;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* OI Header sticks at top */
+#flow-oi-header {
+  position: sticky;
+  top: 0;
+  background: #f0f0f0;
+  padding: 4px 8px;
+  font: 600 12px/18px monospace;
+  z-index: 10;
+  margin: 0;
+}
+
+/* Bias pill */
+/* replace your existing #flow-bias-fill with a thin vertical line */
+#flow-bias-wrap {
+  position: relative;
+  width: 220px;
+  height: 20px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: #e6e6e6;
+  overflow: hidden;
+}
+#flow-bias-line {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: #333;        /* single solid colour */
+  transform: translateX(-50%);
+  transition: left 0.2s ease;
+}
+#flow-bias-label {
+  position: absolute;
+  width: 100%;
+  text-align: center;
+  line-height: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Controls row stays fixed */
+#flow-section .inline {
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+}
+
+/* Scrollable output area */
+#flow-output {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  background: #f9f9f9;
+  padding: 8px;
+  margin: 0;
+  box-sizing: border-box;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+#flow-trend { 
+  display: inline-flex; 
+  align-items:center; 
+  font:600 14px/1;
+}
+.trend-icon { margin-right: .5ex; transition: transform .2s; }
+.trend-bullish    { color: #4dff88; }
+.trend-bullish .trend-icon { transform: rotate(-45deg); } /* ▲ */
+.trend-bearish    { color: #ff4d4d; }
+.trend-bearish .trend-icon { transform: rotate(135deg); }  /* ▼ */
+.trend-neutral    { color: #aaa; }
+
+#flow-tape { font-family: monospace, sans-serif; }
+
+#obi-output, #flow-tape {
+  display: flex;
+  flex-direction: column;         /* or just remove the line */
+}
+
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.imbalance-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-family: monospace;
+}
+.meter {
+  flex: 0 0 120px;      /* fixed-width column for meters */
+  position: relative;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.meter-bear {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: crimson; width: 0;
+  transition: width .1s;
+}
+.meter-bull {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  background: limegreen; width: 0;
+  transition: width .1s;
+}
+
+.imbalance-text {
+  flex: 1 1 auto;       /* take the rest of the row */
+  white-space: nowrap;
+}
+
+#ticker-box{
+  height:22px;
+  border-radius:4px;
+  margin:6px 0 10px;
+  position:relative;
+}
+.ticker-inner{
+  display:inline-block;
+  padding-left:100%;
+  white-space:nowrap;
+  font:600 12px/22px monospace;
+  animation:ticker 30s linear infinite;
+}
+@keyframes ticker{
+  0%   {transform:translateX(0);}
+  100% {transform:translateX(-100%);}
+}
+
+
+.thin-liq .meter,
+.thin-liq #flow-tape { background:#222 !important; }
+

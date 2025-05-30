@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OBI / Flow — Live Dashboard</title>
+
+  <!-- Highcharts core + Grid-Lite + Accessibility -->
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/highcharts-more.js"></script>
+  <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+  <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@highcharts/grid-lite/grid-lite.js"></script>
+  <script src="https://code.highcharts.com/modules/bullet.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highcharts/grid-lite/css/grid.css"/>
+
+  <style>
+    /* ─── Global & Sidebar ───────────────────────────────────────────────── */
+    html,body{margin:0;padding:0;background:#f6f7fa;font-family:'Segoe UI',Arial,sans-serif;color:#222;height:100%;width:100%}
+    #obi-alert-ticker{position:sticky;top:0;left:0;width:100vw;height:35px;line-height:35px;background:#10161c;color:#ffbe55;font-size:1.08rem;font-weight:600;letter-spacing:.14em;border-bottom:1px solid #23272e;overflow:hidden;padding-left:9px;z-index:1001}
+    #obi-alert-ticker span{display:inline-block;padding-left:100vw;animation:obi-ticker 20s linear infinite}
+    @keyframes obi-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+    .obi-dashboard-main{display:flex;align-items:flex-start;width:100vw;min-height:100vh;box-sizing:border-box}
+    .obi-sidebar{width:300px;background:#222a36;color:#fff;padding:28px 18px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+    .obi-sidebar label{font-size:14px;font-weight:600;color:#c2d4ed;margin-top:11px;margin-bottom:4px}
+    .obi-sidebar input,.obi-sidebar select{width:100%;padding:8px;border:none;border-radius:5px;margin-bottom:15px;font-size:15px;color:#111}
+    .btn{background:#333;color:#fff;font-weight:700;border:none;border-radius:6px;padding:9px 12px;cursor:pointer;transition:background .15s}
+    .btn:hover{background:#444}
+    #toggle-advanced{background:none;border:none;color:#7ac0ee;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:3px}
+    #advanced-settings{display:none;background:#16284d;padding:15px 13px 5px;border-radius:10px;margin-top:2px}
+    #advanced-settings label{color:#74bbf2;margin-bottom:2px;font-size:13px;font-weight:500}
+    #advanced-settings input{background:#fff;border:none;border-radius:4px;color:#191b1c;padding:5px 8px;margin-bottom:12px;font-size:13px}
+
+    /* ─── Main Content ─────────────────────────────────────────────────── */
+    .obi-maincontent{flex:1;display:flex;flex-direction:column;gap:18px;box-sizing:border-box;padding:18px 30px 38px 24px;min-width:0}
+    .obi-headline-bar,.obi-indicator-row{display:flex;gap:32px;border-radius:12px;background:#fff;box-shadow:0 1px 8px rgba(226,229,236,0.6);padding:18px 30px}
+    .obi-kpi,.big-indicator-card{flex:1;display:flex;flex-direction:column;align-items:center;min-width:130px}
+    .obi-kpi-label,.big-label{font-size:13px;color:#777;letter-spacing:.5px;text-transform:uppercase;font-weight:600;margin-bottom:3px}
+    .obi-kpi-value,.big-value{font-size:2.1rem;font-weight:700;color:#293d49;margin-bottom:4px;text-align:center}
+    .obi-kpi-detail{font-size:12px}
+    .big-status{display:flex;align-items:center;gap:6px;font-size:14px}
+    .status-dot{width:14px;height:14px;border-radius:50%;display:inline-block}
+    .green{background:#4dff88}
+    .yellow{background:#ffbe55}
+    .red{background:#ff4d4d}
+
+    /* ─── Gauges Row ───────────────────────────────────────────────────── */
+    .obi-gauges-row{display:flex;gap:32px}
+    .obi-gauge-col{flex:1;background:#fff;padding:18px 9px 0;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);text-align:center;position:relative;min-width:140px}
+    .obi-gauge-label{margin-top:8px;font-size:13px;font-weight:600;color:#2e5a85;text-transform:uppercase;letter-spacing:.5px}
+    .obi-gauge-status{margin-top:4px;font-size:.85rem;color:#777;text-transform:uppercase;letter-spacing:.05em}
+    .obi-gauge-status.bull{color:#4dff88}
+    .obi-gauge-status.flat{color:#999}
+    .obi-gauge-status.bear{color:#ff4d4d}
+
+    /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
+    .obi-row{display:flex;gap:24px}
+    .obi-block{background:#fff;padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
+
+    /* ─── Grid Styling ─────────────────────────────────────────────────── */
+    #flowGrid{height:300px}
+    #flowGrid table{width:100%;border-collapse:collapse;background:none!important;color:#293d49!important}
+    #flowGrid thead tr{background:#fff!important}
+    #flowGrid thead th{color:#000!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
+    #flowGrid th,#flowGrid td{border:1px solid #e2e5eb!important}
+    #flowGrid td{padding:8px;color:#293d49!important}
+    #flowGrid tbody tr:nth-child(odd) td{background:#fff!important}
+    #flowGrid tbody tr:nth-child(even) td{background:#fbfcfd!important}
+    #flowGrid tbody tr:hover td{background:#f0f4f8!important}
+    #flowGrid .hc-pagination,#flowGrid .hc-gridinfo{color:#293d49!important}
+  </style>
+</head>
+<body>
+  <div id="obi-alert-ticker"><span id="ticker-inner">Connecting…</span></div>
+  <div class="obi-dashboard-main">
+
+    <!-- SIDEBAR -->
+    <div class="obi-sidebar">
+      <label for="obi-coin">Instrument:</label>
+      <select id="obi-coin">
+        <option>BTC-PERP</option>
+        <option>ETH-PERP</option>
+        <option>SOL-PERP</option>
+      </select>
+      <button id="toggle-advanced">⚙ Advanced ▾</button>
+      <div id="advanced-settings">
+  <!-- ─── TUNABLE PARAMS ─────────────────────────────────────────────────── -->
+        <label for="obi-window">Rolling window (ticks):</label>
+        <input id="obi-window" type="number" min="5"   max="200" value="50">
+
+        <label for="min-notional">Min notional (USD):</label>
+        <input id="min-notional" type="number" step="100" value="10000">
+
+        <label for="obi-depth">Depth window (levels):</label>
+        <input id="obi-depth" type="number" min="5"   max="100" value="25">
+
+        <label for="obi-period">Refresh period (s):</label>
+        <input id="obi-period" type="number" min="1"   max="10"  value="1">
+
+        <label for="obi-vollook">Real-vol lookback (ms):</label>
+        <input id="obi-vollook" type="number" step="1000" value="60000">
+
+        <label for="obi-falseabs">False-absorption (USD):</label>
+        <input id="obi-falseabs" type="number" step="10000" value="200000">
+
+        <label for="obi-falseneut">False-neutral cooldown (s):</label>
+        <input id="obi-falseneut" type="number" step="1" value="5">
+
+        <label for="obi-momthresh">Momentum-ignition thresh:</label>
+        <input id="obi-momthresh" type="number" step="1" value="30">
+
+        <!-- ─── TUNABLE PARAMS ─────────────────────────────────────────────────── -->
+      </div>
+      <button id="update-conn-btn" class="btn">Update Connection</button>
+      <button id="stream-btn" class="btn">Start Streams</button>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="obi-maincontent">
+
+      <!-- TOP KPIs -->
+      <div class="obi-headline-bar">
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Live OBI Ratio</span>
+          <span class="obi-kpi-value" id="obiRatio">--</span>
+          <span class="obi-kpi-detail" id="obiRatioTxt">Waiting</span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Squeeze Warnings (24 h)</span>
+          <span class="obi-kpi-value" id="sq24h">--</span>
+          <span class="obi-kpi-detail" id="sq24hTxt"></span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Big Absorptions</span>
+          <span class="obi-kpi-value" id="abs24h">--</span>
+          <span class="obi-kpi-detail" id="abs24hTxt"></span>
+        </div>
+        <div class="obi-kpi">
+          <span class="obi-kpi-label">Rolling Bias</span>
+          <span class="obi-kpi-value" id="biasRoll">--</span>
+          <span class="obi-kpi-detail" id="biasRollTxt"></span>
+        </div>
+      </div>
+
+      <!-- BIG INDICATORS -->
+      <div class="obi-indicator-row">
+        <div class="big-indicator-card">
+          <span class="big-label">Liquidity</span>
+          <span class="big-value" id="liqVal">--</span>
+          <div class="big-status">
+            <span class="status-dot yellow" id="liqDot"></span>
+            <span id="liqTxt">Waiting</span>
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <span class="big-label">Open Interest</span>
+          <span class="big-value" id="oiVal">--</span>
+          <div class="big-status">
+            <span class="status-dot yellow" id="oiDot"></span>
+            <span id="oiTxt">Waiting</span>
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <span class="big-label">Funding Rate</span>
+          <span class="big-value" id="fundVal">--</span>
+          <div class="big-status">
+            <span class="status-dot red" id="fundDot"></span>
+            <span id="fundTxt">Waiting</span>
+          </div>
+        </div>
+        <div class="big-indicator-card">
+          <span class="big-label">Spot Vol</span>
+          <span class="big-value" id="svVal">--</span>
+          <div class="big-status">
+            <span class="status-dot green" id="svDot"></span>
+            <span id="svTxt">Waiting</span>
+          </div>
+        </div>
+      </div>
+      <!-- SPECTRUM ROW -->
+      <div class="obi-spectrum-row" style="background:#fff; padding:18px 9px; border-radius:10px; box-shadow:0 1px 8px rgba(229,230,233,0.5); margin-bottom:16px;">
+        <div id="spectrumChart" style="width:100%; height:80px;"></div>
+      </div>
+      <!-- SOLID-GAUGES -->
+      <div class="obi-gauges-row">
+        <div class="obi-gauge-col">
+          <div id="gConfirm"></div>
+          <div class="obi-gauge-label">Confirmation</div>
+          <div class="obi-gauge-status" id="statusConfirm">Flat</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gWarn"></div>
+          <div class="obi-gauge-label">Early-Warn</div>
+          <div class="obi-gauge-status" id="statusWarn">Flat</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gSqueeze"></div>
+          <div class="obi-gauge-label">Squeeze</div>
+          <div class="obi-gauge-status" id="statusSqueeze">Flat</div>
+        </div>
+        <div class="obi-gauge-col">
+          <div id="gFake"></div>
+          <div class="obi-gauge-label">Fake-out</div>
+          <div class="obi-gauge-status" id="statusFake">Flat</div>
+        </div>
+
+        <div class="obi-gauge-col">
+          <div id="gLaR"></div>
+          <div class="obi-gauge-label">LaR (5 min)</div>
+          <div class="obi-gauge-status" id="statusLaR">Flat</div>
+        </div>
+
+        <div class="obi-gauge-col">
+          <div id="gRes"></div>
+          <div class="obi-gauge-label">Resilience</div>
+          <div class="obi-gauge-status" id="statusRes">Flat</div>
+        </div>
+
+        <div class="obi-gauge-col">
+          <div id="gShock"></div>
+          <div class="obi-gauge-label">Multi-Lvl Shock</div>
+          <div class="obi-gauge-status" id="statusShock">Flat</div>
+        </div>
+
+      <div class="obi-gauge-col">
+        <div id="gMom"></div>
+        <div class="obi-gauge-label">Momentum-Ignition</div>
+        <div class="obi-gauge-status" id="statusMom">Flat</div>
+      </div>        
+
+      </div>
+      <!-- BOOK BIAS + DONUTS -->
+      <div class="obi-row">
+        <div class="obi-block" style="flex:2">
+          <h4 style="margin:0 0 8px;">Book Bias Over Time</h4>
+          <div id="biasLine" style="height:260px;"></div>
+        </div>
+        <div class="obi-block">
+          <h4 style="margin:0 0 8px;">Absorption by Side</h4>
+          <div id="absBySide" style="height:260px;"></div>
+        </div>
+        <div class="obi-block">
+          <h4 style="margin:0 0 8px;">Flow Confirm vs Fake-Out</h4>
+          <div id="confirmFake" style="height:260px;"></div>
+        </div>
+      </div>
+
+      <!-- FLOW GRID -->
+      <div class="obi-block">
+        <h4 style="margin:0 0 8px;">Recent Big Flow Events</h4>
+        <div id="flowGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    // ─────────────────────────────────────────────────────────────────────
+    // HELPERS & STATE
+    // ─────────────────────────────────────────────────────────────────────
+    const $=id=>document.getElementById(id),
+          fmtUsd=v=>'$'+(+v).toLocaleString(),
+          setHtml=(id,t)=>{const e=$(id);if(e)e.textContent=t},
+          dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
+
+    // ──────────────────────────────────────────────────
+    // 1) State & buffers
+    // ──────────────────────────────────────────────────
+    const priceBuf = [];            // {ts, mid}
+    const DEPTH_BPS = 0.001;        // 10 bps = 0.001
+
+    // ─── PARAMS & STATE ────────────────────────────────────────────────────
+    let WINDOW, MIN_NOTIONAL, DEPTH_PARAM, REFRESH_PERIOD;
+    let VOL_WINDOW, FALSE_ABS, FALSE_NEUTRAL, MOM_COUNT_THRESH;
+
+    function readParams(){
+      WINDOW         = +$('obi-window').value;
+      MIN_NOTIONAL   = +$('min-notional').value;
+      DEPTH_PARAM    = +$('obi-depth').value;
+      REFRESH_PERIOD = +$('obi-period').value;
+
+      VOL_WINDOW      = +$('obi-vollook').value;
+      FALSE_ABS       = +$('obi-falseabs').value;
+      FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000;  // convert s→ms
+      MOM_COUNT_THRESH= +$('obi-momthresh').value;
+    }
+
+    const S_HI          = 1.8,
+          S_LO          = 0.55,
+          S_STALE       = 5;
+
+    let lastNeutral = Date.now(),
+        lastHeavy   = 0,
+        lastExtreme = {side:0,ts:0},
+        lastSpread  = null,
+        lastLaR     = 0.3; // ◀── TODO: replace with your realized-vol calculation
+
+    // rolling buffers
+    const buf = {c:[], w:[], s:[], f:[], r:[], shock:[], bias:[]};
+    const pushBuf = (a,v)=>{ a.push(v); if(a.length>WINDOW) a.shift(); };
+    const avg     = a=>a.reduce((x,y)=>x+y,0)/(a.length||1);
+
+    // donut counters
+    let absCount = {buy:0,sell:0},
+        cfCount  = {confirm:0,fake:0};
+
+    // scenario flags (to fire once per crossing)
+    const lastFired = {
+      confirmation:false,
+      squeeze:     false,
+      fakeout:     false,
+      earlywarn:   false
+    };
+
+    function pushTicker(msg){
+      $('ticker-inner').textContent = msg;
+    }
+
+    // ──────────────────────────────────────────────────
+    // 2) Realized‐vol helper
+    // ──────────────────────────────────────────────────
+    function calcRealizedVol(buf) {
+      if (buf.length < 2) return 0;
+      // log returns
+      const logs = [];
+      for (let i = 1; i < buf.length; i++) {
+        logs.push(Math.log(buf[i].mid / buf[i-1].mid));
+      }
+      const mean = logs.reduce((a,b)=>a+b,0)/logs.length;
+      const variance = logs.reduce((a,b)=>a+(b-mean)**2,0)/(logs.length-1);
+      return Math.sqrt(variance);
+    }    
+
+    
+
+    // ─────────────────────────────────────────────────────────────────────
+    // GAUGE FACTORY
+    // ─────────────────────────────────────────────────────────────────────
+    function makeGauge(id){
+      return Highcharts.chart(id,{
+        chart:{type:'solidgauge'}, title:null, tooltip:{enabled:false},
+        pane:{
+          center:['50%','60%'], size:'100%',
+          startAngle:-105,endAngle:105,
+          background:{innerRadius:'85%',outerRadius:'100%',shape:'arc',backgroundColor:'#eee'}
+        },
+        yAxis:{min:-1,max:1,
+          stops:[[0,'#ff4d4d'],[0.5,'#999'],[1,'#4dff88']],
+          lineWidth:0,tickWidth:0,labels:{enabled:false}
+        },
+        plotOptions:{solidgauge:{
+          borderWidth:'12px',
+          dataLabels:{enabled:true,useHTML:true,
+            format:'<div style="text-align:center;">'+
+                   '<span style="font-size:1.6em;color:{point.color}">'+
+                   '{point.y:+.2f}</span></div>'
+          }
+        }},
+        series:[{data:[0]}],
+        credits:{enabled:false}
+      });
+    }
+
+    const spectrum = Highcharts.chart('spectrumChart', {
+      chart: {
+        inverted: true,
+        margin: [20, 20, 40, 20],
+        height: 100
+      },
+      xAxis: [{
+        categories: [''],     // dummy category
+        visible: false
+      }],
+      yAxis: [{
+        min: 0,
+        max: 100,
+        visible: false
+      }],
+      plotOptions: {
+        columnrange: {
+          grouping: false,
+          pointWidth: 20,
+          borderWidth: 0,
+          dataLabels: {
+            enabled: true,
+            inside: true,
+            align: 'center',
+            verticalAlign: 'middle',
+            formatter() {
+              return this.series.name;
+            },
+            style: {
+              color: '#fff',
+              fontSize: '10px',
+              textOutline: 'none'
+            }
+          }
+        },
+        scatter: {
+          marker: {
+            symbol: 'triangle',
+            rotation: 90,
+            radius: 8
+          },
+          enableMouseTracking: false,
+          dataLabels: {
+            enabled: false
+          }
+        }
+      },
+      series: [
+        {
+          name: 'Mean-Reversion',
+          type: 'columnrange',
+          data: [[0, 33]],
+          color: '#FF4D4D'
+        },
+        {
+          name: 'Pullback',
+          type: 'columnrange',
+          data: [[33, 66]],
+          color: '#FFBE55'
+        },
+        {
+          name: 'Breakout',
+          type: 'columnrange',
+          data: [[66, 100]],
+          color: '#4DFF88'
+        },
+        {
+          name: 'Needle',
+          type: 'scatter',
+          data: [50],        // initial position
+          color: '#000'
+        }
+      ],
+      tooltip: { enabled: false },
+      credits: { enabled: false }
+    });
+
+    
+    const FULL_SCALE_LAR = 1e7;  // whatever max‐LaR makes sense for you
+
+    const gC = makeGauge('gConfirm'),
+          gW = makeGauge('gWarn'),
+          gS = makeGauge('gSqueeze'),
+          gF = makeGauge('gFake'),
+          gR = makeGauge('gRes'),
+          gL = makeGauge('gLaR'),
+          gShock = makeGauge('gShock'),
+          gMom = makeGauge('gMom');
+
+    const upd = (g,v)=>g.series[0].points[0].update(Math.max(-1,Math.min(1,v)));
+    const updC= v=>upd(gC,v),
+          updW= v=>upd(gW,v),
+          updS= v=>upd(gS,v),
+          updF= v=>upd(gF,v);
+
+    const momTimes = [];
+    const MOM_WINDOW_MS = 2000;       // look back over 2 seconds     
+
+    // ──────────────────────────────────────────────────
+    // 3) New LaR gauge
+    // ──────────────────────────────────────────────────
+
+     
+    // 2) Keep your helper exactly the same:
+
+    const updL = v => gL.series[0].points[0].update(Math.max(0, v));
+
+
+    
+    // helper to update Resilience
+    function updR(v){ 
+      gR.series[0].points[0].update(v); 
+    }    
+    function updShock(v){ 
+     gShock.series[0].points[0].update(Math.max(-1, Math.min(1, v))); 
+    }
+
+    function updMom(v) {
+      // clamp to [−1,1], though we’ll only use positives here
+      gMom.series[0].points[0].update(Math.max(-1, Math.min(1, v)));
+    }    
+
+    function setGaugeStatus(id,val){
+      let st='flat';
+      if(val> 0.1) st='bull';
+      if(val< -0.1)st='bear';
+      const e=$(id);
+      e.textContent = st.charAt(0).toUpperCase()+st.slice(1);
+      e.className   ='obi-gauge-status '+st;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PIE CHARTS
+    // ─────────────────────────────────────────────────────────────────────
+    const absChart = Highcharts.chart('absBySide',{
+      chart:{type:'pie',backgroundColor:'transparent'},
+      title:{text:null},
+      tooltip:{pointFormat:'{point.name}: <b>{point.y}</b>'},
+      plotOptions:{pie:{
+        innerSize:'60%',
+        dataLabels:{enabled:true,format:'{point.name}: {point.y}'}
+      }},
+      series:[{name:'Absorptions',data:[
+        {name:'Buy',y:0,color:'#4dff88'},
+        {name:'Sell',y:0,color:'#ff4d4d'}
+      ]}],
+      credits:{enabled:false}
+    });
+
+    const cfChart = Highcharts.chart('confirmFake',{
+      chart:{type:'pie',backgroundColor:'transparent'},
+      title:{text:null},
+      tooltip:{pointFormat:'{point.name}: <b>{point.y}</b>'},
+      plotOptions:{pie:{
+        innerSize:'60%',
+        dataLabels:{enabled:true,format:'{point.name}: {point.y}'}
+      }},
+      series:[{name:'Flow',data:[
+        {name:'Confirm',y:0,color:'#3399FF'},
+        {name:'Fake-Out',y:0,color:'#FF9933'}
+      ]}],
+      credits:{enabled:false}
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // GRID
+    // ─────────────────────────────────────────────────────────────────────
+    let flowData=[];
+    function renderFlowGrid(){
+      const cols = {};
+      ['side','notional','type','price','time','bias'].forEach(k=>{
+        cols[k] = flowData.map(r=>r[k]);
+      });
+      Grid.grid('flowGrid',{
+        dataTable:{columns:cols},
+        columns:[
+          {id:'side',header:{format:'Side'}},
+          {id:'notional',header:{format:'Notional'},cells:{format:'${value:,.0f}'}},
+          {id:'type',header:{format:'Type'}},
+          {id:'price',header:{format:'Price'}},
+          {id:'time',header:{format:'Time'}},
+          {id:'bias',header:{format:'Bias'},cells:{format:'{value:.2f}'}}
+        ],
+        height:300,
+        paging:{enabled:true,pageLength:10},
+        sorting:true
+      });
+    }
+    function addFlow(t){
+      flowData.unshift({
+        side:     t.side==='buy'?'BUY ▲':'SELL ▼',
+        notional: t.notional,
+        type:     t.type,
+        price:    t.price.toFixed(0),
+        time:     new Date(t.ts).toLocaleTimeString('en-US',{hour12:false}),
+        bias:     ((avg(buf.c)+1)*50-50)/50
+      });
+      if(flowData.length>1000) flowData.pop();
+      renderFlowGrid();
+    }
+    renderFlowGrid();
+
+    // ─────────────────────────────────────────────────────────────────────
+    // BOOK BIAS LINE
+    // ─────────────────────────────────────────────────────────────────────
+    let biasLine;
+    function ensureLine(){
+      if(biasLine) return;
+      biasLine = Highcharts.chart('biasLine',{
+        chart:{type:'line',backgroundColor:'transparent',height:260},
+        title:{text:'Book Bias Over Time'},
+        xAxis:{type:'datetime',tickInterval:300000},
+        yAxis:{
+          min:-1,max:1,
+          plotBands:[
+            {from:0.6,to:1,  color:'rgba(77,255,136,.1)'},
+            {from:-1,to:-0.6,color:'rgba(255,77,77,.1)'}
+          ]
+        },
+        legend:{enabled:false},
+        series:[{data:[],color:'#41967c'}],
+        credits:{enabled:false}
+      });
+    }
+    function refreshLine(){
+      ensureLine();
+      biasLine.series[0].setData(buf.bias,false);
+      biasLine.redraw();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FETCH 24h & COIN META
+    // ─────────────────────────────────────────────────────────────────────
+    async function fetch24h(){
+      const coin = $('obi-coin').value;
+      try {
+        const r = await fetch(`/api/24hMetrics?coin=${coin}`);
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setHtml('sq24h', j.volume24h!=null ? `$${(j.volume24h/1e6).toFixed(1)}M` : 'N/A');
+        setHtml('abs24h', j.openInterest!=null ? `$${(j.openInterest/1e6).toFixed(1)}M` : 'N/A');
+      } catch(err){
+        console.warn('fetch24h failed', err);
+        setHtml('sq24h','N/A'); setHtml('abs24h','N/A');
+      }
+    }
+    async function fetchCoinMeta(){
+      const coin = $('obi-coin').value;
+      try {
+        const r = await fetch(`/api/coinData?coin=${coin}`);
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setHtml('oiVal',  `$${(j.openInterest/1e6).toFixed(1)}M`);
+        dot('oiDot', j.openInterest/1e6>1000?'red': j.openInterest/1e6>200?'yellow':'green');
+        setHtml('fundVal',`${(j.fundingRate*100).toFixed(4)}%`);
+        dot('fundDot', Math.abs(j.fundingRate)>0.03?'red': Math.abs(j.fundingRate)>0.013?'yellow':'green');
+      } catch(err){
+        console.warn('fetchCoinMeta failed', err);
+        setHtml('oiVal','N/A'); dot('oiDot','yellow');
+        setHtml('fundVal','N/A');dot('fundDot','yellow');
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // STREAM START / STOP
+    // ─────────────────────────────────────────────────────────────────────
+    let obiSSE, flowSSE, running=false;
+    async function start(){
+      if(running) return;
+      readParams();
+      running=true;
+      $('stream-btn').textContent='Stop Streams';
+      absCount={buy:0,sell:0};
+      cfCount={confirm:0,fake:0};
+
+      // tell server to start flowBus
+      fetch('/startFlow',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({coin:$('obi-coin').value})
+      }).catch(console.warn);
+
+      // OBI imbalance stream
+      obiSSE = new EventSource(
+        `/api/obImbalanceLive?coin=${$('obi-coin').value}`+
+        `&depth=${DEPTH_PARAM}`+
+        `&period=${REFRESH_PERIOD}`
+      );
+// assumes these are defined in outer scope:
+//   let priceBuf = [];                // [{ts, mid}, …]
+//   const VOL_WINDOW = 5*60*1000;     // 5 min in ms
+//   const DEPTH_BPS   = 0.001;         // 10 bps = 0.001
+//   function calcRealizedVol(buf){…}   // your vol‐calc
+//   const gL = makeGauge('gLaR');
+//   const updL = v => gL.series[0].points[0].update(v);
+//   function setGaugeStatus(id,v){…}   // sets text+class
+
+obiSSE.onmessage = async (e) => {
+  // 1) parse SSE payload
+  let d;
+  try {
+    d = JSON.parse(e.data);
+  } catch {
+    return; // heartbeat or malformed
+  }
+
+
+  // 1) grab your symbol and depth once
+  const symbol     = $('obi-coin').value.replace(/-PERP$/,'');
+  const depthParam = DEPTH_PARAM;
+
+  // 2) Update Live OBI ratio KPIs
+  const r = d.ratio;
+  setHtml('obiRatio', r.toFixed(2));
+  setHtml('obiRatioTxt',
+    r >= 1.4 ? 'Bid-Heavy' :
+    r <= 0.6 ? 'Ask-Heavy' : 'Balanced'
+  );
+
+  // 3) Update Liquidity KPI
+  const liq = d.bidDepth + d.askDepth;
+  setHtml('liqVal', fmtUsd(liq));
+  setHtml('liqTxt', liq > 1e8 ? 'Thick' : 'Balanced');
+  dot('liqDot', liq > 1e8 ? 'green' : 'yellow');
+
+// 4) Book Resilience → slope of total depth over time
+const totalDepth = d.bidDepth + d.askDepth;
+if (!obiSSE._lastDepthTs) {
+  obiSSE._lastDepth    = totalDepth;
+  obiSSE._lastDepthTs  = d.ts;
+} else {
+  const dt    = (d.ts - obiSSE._lastDepthTs) / 1000; // seconds
+  const slope = dt > 0 ? (totalDepth - obiSSE._lastDepth) / dt : 0;
+  obiSSE._lastDepth   = totalDepth;
+  obiSSE._lastDepthTs = d.ts;
+
+  // normalize into ±1 assuming ~1e8 USD/s is “full-scale”
+  const normSlope = Math.max(-1, Math.min)
+
+   buf.r.push(normSlope);
+    if (buf.r.length > WINDOW) buf.r.shift();
+    const avgR = buf.r.reduce((a,b)=>a+b,0) / buf.r.length;
+
+    updR(avgR);
+    setGaugeStatus('statusRes', avgR);
+  }
+
+
+  // 5) Compute spread & LaR (with fallback to flat)
+  try {
+    const symbol     = $('obi-coin').value.replace(/-PERP$/, '');
+    const depthParam = DEPTH_PARAM;
+
+    // a) Top-of-book → spread
+    const topResp = await fetch(`/books/${symbol}?depth=${depthParam}`);
+    if (!topResp.ok) throw new Error(`HTTP ${topResp.status}`);
+    const topBk = await topResp.json();
+    const bidPx = +topBk.bids[0][0];
+    const askPx = +topBk.asks[0][0];
+    const mid   = (bidPx + askPx) / 2;
+    lastSpread  = (askPx - bidPx) / mid;
+
+    // b) Realized vol over last 5 min
+    const now = Date.now();
+    priceBuf.push({ ts: now, mid });
+    while (now - priceBuf[0].ts > VOL_WINDOW) priceBuf.shift();
+    const vol5m = calcRealizedVol(priceBuf);
+
+    // c) Deep-book → raw LaR
+    const deepResp = await fetch(`/books/${symbol}?depth=${depthParam * 2}`);
+    if (!deepResp.ok) throw new Error(`HTTP ${deepResp.status}`);
+    const deepBk = await deepResp.json();
+
+    let depth10bps = 0;
+    const lower = mid * (1 - DEPTH_BPS), upper = mid * (1 + DEPTH_BPS);
+    deepBk.bids.forEach(([px, sz]) => {
+      if (px >= lower) depth10bps += px * sz;
+    });
+    deepBk.asks.forEach(([px, sz]) => {
+      if (px <= upper) depth10bps += px * sz;
+    });
+
+    const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
+
+    // Normalize into [0…1] so the gauge actually moves:
+    const FULL_SCALE_LAR = 5e5;  // 500 k
+    const normLaR       = Math.min(1, rawLaR / FULL_SCALE_LAR);
+    lastLaR = normLaR;
+
+    updL(rawLaR);
+    setGaugeStatus('statusLaR', rawLaR / FULL_SCALE_LAR);
+
+    // 2) if you have a label for the raw number, update it too:
+    // setHtml('larRawVal', rawLaR.toFixed(2));
+
+  } catch (err) {
+    console.warn('Error computing spread/LaR:', err);
+    lastSpread = null;
+    updL(0);
+    setGaugeStatus('statusLaR', 0);
+  }
+
+
+
+    // ─── 6) Multi-Level Liquidity Shock ─────────────────────────────────
+  try {
+    // fetch a deeper snapshot of the book (e.g. 5× your normal depth)
+    const deepResp2 = await fetch(`/books/${symbol}?depth=${depthParam * 5}`);
+    if (!deepResp2.ok) throw new Error(`HTTP ${deepResp2.status}`);
+    const deepBk2 = await deepResp2.json();
+
+    // compute total volume on each side
+    const totalBid = deepBk2.bids.reduce((sum, [px, sz]) => sum + px * sz, 0);
+    const totalAsk = deepBk2.asks.reduce((sum, [px, sz]) => sum + px * sz, 0);
+
+    // compare to last tick
+    if (!obiSSE._lastTotalBid) {
+      obiSSE._lastTotalBid = totalBid;
+      obiSSE._lastTotalAsk = totalAsk;
+    } else {
+      const bidDiff = (totalBid - obiSSE._lastTotalBid) / obiSSE._lastTotalBid;
+      const askDiff = (totalAsk - obiSSE._lastTotalAsk) / obiSSE._lastTotalAsk;
+      obiSSE._lastTotalBid = totalBid;
+      obiSSE._lastTotalAsk = totalAsk;
+
+      // shock = normalized sweep across many levels (ask-side blowout = negative)
+      const shock = Math.max(-1, Math.min(1, bidDiff - askDiff));
+      buf.shock.push(shock);
+      if (buf.shock.length > WINDOW) buf.shock.shift();
+
+      const avgShock = buf.shock.reduce((a, b) => a + b, 0) / buf.shock.length;
+      updShock(avgShock);
+      setGaugeStatus('statusShock', avgShock);
+    }
+  } catch (err) {
+    console.warn('Error computing Multi-Level Shock:', err);
+    updShock(0);
+    setGaugeStatus('statusShock', 0);
+  }
+
+
+
+  };
+
+  obiSSE.onerror = ()=> setHtml('obiRatio','--');
+
+  // FLOW stream
+  flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
+  flowSSE.onmessage = e=>{
+  
+
+    if(e.data.trim().endsWith('heartbeat')) return;
+    let t; try{ t=JSON.parse(e.data) }catch{return;}
+    if(t.notional<MIN_NOTIONAL) return;
+    const now=Date.now();
+
+    // 1) Confirmation
+    const cHit = t.type==='absorption'
+                ? (t.side==='buy'?1:-1)
+                : 0;
+    pushBuf(buf.c,cHit);
+
+    // 2) False-move
+    const fHit = (t.type==='absorption' &&
+                  t.notional>=FALSE_ABS &&
+                  now-lastNeutral>=FALSE_NEUTRAL)
+                  ? (t.side==='sell'?1:-1)
+                  : 0;
+    pushBuf(buf.f,fHit);
+
+    // 3) Early-warn
+    const wHit = (!lastHeavy && t.type==='exhaustion')
+                  ? (t.side==='sell'?1:-1)
+                  : 0;
+    pushBuf(buf.w,wHit);
+
+    // 4) Squeeze
+    let sHit=0;
+    if(t.type==='exhaustion'){
+      const age=(now-lastExtreme.ts)/1000;
+      if(age<=S_STALE && lastExtreme.side){
+        if(lastExtreme.side===1 && t.side==='sell') sHit=-1;
+        if(lastExtreme.side===-1 && t.side==='buy') sHit=1;
+      }
+    }
+    pushBuf(buf.s,sHit);
+
+    // 5) Bias line
+    const biasVal = avg(buf.c.concat(buf.w).slice(-WINDOW));
+    pushBuf(buf.bias,[now,biasVal]);
+
+    // 6) Iceberg
+    const u = JSON.parse(e.data);
+    if (u.iceberg) {
+      // e.g. flash a ticker, push to a new “Iceberg” donut chart…
+      pushTicker(`⛏️ Iceberg @ ${u.price.toFixed(0)} ($${(u.visibleDepth/1e3).toFixed(1)}k visible)`);
+    }
+
+  // ─── 7) Momentum-Ignition Spikes ───────────────────────────────────────
+    // count “small” trades arriving in the last MOM_WINDOW_MS
+    // only consider very small “stirring” trades:
+    if (t.notional < MIN_NOTIONAL) {
+      momTimes.push(now);
+    }
+    // purge old timestamps
+    while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) {
+      momTimes.shift();
+    }
+    // if we’ve exceeded the threshold, compute an intensity
+    let momVal = 0;
+    if (momTimes.length > MOM_COUNT_THRESH) {
+      // linearly scale [THRESH, 2×THRESH] → [0,1]
+      momVal = Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH);
+    }
+    // update gauge + label
+    updMom(momVal);
+    setGaugeStatus('statusMom', momVal);
+
+
+    // collect donut counts
+    if(t.type==='absorption') absCount[t.side]++;
+    if(cHit   !==0) cfCount.confirm++;
+    if(fHit   !==0) cfCount.fake++;
+
+    // throttled repaint (~4×/sec)
+    if(now - (flowSSE.lastUpd||0) > 300){
+      flowSSE.lastUpd = now;
+      const c=avg(buf.c), w=avg(buf.w), s=avg(buf.s), f=avg(buf.f);
+      const liq = parseFloat($('liqVal').textContent.replace(/[$,]/g,'')) || 0;
+      const spread = lastSpread===null ? 0 : lastSpread;
+      const lar    = lastLaR; // replace with your vol‐based calc
+
+      // update gauges + statuses
+      updC(c); setGaugeStatus('statusConfirm',c);
+      updW(w); setGaugeStatus('statusWarn',w);
+      updS(s); setGaugeStatus('statusSqueeze',s);
+      updF(f); setGaugeStatus('statusFake',f);
+
+      setHtml('biasRoll',biasVal.toFixed(2));
+      setHtml('biasRollTxt',
+        biasVal>0?'Bullish':biasVal<0?'Bearish':'Flat'
+      );
+
+
+    // 2) compute & push the spectrum-needle
+      const rawMetrics = [
+        avg(buf.c), avg(buf.w), avg(buf.s), avg(buf.f),
+        lastLaR / FULL_SCALE_LAR,
+        avg(buf.r), avg(buf.shock),
+        momVal
+      ];
+      const normalized = rawMetrics.map((v,i)=>
+        [0,1,2,3,5,6].includes(i)
+          ? (Math.max(0,Math.min(1,(v+1)/2)))
+          : (Math.max(0,Math.min(1,v)))
+      );
+      const composite = normalized.reduce((a,b)=>a+b,0)/normalized.length *100;
+      spectrum.series[3].setData([composite], true);
+            
+      refreshLine();
+
+      absChart.series[0].setData([
+        {name:'Buy',y:absCount.buy,color:'#4dff88'},
+        {name:'Sell',y:absCount.sell,color:'#ff4d4d'}
+      ],true);
+
+      cfChart.series[0].setData([
+        {name:'Confirm',y:cfCount.confirm,color:'#3399FF'},
+        {name:'Fake-Out',y:cfCount.fake,color:'#FF9933'}
+      ],true);
+
+      //
+      // ─── YOUR FOUR TRADE SCENARIOS ───────────────────────────
+      //
+      // 1) Confirmation Entry (thick book + RLI >1 + gauge ≥0.6)
+      if(liq>1e8 && $('obiRatio').textContent>1 &&
+          c>=0.6 && !lastFired.confirmation){
+        pushTicker('✅ Confirmation Entry — go ↑');
+        lastFired.confirmation=true;
+      }
+      // reset when back inside ±0.3
+      if(c<0.3 && c>-0.3) lastFired.confirmation=false;
+
+      // 2) Squeeze Entry (thin book + RLI<0.3 + LaR<0.3 + gauge ≥0.5)
+      if(liq<1e7 && $('obiRatio').textContent<0.3 &&
+          lar<0.3 && s>=0.5 && !lastFired.squeeze){
+        pushTicker('📈 Squeeze Entry — go ↑');
+        lastFired.squeeze=true;
+      }
+      if(s<0.2 && s>-0.2) lastFired.squeeze=false;
+
+      // 3) Fake-Out Entry (neutral book + gauge ≥0.4 after big absorption)
+      if(liq>5e7 && Math.abs(c)<0.1 &&
+          f>=0.4 && !lastFired.fakeout){
+        pushTicker('⚠️ Fake-Out Entry');
+        lastFired.fakeout=true;
+      }
+      if(f<0.2 && f>-0.2) lastFired.fakeout=false;
+
+      // 4) Early-Warning Reversal (balanced + gauge ≥0.4)
+      if(liq>5e7 && Math.abs(c)<0.1 &&
+          w>=0.4 && Math.abs(f)<0.1 && Math.abs(s)<0.1 &&
+          !lastFired.earlywarn){
+        pushTicker('🔄 Early-Warn Reversal');
+        lastFired.earlywarn=true;
+      }
+      if(w<0.2 && w>-0.2) lastFired.earlywarn=false;
+    }
+
+    // update grid
+    addFlow(t);
+  };
+
+  // fetch metas + kick ticker
+  fetchCoinMeta().catch(err=>{
+    console.warn('coinData endpoint unavailable, showing N/A', err);
+  });
+  fetch24h();
+  $('ticker-inner').textContent=`Streaming ${$('obi-coin').value} …`;
+}
+
+function stop(){
+  running=false;
+  $('stream-btn').textContent='Start Streams';
+  if(obiSSE) obiSSE.close();
+  if(flowSSE) flowSSE.close();
+
+  // tell server to stop flowBus
+  fetch('/stopFlow',{method:'POST'}).catch(console.warn);
+
+  $('ticker-inner').textContent='Paused';
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HOOK UP UI
+// ─────────────────────────────────────────────────────────────────────
+$('stream-btn').onclick = ()=> running ? stop() : start();
+$('update-conn-btn').onclick = ()=>{
+  readParams();
+  if (running) {
+    stop();
+    start();
+  }
+};
+$('toggle-advanced').onclick = function(){
+  const adv = $('advanced-settings'),
+        open= adv.style.display!=='none';
+  adv.style.display = open?'none':'block';
+  this.textContent = '⚙ Advanced '+(open?'▾':'▴');
+};
+$('min-notional').onchange = e=> MIN_NOTIONAL=+e.target.value;
+
+// AUTO-START
+ensureLine();
+start();
+
+})();
+</script>
+</body>
+</html>
