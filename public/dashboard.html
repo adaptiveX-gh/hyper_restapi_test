@@ -283,6 +283,8 @@
       FALSE_ABS       = +$('obi-falseabs').value;
       FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000;  // convert s→ms
       MOM_COUNT_THRESH= +$('obi-momthresh').value;
+      
+      absCount = { buy:0, sell:0 }
     }
 
     const S_HI          = 1.8,
@@ -361,37 +363,72 @@
       });
     }
 
-    const bullMeter = Highcharts.chart('bullMeter', {
-      chart: { inverted: true, marginLeft: 20, type: 'bullet' },
-      title: { text: 'Bull Spectrum' },
-      xAxis: {  min: 0,  max: 100,  categories: [''],
-        plotBands: [
-          { from: 0,  to: 33, color: '#FF4D4D', label: { text: 'Mean-Reversion', style:{ color:'#fff' } } },
-          { from: 33, to: 66, color: '#FFBE55', label: { text: 'Pullback',      style:{ color:'#fff' } } },
-          { from: 66, to:100,color: '#4DFF88', label: { text: 'Breakout',     style:{ color:'#fff' } } }
-        ]
-      },
-      series: [{ data: [{ y: 50 /* initial */ }] }],
-      plotOptions: { bullet:{ pointPadding:0, borderWidth:0, targetOptions:{ width:'200%' } } },
-      tooltip: { enabled:false },
-      credits: { enabled:false }
-    });
 
-    const bearMeter = Highcharts.chart('bearMeter', {
-      chart: { inverted: true, marginLeft: 20, type: 'bullet' },
-      title: { text: 'Bear Spectrum' },
-      xAxis: {  min: 0,  max: 100,  categories: [''],
-        plotBands: [ /* same bands */ ]
-      },
-      series: [{ data: [{ y: 50 }] }],
-      plotOptions: { bullet:{ pointPadding:0, borderWidth:0, targetOptions:{ width:'200%' } } },
-      tooltip: { enabled:false },
-      credits: { enabled:false }
-    });
+          // ------------------------------------------------------------------
+      // 1) A reusable options object
+      // ------------------------------------------------------------------
+      const bulletOpts = {
+        chart:  { inverted:true, type:'bullet', height: 80, marginLeft: 65 },
+        title:  { text:null },
+        legend: { enabled:false },
+        xAxis:  {
+          categories:[''],                 // one row, one label
+          tickLength:0, gridLineWidth:0,
+          labels:{ enabled:false }
+        },
+        yAxis : {
+          min:0, max:100,                  // 0-100 spectrum
+          tickInterval:25,
+          gridLineWidth:0,                 // no grid lines
+          title:null,
+          // three grey-scale qualitative ranges like the HC demo:
+          plotBands:[                      //   ↙ tweak colours here
+            { from:0,  to:33, color:'#666' },
+            { from:33, to:66, color:'#999' },
+            { from:66, to:100,color:'#bbb'}
+          ]
+        },
+        plotOptions:{
+          series:{
+            pointPadding:0,                // no white gaps
+            borderWidth:0,
+            color:'#000',                  // the “measure” bar colour
+            targetOptions:{                // the thin marker
+              width:'200%',                // width relative to bar
+              height:'75%',                // keep it legible in 80-px chart
+              color:'#000'
+            }
+          }
+        },
+        tooltip:{
+          pointFormat:
+            '<b>{point.y:.1f}</b> (target {point.target:.1f})'
+        },
+        credits:{ enabled:false },
+        exporting:{ enabled:false }
+      };
+
+      // ------------------------------------------------------------------
+      // 2) Instantiate the two charts
+      // ------------------------------------------------------------------
+      const bullMeter = Highcharts.chart(
+        'bullMeter',
+        Highcharts.merge(bulletOpts, {
+          title:{ text:'<b>Bull Spectrum</b>' },
+          series:[{ data:[{ y:50, target:75 }] }]
+        })
+      );
+
+      const bearMeter = Highcharts.chart(
+        'bearMeter',
+        Highcharts.merge(bulletOpts, {
+          title:{ text:'<b>Bear Spectrum</b>' },
+          series:[{ data:[{ y:50, target:75 }] }]
+        })
+      );
+
 
     
-    const FULL_SCALE_LAR = 1e7;  // whatever max‐LaR makes sense for you
-
     const gC = makeGauge('gConfirm'),
           gW = makeGauge('gWarn'),
           gS = makeGauge('gSqueeze'),
@@ -865,8 +902,15 @@ if (!obiSSE._lastDepthTs) {
     const bullComposite = raw.map(v => Math.max(0,  v)).reduce((a,b)=>a+b,0) / raw.length * 100;
     const bearComposite = raw.map(v => Math.max(0, -v)).reduce((a,b)=>a+b,0) / raw.length * 100;
 
-    bullMeter.series[0].points[0].update(bullComposite, false);
-    bearMeter.series[0].points[0].update(bearComposite,  true);
+    bullMeter.series[0].setData([{
+      y: bullComposite,        // new “measure”
+      target: 75               // (or whatever live target you want)
+    }], false);                // don't redraw yet
+
+    bearMeter.series[0].setData([{
+      y: bearComposite,
+      target: 75
+    }], true);                 // redraw after the second update
 
     /* 6-e)  donuts & grid ---------------------------------------- */
     absChart.series[0].setData([
