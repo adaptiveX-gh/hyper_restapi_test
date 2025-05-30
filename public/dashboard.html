@@ -364,10 +364,7 @@
     const bullMeter = Highcharts.chart('bullMeter', {
       chart: { inverted: true, marginLeft: 20, type: 'bullet' },
       title: { text: 'Bull Spectrum' },
-      xAxis: {
-        min: 0,            // ← lock it
-        max: 100,          // ← lock it
-        categories: [''],
+      xAxis: {  min: 0,  max: 100,  categories: [''],
         plotBands: [
           { from: 0,  to: 33, color: '#FF4D4D', label: { text: 'Mean-Reversion', style:{ color:'#fff' } } },
           { from: 33, to: 66, color: '#FFBE55', label: { text: 'Pullback',      style:{ color:'#fff' } } },
@@ -383,10 +380,7 @@
     const bearMeter = Highcharts.chart('bearMeter', {
       chart: { inverted: true, marginLeft: 20, type: 'bullet' },
       title: { text: 'Bear Spectrum' },
-      xAxis: {
-        min: 0,
-        max: 100,
-        categories: [''],
+      xAxis: {  min: 0,  max: 100,  categories: [''],
         plotBands: [ /* same bands */ ]
       },
       series: [{ data: [{ y: 50 }] }],
@@ -765,193 +759,128 @@ if (!obiSSE._lastDepthTs) {
   // FLOW stream
   flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
 
+  // ──────────────────────────────────────────────────────────────
+  //  FLOW STREAM HANDLER  (replace the old block with this one)
+  // ──────────────────────────────────────────────────────────────
   flowSSE.onmessage = e => {
 
-    // ignore heartbeats
+    /* ─── 0. Skip heart-beats ─────────────────────────────────── */
     if (e.data.trim().endsWith('heartbeat')) return;
 
+    /* ─── 1. Parse the trade/message object ───────────────────── */
     let t;
-    try {
-      t = JSON.parse(e.data);
-    } catch {
-      return;
-    }
+    try { t = JSON.parse(e.data); } catch { return; }
 
-    // filter out small flows
+    /* ─── 2. Discard small prints ─────────────────────────────── */
     if (t.notional < MIN_NOTIONAL) return;
 
     const now = Date.now();
 
-    // ─────────────── Patch #1: track lastNeutral on every absorption ───────────────
-
-
-    // ─────────────── Patch #3a: flag "heavy" absorptions ───────────────
-    if (t.type === 'absorption' && t.notional >= FALSE_ABS) {
-      lastHeavy = true;
-    }
-
-    // ─────────────── Patch #2: record each exhaustion as lastExtreme ───────────────
-    if (t.type === 'exhaustion') {
-      lastExtreme = {
-        side: t.side === 'buy' ? 1 : -1,
-        ts: now
-      };
-    }
-
-    // 1) Confirmation hits
-    const cHit = (t.type === 'absorption')
-              ? (t.side === 'buy' ? 1 : -1)
-              : 0;
-    pushBuf(buf.c, cHit);
-
-
+    /* ────────────────────────────────────────────────────────────
+      3. Update all rolling buffers & scenario flags
+      ─────────────────────────────────────────────────────────── */
     if (t.type === 'absorption') {
+      // 3-a) confirmation hit
+      pushBuf(buf.c, t.side === 'buy' ? 1 : -1);
       lastNeutral = now;
+
+      // 3-b) possible fake-out hit
+      const fake =
+        t.notional >= FALSE_ABS &&
+        now - lastNeutral >= FALSE_NEUTRAL
+          ? (t.side === 'sell' ? 1 : -1)
+          : 0;
+      pushBuf(buf.f, fake);
+
+      // 3-c) remember heavy absorptions
+      if (t.notional >= FALSE_ABS) lastHeavy = true;
     }
 
-    // 2) False‐move / Fake‐Out hits (uses updated lastNeutral)
-    const fHit = (t.type === 'absorption'
-                && t.notional >= FALSE_ABS
-                && now - lastNeutral >= FALSE_NEUTRAL)
-              ? (t.side === 'sell' ? 1 : -1)
-              : 0;
-    pushBuf(buf.f, fHit);
-
-    
-    // 3) Early-Warn only if a heavy absorption preceded this exhaustion
-    const wHit = (lastHeavy && t.type==='exhaustion')
-              ? (t.side==='sell' ? 1 : -1)
-              : 0;
-    pushBuf(buf.w, wHit);
-
-    // clear the flag immediately so only one exhaustion “consumes” it
-    if (lastHeavy) lastHeavy = false;
-
-    // 4) Squeeze hits (now compares to the real lastExtreme)
-    let sHit = 0;
     if (t.type === 'exhaustion') {
+      // 3-d) remember last extreme to test for squeeze
+      lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
+
+      // 3-e) early-warn hit (only after a heavy absorption)
+      const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
+      pushBuf(buf.w, warn);
+      lastHeavy = false;                        // consume the flag
+
+      // 3-f) squeeze hit (opposite side within S_STALE seconds)
+      let sq = 0;
       const age = (now - lastExtreme.ts) / 1000;
       if (age <= S_STALE && lastExtreme.side) {
-        if (lastExtreme.side === 1 && t.side === 'sell') sHit = -1;
-        if (lastExtreme.side === -1 && t.side === 'buy')  sHit = +1;
+        if ( lastExtreme.side ===  1 && t.side === 'sell') sq = -1;
+        if ( lastExtreme.side === -1 && t.side === 'buy')  sq =  1;
       }
-    }
-    pushBuf(buf.s, sHit);
-
-    // 5) Book-bias line
-    const biasVal = avg(buf.c.concat(buf.w).slice(-WINDOW));
-    pushBuf(buf.bias, [ now, biasVal ]);
-
-    // 6) Iceberg alerts
-    if (t.iceberg) {
-      pushTicker(`⛏️ Iceberg @ ${t.price.toFixed(0)} ($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
+      pushBuf(buf.s, sq);
     }
 
-    // 7) Momentum-Ignition (unchanged)
-    if (t.notional < MIN_NOTIONAL) {
-      momTimes.push(now);
-    }
-    while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) {
-      momTimes.shift();
-    }
-    let momVal = 0;
-    if (momTimes.length > MOM_COUNT_THRESH) {
-      momVal = Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH);
-    }
+    /* ─── 4. Momentum-ignition counter ─────────────────────────── */
+    momTimes.push(now);
+    while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) momTimes.shift();
+    const momVal = momTimes.length > MOM_COUNT_THRESH
+      ? Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH)
+      : 0;
     updMom(momVal);
     setGaugeStatus('statusMom', momVal);
 
-    // collect donut stats
-    if (t.type === 'absorption') absCount[t.side]++;
-    if (cHit !== 0)          cfCount.confirm++;
-    if (fHit !== 0)          cfCount.fake++;
+    /* ─── 5. Donut counters & alert ticker ─────────────────────── */
+    if (t.type === 'absorption') absCount[t.side] ++;
+    if (t.type === 'absorption' && t.iceberg)
+      pushTicker(`⛏️ Iceberg @ ${t.price.toFixed(0)} ($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
 
+    /* ─── 6. Throttle chart redraws (≈ 4 Hz) ───────────────────── */
+    if (now - (flowSSE.lastUpd || 0) < 300) return;
+    flowSSE.lastUpd = now;
 
-      // … inside flowSSE.onmessage, after you calculate c, w, s, f, avg(buf.r), avg(buf.shock), momVal …
+    /* 6-a)  current averaged scenario scores */
+    const c = avg(buf.c);
+    const w = avg(buf.w);
+    const s = avg(buf.s);
+    const f = avg(buf.f);
 
-      if (now - (flowSSE.lastUpd || 0) > 300) {
-        flowSSE.lastUpd = now;
+    /* 6-b)  update the four solid gauges + status labels */
+    updC(c); setGaugeStatus('statusConfirm',  c);
+    updW(w); setGaugeStatus('statusWarn',     w);
+    updS(s); setGaugeStatus('statusSqueeze',  s);
+    updF(f); setGaugeStatus('statusFake',     f);
 
-        // 1) Build your raw metrics array
-        //    [confirm, warn, squeeze, fake, LaR, resilience, shock, momentum]
-        const raw = [
-          avg(buf.c),
-          avg(buf.w),
-          avg(buf.s),
-          avg(buf.f),
-          lastLaR / FULL_SCALE_LAR,
-          avg(buf.r),
-          avg(buf.shock),
-          momVal
-        ];
+    /* 6-c)  line chart point */
+    const biasVal = avg(buf.c.concat(buf.w).slice(-WINDOW));
+    pushBuf(buf.bias, [ now, biasVal ]);
+    setHtml('biasRoll', biasVal.toFixed(2));
+    setHtml('biasRollTxt',
+            biasVal >  0 ? 'Bullish' :
+            biasVal <  0 ? 'Bearish' : 'Flat');
+    refreshLine();
 
-        // 2) (Optional) compute a single composite 0–100 if you still want it
-        const normalized = raw.map((v,i) =>
-          // for indices 0–3,5,6 we remap [–1…+1] → [0…1],
-          // for the others we already expect them in [0…1].
-          [0,1,2,3,5,6].includes(i)
-            ? Math.max(0, Math.min(1, (v + 1) / 2))
-            : Math.max(0, Math.min(1, v))
-        );
-        const compositeValue = normalized.reduce((sum, x) => sum + x, 0)
-                              / normalized.length * 100;
-        // … if you had a spectrum gauge, you'd update it here …
+    /* 6-d)  bull / bear composites for the two bullet charts */
+    const raw = [
+      c, w, s, f,
+      lastLaR / FULL_SCALE_LAR,
+      avg(buf.r),
+      avg(buf.shock),
+      momVal
+    ];
+    const bullComposite = raw.map(v => Math.max(0,  v)).reduce((a,b)=>a+b,0) / raw.length * 100;
+    const bearComposite = raw.map(v => Math.max(0, -v)).reduce((a,b)=>a+b,0) / raw.length * 100;
 
-        // 3) Split raw into bull vs bear composites
-        //    – Bull only counts positive contributions
-        //    – Bear only counts negative contributions (flipped to positive)
-        const bullComposite = raw
-          .map(v => Math.max(0, v))
-          .reduce((sum, x) => sum + x, 0)
-          / raw.length * 100;
+    bullMeter.series[0].points[0].update(bullComposite, false);
+    bearMeter.series[0].points[0].update(bearComposite,  true);
 
-        const bearComposite = raw
-          .map(v => Math.max(0, -v))
-          .reduce((sum, x) => sum + x, 0)
-          / raw.length * 100;
+    /* 6-e)  donuts & grid ---------------------------------------- */
+    absChart.series[0].setData([
+      { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
+      { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
+    ], false);
 
-        // 4) Update the two bullet charts
-        //    first argument is the new y-value, second is whether to redraw immediately
-        bullMeter.series[0].points[0].update(bullComposite, /* redraw = */ false);
-        bearMeter.series[0].points[0].update(bearComposite, /* redraw = */ true);
+    cfChart.series[0].setData([
+      { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
+      { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
+    ], true);
 
-        // … any of your other chart/table updates (absChart, cfChart, refreshLine, etc.) …
-      }
-
-      // update gauges + statuses
-      updC(c); setGaugeStatus('statusConfirm', c);
-      updW(w); setGaugeStatus('statusWarn',   w);
-      updS(s); setGaugeStatus('statusSqueeze', s);
-      updF(f); setGaugeStatus('statusFake',    f);
-
-      setHtml('biasRoll', biasVal.toFixed(2));
-      setHtml('biasRollTxt',
-        biasVal > 0 ? 'Bullish'
-      : biasVal < 0 ? 'Bearish'
-      :               'Flat'
-      );
-
-
-
-      refreshLine();
-
-      absChart.series[0].setData([
-        { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
-        { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
-      ], true);
-
-      cfChart.series[0].setData([
-        { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
-        { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
-      ], true);
-
-      // (your four scenario tickers follow as before…)
-    }
-
-    // update grid
-    addFlow(t);
+    addFlow(t);            // push row into the live grid
   };
-
 
 
   // fetch metas + kick ticker
@@ -959,10 +888,12 @@ if (!obiSSE._lastDepthTs) {
     console.warn('coinData endpoint unavailable, showing N/A', err);
   });
   fetch24h();
-  $('ticker-inner').textContent=`Streaming ${$('obi-coin').value} …`;
-} // <-- This closes the async function start()
+     $('ticker-inner').textContent =
+       `Streaming ${$('obi-coin').value} …`;
+  // <-- This closes the async function start()
+    };
 
-function stop(){
+function stop() {
   running=false;
   $('stream-btn').textContent='Start Streams';
   if(obiSSE) obiSSE.close();
