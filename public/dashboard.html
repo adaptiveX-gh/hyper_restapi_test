@@ -287,6 +287,9 @@
       absCount = { buy:0, sell:0 }
     }
 
+    const FULL_SCALE_LAR = 5e5;        // 500 k – pick any max you want
+    const SAFE = v => (Number.isFinite(v) ? v : 0);   // helper
+
     const S_HI          = 1.8,
           S_LO          = 0.55,
           S_STALE       = 5;
@@ -684,7 +687,7 @@ if (!obiSSE._lastDepthTs) {
   obiSSE._lastDepthTs = d.ts;
 
   const rawSlope = dt>0 ? (totalDepth - prev) / dt : 0;
-  const FULL_SCALE_SLOPE = 1e8; // adjust to your book‐depth/sec scale
+  
   const normSlope = Math.max(-1, Math.min(1, rawSlope / FULL_SCALE_SLOPE));
 
   buf.r.push(normSlope);
@@ -893,22 +896,32 @@ if (!obiSSE._lastDepthTs) {
 
     /* 6-d)  bull / bear composites for the two bullet charts */
     const raw = [
-      c, w, s, f,
-      lastLaR / FULL_SCALE_LAR,
-      avg(buf.r),
-      avg(buf.shock),
-      momVal
+      SAFE(c),
+      SAFE(w),
+      SAFE(s),
+      SAFE(f),
+      SAFE(lastLaR / FULL_SCALE_LAR),
+      SAFE(avg(buf.r)),
+      SAFE(avg(buf.shock)),
+      SAFE(momVal)
     ];
-    const bullComposite = raw.map(v => Math.max(0,  v)).reduce((a,b)=>a+b,0) / raw.length * 100;
-    const bearComposite = raw.map(v => Math.max(0, -v)).reduce((a,b)=>a+b,0) / raw.length * 100;
+    // 2) derive the two composites
+    const bullComposite = raw.reduce((sum, v) => sum + Math.max(0,  v), 0) /
+                          raw.length * 100;
+    const bearComposite = raw.reduce((sum, v) => sum + Math.max(0, -v), 0) /
+                          raw.length * 100;
+
+    // clamp to [0-100] so you never pass >100 (or NaN) to the chart
+    const bullVal = Math.min(100, SAFE(bullComposite));
+    const bearVal = Math.min(100, SAFE(bearComposite));
 
     bullMeter.series[0].setData([{
-      y: bullComposite,        // new “measure”
+      y: bullVal,        // new “measure”
       target: 75               // (or whatever live target you want)
     }], false);                // don't redraw yet
 
     bearMeter.series[0].setData([{
-      y: bearComposite,
+      y: bullVal,
       target: 75
     }], true);                 // redraw after the second update
 
