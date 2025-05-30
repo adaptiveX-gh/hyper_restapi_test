@@ -1024,37 +1024,22 @@ app.get('/api/obImbalanceLive', async (req, res) => {
 //------------------------------------------------------------------
 //  GET /books/:symbol  – order-book snapshot proxy
 //------------------------------------------------------------------
+
 app.get('/books/:symbol', async (req, res) => {
-  const coinCore = req.params.symbol.replace(/-PERP$/i, '').toUpperCase(); // "BTC"
-  const depth    = Math.max(5, Math.min(+req.query.depth || 40, 200));     // 5 … 200
-  const MAX_RETRY = 3;
+  const raw    = req.params.symbol;       // e.g. "BTC-PERP"
+  const symbol = norm(raw);               // strip “-PERP”
+  const depth  = Math.max(5, Math.min(+req.query.depth || 20, 200));
 
-  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
-    try {
-      const { data } = await axios.post(
-        'https://api.hyperliquid.xyz/info',
-        { type: 'l2Book', coin: coinCore, depth },
-        { timeout: 4_000 }
-      );
-
-      if (!Array.isArray(data?.levels)) throw new Error('bad payload');
-
-      return res.json({
-        bids: data.levels[0].map(({ px, sz }) => [+px, +sz]),
-        asks: data.levels[1].map(({ px, sz }) => [+px, +sz])
-      });
-    } catch (err) {
-      /* 429 ⇒ short back-off and retry, everything else → break   */
-      if (err.response?.status === 429 && attempt < MAX_RETRY - 1) {
-        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-      console.error('books proxy:', err.message);
-      break;
-    }
+  try {
+    const { bids, asks } = await getL2Book(symbol, depth);
+    res.json({ bids, asks });
+  } catch (err) {
+    console.error('books proxy error', err);
+    res.status(502).json({ error: err.message || 'Upstream unavailable' });
   }
-  res.status(502).json({ error: 'Upstream unavailable' });
 });
+
+
 
 // 2. rolling 30-day median liquidity ------------------------------------
 app.get('/api/liquidity-median/:symbol', async (req, res) => {
