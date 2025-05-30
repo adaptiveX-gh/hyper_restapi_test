@@ -72,7 +72,7 @@ function stopFlowStream() {
   console.log('⏹ Flow stream stopped');
 }
 
-function retry(fn, { max = 4, delay = 300 } = {}) {
+function retry(fn, { max = 6, delay = 300 } = {}) {
   return (async () => {
     let err;
     for (let i = 0; i < max; i++) {
@@ -177,30 +177,67 @@ app.post('/stopFlow',  (_,res) => { stopFlowStream();  res.json({status:'stopped
 /*───────────────────────────────────────────────────────────────*
  *  Symbol normaliser & L2 snapshot                            *
  *───────────────────────────────────────────────────────────────*/
+// Symbol normaliser & L2 snapshot with 429→cache fallback
 const norm = s => s.replace(/-PERP$/i,'').toUpperCase();
 const bookCache = new Map();
-async function getL2Book(raw, depth=50) {
-  const coin = norm(raw), key=`${coin}:${depth}`, now=Date.now();
-  const hit = bookCache.get(key);
-  const sdk = await getSdk();
-  if (hit && now - hit.t < 250) return hit.data;
-  const snap = await depthLimit(async () => {
-    if (typeof sdk.info?.getL2Book === 'function') {
-      try { return sdk.info.getL2Book.length===1 
-        ? await sdk.info.getL2Book({market:coin,depth})
-        : await sdk.info.getL2Book(coin,depth);
-      } catch {}
+
+async function getL2Book(raw, depth = 50) {
+  const coin = norm(raw);
+  const key  = `${coin}:${depth}`;
+  const now  = Date.now();
+  const hit  = bookCache.get(key);
+  const sdk  = await getSdk();
+
+  // 1) If we fetched this very recently, return the cache
+  if (hit && now - hit.t < 250) {
+    return hit.data;
+  }
+
+  // 2) Otherwise attempt to fetch fresh — on 429, fall back to cache
+  let snap;
+  try {
+    snap = await depthLimit(async () => {
+      // a) SDK-native L2Book if available
+      if (typeof sdk.info?.getL2Book === 'function') {
+        try {
+          return sdk.info.getL2Book.length === 1
+            ? await sdk.info.getL2Book({ market: coin, depth })
+            : await sdk.info.getL2Book(coin, depth);
+        } catch {}
+      }
+      // b) alternate SDK path
+      if (sdk.info?.orderbook?.getL2Book) {
+        try {
+          return await sdk.info.orderbook.getL2Book({ market: coin, depth });
+        } catch {}
+      }
+      // c) HTTP fallback via axios-post
+      const { data } = await retry(() =>
+        axios.post(
+          'https://api.hyperliquid.xyz/info',
+          { type: 'l2Book', coin, depth },
+          { timeout: 5_000 }
+        )
+      );
+      // normalize into [ [px,sz], … ]
+      const toPair = ({ px, sz }) => [+px, +sz];
+      return {
+        bids: data.levels[0].map(toPair),
+        asks: data.levels[1].map(toPair)
+      };
+    });
+  } catch (err) {
+    // if we got rate-limited and have a cached snapshot, use that
+    if (err.response?.status === 429 && hit) {
+      console.warn(`[getL2Book] rate-limited, returning cached book for ${coin}`);
+      return hit.data;
     }
-    if (sdk.info?.orderbook?.getL2Book) {
-      try { return await sdk.info.orderbook.getL2Book({market:coin,depth}); } catch {}
-    }
-    const { data } = await retry(() => axios.post(
-      'https://api.hyperliquid.xyz/info', {type:'l2Book',coin,depth}, {timeout:5_000}
-    ));
-    const toPair = ({px,sz}) => [+px,+sz];
-    return { bids:data.levels[0].map(toPair), asks:data.levels[1].map(toPair) };
-  });
-  bookCache.set(key,{t:now,data:snap});
+    // otherwise bubble the error
+    throw err;
+  }
+
+  // 3) store fresh snapshot & return
+  bookCache.set(key, { t: now, data: snap });
   return snap;
 }
 
@@ -291,16 +328,15 @@ function connectWs (attempt = 0) {
       console.log('[trades] batch', tradesArr.length);
 
       tradesArr.forEach(t => {
-        const notional = Math.abs(+t.sz) * +t.px;        // sz * price
-        if (notional < 50000) return;                        // spam guard (0 → emit all)
+        const notional = Math.abs(+t.sz) * +t.px;
+        if (notional < 50000) return;   // spam guard
 
-        /* snapshot book just BEFORE the trade */
+        // snapshot book just BEFORE the trade
         const pre = {
-          bids: structuredClone(liveBook.bids),
-          asks: structuredClone(liveBook.asks)
+          bids:  structuredClone(liveBook.bids),
+          asks:  structuredClone(liveBook.asks)
         };
 
-        /* after 100 ms take another snapshot and diff what was eaten */
         setTimeout(() => {
           const post = {
             bids: structuredClone(liveBook.bids),
@@ -308,25 +344,40 @@ function connectWs (attempt = 0) {
           };
 
           const { bidEaten, askEaten } = depthDiff(pre, post);
-
-          const flag     = bidEaten + askEaten > 0 ? 'absorption' : 'exhaustion';
+          const flag = bidEaten + askEaten > 0 ? 'absorption' : 'exhaustion';
           const SIDE_MAP = { A: 'buy', B: 'sell', S: 'sell' };
           const sideTxt  = SIDE_MAP[t.side] || t.side;
 
+          // ─── ICEBERG DETECTION ─────────────────────────────────────
+          // find how much was sitting visibly at that exact price
+          let visibleDepthUsd = 0;
+          if (flag === 'absorption') {
+            // buyer eats into asks, seller into bids
+            const sideArr = sideTxt === 'buy' ? pre.asks : pre.bids;
+            const lvl = sideArr.find(([px]) => +px === +t.px);
+            if (lvl) visibleDepthUsd = lvl[1] * +t.px;
+          }
+          // if the trade notional exceeds the visible depth → hidden liquidity!
+          const isIceberg = flag === 'absorption' && notional > visibleDepthUsd;
+          // ─────────────────────────────────────────────────────────────
+
           const json = JSON.stringify({
-            ts   : Date.now(),
-            coin : COIN + '-PERP',
-            type : flag,
-            side : sideTxt,
+            ts:        Date.now(),
+            coin:      COIN + '-PERP',
+            type:      flag,
+            side:      sideTxt,
             notional,
-            price: +t.px,
+            price:     +t.px,
             bidEaten,
-            askEaten
+            askEaten,
+
+            // ← these two fields are new
+            iceberg:        isIceberg,
+            visibleDepth:   visibleDepthUsd
           });
 
-          /* fan out to all SSE listeners */
           flowBus.write(json + '\n\n');
-          console.log('[flowBus] wrote →', json.slice(0, 120));
+          console.log('[flowBus] wrote →', json.slice(0,120));
         }, 100);
       });
 
