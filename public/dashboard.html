@@ -766,7 +766,6 @@ if (!obiSSE._lastDepthTs) {
   flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
 
   flowSSE.onmessage = e => {
-    let bullMeter, bearMeter;
 
     // ignore heartbeats
     if (e.data.trim().endsWith('heartbeat')) return;
@@ -867,38 +866,6 @@ if (!obiSSE._lastDepthTs) {
     if (cHit !== 0)          cfCount.confirm++;
     if (fHit !== 0)          cfCount.fake++;
 
-    // ─── throttled redraw (~4×/sec) ───────────────────────
-    if (now - (flowSSE.lastUpd || 0) > 300) {
-      flowSSE.lastUpd = now;
-
-      const c = avg(buf.c),
-            w = avg(buf.w),
-            s = avg(buf.s),
-            f = avg(buf.f),
-            liq = parseFloat($('liqVal').textContent.replace(/[$,]/g, '')) || 0,
-            lar = lastLaR,
-            composite = (() => {
-              const raw = [c, w, s, f, lar / FULL_SCALE_LAR, avg(buf.r), avg(buf.shock), momVal];
-              const norm = raw.map((v,i) =>
-                [0,1,2,3,5,6].includes(i)
-                  ? (Math.max(0, Math.min(1, (v+1)/2)))
-                  : (Math.max(0, Math.min(1, v)))
-              );
-              return norm.reduce((a,b)=>a+b,0)/norm.length * 100;
-            })();
-
-      // update gauges + statuses
-      updC(c); setGaugeStatus('statusConfirm', c);
-      updW(w); setGaugeStatus('statusWarn',   w);
-      updS(s); setGaugeStatus('statusSqueeze', s);
-      updF(f); setGaugeStatus('statusFake',    f);
-
-      setHtml('biasRoll', biasVal.toFixed(2));
-      setHtml('biasRollTxt',
-        biasVal > 0 ? 'Bullish'
-      : biasVal < 0 ? 'Bearish'
-      :               'Flat'
-      );
 
       // … inside flowSSE.onmessage, after you calculate c, w, s, f, avg(buf.r), avg(buf.shock), momVal …
 
@@ -951,6 +918,20 @@ if (!obiSSE._lastDepthTs) {
         // … any of your other chart/table updates (absChart, cfChart, refreshLine, etc.) …
       }
 
+      // update gauges + statuses
+      updC(c); setGaugeStatus('statusConfirm', c);
+      updW(w); setGaugeStatus('statusWarn',   w);
+      updS(s); setGaugeStatus('statusSqueeze', s);
+      updF(f); setGaugeStatus('statusFake',    f);
+
+      setHtml('biasRoll', biasVal.toFixed(2));
+      setHtml('biasRollTxt',
+        biasVal > 0 ? 'Bullish'
+      : biasVal < 0 ? 'Bearish'
+      :               'Flat'
+      );
+
+
 
       refreshLine();
 
@@ -979,7 +960,7 @@ if (!obiSSE._lastDepthTs) {
   });
   fetch24h();
   $('ticker-inner').textContent=`Streaming ${$('obi-coin').value} …`;
-}
+} // <-- This closes the async function start()
 
 function stop(){
   running=false;
