@@ -361,7 +361,7 @@
       });
     }
 
-    bullMeter = Highcharts.chart('bullMeter', {
+    const bullMeter = Highcharts.chart('bullMeter', {
       chart: { inverted: true, marginLeft: 20, type: 'bullet' },
       title: { text: 'Bull Spectrum' },
       xAxis: {
@@ -380,7 +380,7 @@
       credits: { enabled:false }
     });
 
-    bearMeter = Highcharts.chart('bearMeter', {
+    const bearMeter = Highcharts.chart('bearMeter', {
       chart: { inverted: true, marginLeft: 20, type: 'bullet' },
       title: { text: 'Bear Spectrum' },
       xAxis: {
@@ -900,49 +900,56 @@ if (!obiSSE._lastDepthTs) {
       :               'Flat'
       );
 
-      // ─────────────────────────────────────────────────────────────────────
-      // 1) Build your raw metrics array just once
-      //    [confirm, early-warn, squeeze, fake-out, LaR, resilience, shock, mom]
-      const raw = [
-        avg(buf.c),
-        avg(buf.w),
-        avg(buf.s),
-        avg(buf.f),
-        lastLaR / FULL_SCALE_LAR,
-        avg(buf.r),
-        avg(buf.shock),
-        momVal
-      ];
+      // … inside flowSSE.onmessage, after you calculate c, w, s, f, avg(buf.r), avg(buf.shock), momVal …
 
-      // ─────────────────────────────────────────────────────────────────────
-      // 2) (Optional) compute a single “compositeValue” if you still need it
-      const normalized = raw.map((v,i) =>
-        // for the first 4 and items 5 & 6, shift from [–1…+1] → [0…1]
-        [0,1,2,3,5,6].includes(i)
-          ? Math.max(0, Math.min(1, (v + 1) / 2))
-          : Math.max(0, Math.min(1, v))      // for LaR & mom (already [0…1])
-      );
-      const compositeValue = normalized.reduce((sum,x) => sum + x, 0)
+      if (now - (flowSSE.lastUpd || 0) > 300) {
+        flowSSE.lastUpd = now;
+
+        // 1) Build your raw metrics array
+        //    [confirm, warn, squeeze, fake, LaR, resilience, shock, momentum]
+        const raw = [
+          avg(buf.c),
+          avg(buf.w),
+          avg(buf.s),
+          avg(buf.f),
+          lastLaR / FULL_SCALE_LAR,
+          avg(buf.r),
+          avg(buf.shock),
+          momVal
+        ];
+
+        // 2) (Optional) compute a single composite 0–100 if you still want it
+        const normalized = raw.map((v,i) =>
+          // for indices 0–3,5,6 we remap [–1…+1] → [0…1],
+          // for the others we already expect them in [0…1].
+          [0,1,2,3,5,6].includes(i)
+            ? Math.max(0, Math.min(1, (v + 1) / 2))
+            : Math.max(0, Math.min(1, v))
+        );
+        const compositeValue = normalized.reduce((sum, x) => sum + x, 0)
                               / normalized.length * 100;
+        // … if you had a spectrum gauge, you'd update it here …
 
-      // ─────────────────────────────────────────────────────────────────────
-      // 3) Now split that same raw array into Bull vs Bear composites
-      //    Bull takes only the positive side of each metric; Bear takes the negative
-      const bullComposite = raw
-        .map(v => Math.max(0, v))    // throw away all negatives
-        .reduce((sum,x) => sum + x, 0)
-        / raw.length * 100;
+        // 3) Split raw into bull vs bear composites
+        //    – Bull only counts positive contributions
+        //    – Bear only counts negative contributions (flipped to positive)
+        const bullComposite = raw
+          .map(v => Math.max(0, v))
+          .reduce((sum, x) => sum + x, 0)
+          / raw.length * 100;
 
-      const bearComposite = raw
-        .map(v => Math.max(0, -v))   // throw away all positives, invert negatives
-        .reduce((sum,x) => sum + x, 0)
-        / raw.length * 100;
+        const bearComposite = raw
+          .map(v => Math.max(0, -v))
+          .reduce((sum, x) => sum + x, 0)
+          / raw.length * 100;
 
-      // ─────────────────────────────────────────────────────────────────────
-      // 4) Push the new values into your two bullet charts
-      //    redraw both at once so they animate together
-      bullMeter.series[0].points[0].update(bullComposite, false);
-      bearMeter.series[0].points[0].update(bearComposite, true);
+        // 4) Update the two bullet charts
+        //    first argument is the new y-value, second is whether to redraw immediately
+        bullMeter.series[0].points[0].update(bullComposite, /* redraw = */ false);
+        bearMeter.series[0].points[0].update(bearComposite, /* redraw = */ true);
+
+        // … any of your other chart/table updates (absChart, cfChart, refreshLine, etc.) …
+      }
 
 
       refreshLine();
