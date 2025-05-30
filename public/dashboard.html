@@ -287,8 +287,12 @@
       absCount = { buy:0, sell:0 }
     }
 
-    const FULL_SCALE_LAR = 5e5;        // 500 k – pick any max you want
-    const SAFE = v => (Number.isFinite(v) ? v : 0);   // helper
+    const FULL_SCALE_LAR   = 5e5;   // already there
+    const FULL_SCALE_SLOPE = 1e8;   // new – tune for your order-book
+    const SAFE = v => Number.isFinite(v) ? v : 0;
+
+
+
 
     const S_HI          = 1.8,
           S_LO          = 0.55,
@@ -686,9 +690,9 @@ if (!obiSSE._lastDepthTs) {
   obiSSE._lastDepth   = totalDepth;
   obiSSE._lastDepthTs = d.ts;
 
-  const rawSlope = dt>0 ? (totalDepth - prev) / dt : 0;
-  
+  const rawSlope  = dt ? (totalDepth - prev) / dt : 0;   // avoid 0/0
   const normSlope = Math.max(-1, Math.min(1, rawSlope / FULL_SCALE_SLOPE));
+
 
   buf.r.push(normSlope);
   if (buf.r.length>WINDOW) buf.r.shift();
@@ -915,15 +919,9 @@ if (!obiSSE._lastDepthTs) {
     const bullVal = Math.min(100, SAFE(bullComposite));
     const bearVal = Math.min(100, SAFE(bearComposite));
 
-    bullMeter.series[0].setData([{
-      y: bullVal,        // new “measure”
-      target: 75               // (or whatever live target you want)
-    }], false);                // don't redraw yet
+    bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
+    bearMeter.series[0].setData([{ y: bearVal, target: 75 }],  true);
 
-    bearMeter.series[0].setData([{
-      y: bullVal,
-      target: 75
-    }], true);                 // redraw after the second update
 
     /* 6-e)  donuts & grid ---------------------------------------- */
     absChart.series[0].setData([
