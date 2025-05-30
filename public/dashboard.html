@@ -915,12 +915,13 @@ if (!obiSSE._lastDepthTs) {
     const bearComposite = raw.reduce((sum, v) => sum + Math.max(0, -v), 0) /
                           raw.length * 100;
 
-    // clamp to [0-100] so you never pass >100 (or NaN) to the chart
-    const bullVal = Math.min(100, SAFE(bullComposite));
-    const bearVal = Math.min(100, SAFE(bearComposite));
+    const clamp01 = v => Math.max(0, Math.min(100, v|0));   // int 0-100
+    const bullVal = clamp01(bullComposite);
+    const bearVal = clamp01(bearComposite);
 
-    bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
-    bearMeter.series[0].setData([{ y: bearVal, target: 75 }],  true);
+    // AFTER   ─ keep the series, move the single point in place
+    bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
+    bearMeter.series[0].points[0].update({ y: bearVal, target: 75 },  true);
 
 
     /* 6-e)  donuts & grid ---------------------------------------- */
