@@ -971,6 +971,11 @@ obiSSE.onmessage = async (e) => {
           : 0;
       pushBuf(buf.f, fake);
 
+       // ── count confirmations (big absorptions that AREN'T fake) ──
+       if (t.notional >= P.FALSE_ABS && fake === 0) {
+           cfCount.confirm++;
+       }
+
       if (t.notional >= P.FALSE_ABS) lastHeavy = true;
     }
 
@@ -1063,7 +1068,7 @@ obiSSE.onmessage = async (e) => {
     absChart.series[0].setData([
       { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
       { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
-    ], false);
+    ], true);
 
     cfChart.series[0].setData([
       { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
