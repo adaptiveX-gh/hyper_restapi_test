@@ -60,6 +60,7 @@
       margin-bottom: 30px;     /* add space after meters */
     }
     .spectrum-meter {
+      position: relative;
       flex: 1 1 0;
       min-width: 280px;        /* to avoid squishing */
       height: 100px;
@@ -77,6 +78,21 @@
     letter-spacing: .13em;
     color: #235;
   }    
+.spectrum-regime-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px; /* Adjust distance from bottom as needed */
+  text-align: center;
+  font-size: 1.04rem;
+  font-weight: bold;
+  color: #235;
+  letter-spacing: .12em;
+  pointer-events: none; /* So overlay doesn't block interaction */
+  z-index: 5;
+  /* background fade for contrast */
+  background: rgba(255,255,255,0.7); border-radius: 7px;
+}  
 
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
@@ -202,14 +218,14 @@
           </div>
         </div>
       </div>
-    <div class="obi-spectrum-row">
-      <div id="bullMeter" class="spectrum-meter"></div>
-      <div id="bearMeter" class="spectrum-meter"></div>
-
-      <!-- INSIDE .obi-spectrum-row, after bull/bear meters -->
-      <div id="bullRegime" class="spectrum-regime"></div>
-      <div id="bearRegime" class="spectrum-regime"></div>    
-    </div>
+      <div class="spectrum-meter">
+        <div id="bullMeter"></div>
+        <div id="bullRegime" class="spectrum-regime-overlay"></div>
+      </div>
+      <div class="spectrum-meter">
+        <div id="bearMeter"></div>
+        <div id="bearRegime" class="spectrum-regime-overlay"></div>
+      </div>
 
       <!-- SOLID-GAUGES -->
       <div class="obi-gauges-row">
