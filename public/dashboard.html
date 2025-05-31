@@ -112,6 +112,16 @@
     #flowGrid .hc-pagination,#flowGrid .hc-gridinfo{color:#293d49!important}
     .bullish-color { color:#17c964; font-weight:600; }  /* green */
     .bearish-color { color:#ff4d4d; font-weight:600; }  /* red   */
+    /* ─── SMALL HELP ICON ─────────────────────────────────────────────── */
+    .info-icon{
+      font-weight:900;
+      color:#888;
+      cursor:default;            /* mouse-over shows native tooltip */
+      margin-left:4px;
+      line-height:0;
+    }
+    .info-icon:hover{ color:#000; }
+
  
   </style>
 </head>
@@ -257,7 +267,7 @@
           <div class="obi-gauge-status" id="statusFake">Flat</div>
         </div>
 
-        <div class="obi-gauge-col">
+<!--        <div class="obi-gauge-col">
           <div id="gLaR"></div>
           <div class="obi-gauge-label">LaR (5 min)</div>
           <div class="obi-gauge-status" id="statusLaR">Flat</div>
@@ -279,7 +289,7 @@
         <div id="gMom"></div>
         <div class="obi-gauge-label">Momentum-Ignition</div>
         <div class="obi-gauge-status" id="statusMom">Flat</div>
-      </div>        
+      </div>        -->
 
       </div>
       <!-- BOOK BIAS + DONUTS -->
@@ -360,6 +370,12 @@
     const SAFE = v => (Number.isFinite(v) ? v : 0);
 
     let lastAdaptive = 0;
+
+    
+    // Adaptive liquidity thresholds – will be filled in refreshAdaptive()
+    let LIQ_THIN  = 0;
+    let LIQ_THICK = 0;
+
     function refreshAdaptive () {
     if (Date.now() - lastAdaptive < 1000) return;  // debounce 1 s
     lastAdaptive = Date.now();
@@ -374,6 +390,12 @@
     P.FALSE_NEUTRAL    = Math.max(minCool, 3000/Math.max(printRate,1));
     P.MOM_COUNT_THRESH = Math.max(5, Math.round((2 * printStd) / 10_000));
     P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStd);
+
+    /* ── NEW: compute depth thresholds for Thin / Thick ── */
+    const medDepth = SAFE(depthStats.median(), 5e7);   // fallback 50 M
+    LIQ_THIN  = medDepth - 0.5 * depthStd;             // below ⇒ “Thin”
+    LIQ_THICK = medDepth + 1.0 * depthStd;             // above ⇒ “Thick”
+
   }
 
     function adaptiveThresholds () {
@@ -738,6 +760,13 @@ function regimeDetails(value) {
     Grid.grid('flowGrid',{
       dataTable : { columns: cols },
 
+    /* makes all numeric columns right-aligned unless
+       a column overrides it with its own className      */
+    columnDefaults : {
+      cells : { className:'hcg-right' },
+      header: { className:'hcg-center' }   /* centre header text */
+    },      
+
       /* Default: right-align numbers, no arrows */
       columnDefaults : {
         cells : { className:'hcg-right' }
@@ -756,13 +785,17 @@ function regimeDetails(value) {
         { id:'price', header:{ format:'Price' } },
         { id:'time',  header:{ format:'Time'  } },
 
-        /* ─── Bias column with conditional coloring ─── */
+        /* ─── Bias column with info tooltip & colour coding ─── */
         { id:'bias',
-          header:{ format:'Bias' },
-          cells : {
+          header : {
+            /* native browser tooltip via title attribute */
+            format : 'Bias<span class="info-icon" title="Rolling net absorption score (–1 = ask-dominated, +1 = bid-dominated) at the instant this flow hit the tape.">ℹ️</span>'
+          },
+          cells  : {
             className : '{#if (gt value 0)}bullish-color{else if (lt value 0)}bearish-color{/if}',
             format    : '{value:.2f}'
-          }
+          },
+          width : 65                      /* keeps the column compact */
         }
       ],
       height : 300,
@@ -895,9 +928,14 @@ obiSSE.onmessage = async (e) => {
   depthStats.push(totalDepthSnap);
 
   setHtml('liqVal', fmtUsd(totalDepthSnap));
-  const thickBook = totalDepthSnap > 1e8;
-  setHtml('liqTxt', thickBook ? 'Thick' : 'Balanced');
-  dot('liqDot', thickBook ? 'green' : 'yellow');
+  
+  /* ── NEW: 3-state classification ─────────────────────── */
+  let liqState = 'Normal', colour = 'yellow';
+  if (totalDepthSnap < LIQ_THIN)  { liqState = 'Thin';  colour = 'red';   }
+  if (totalDepthSnap > LIQ_THICK) { liqState = 'Thick'; colour = 'green'; }
+
+  setHtml('liqTxt', liqState);
+  dot('liqDot', colour);
 
   /* 4.  Book Resilience – slope of depth change */
   if (!obiSSE._lastDepthTs) {
@@ -1177,6 +1215,10 @@ $('toggle-advanced').onclick = function(){
   this.textContent = '⚙ Advanced '+(open?'▾':'▴');
 };
 $('min-notional').onchange = e=> P.MIN_NOTIONAL=+e.target.value;
+$('liqTxt').title = () =>
+  `Thin  <  ${fmtUsd(LIQ_THIN)}\n` +
+  `Normal between\n` +
+  `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
 // AUTO-START
 ensureLine();
