@@ -526,7 +526,7 @@ function regimeDetails(value) {
         type:     t.type,
         price:    t.price.toFixed(0),
         time:     new Date(t.ts).toLocaleTimeString('en-US',{hour12:false}),
-        bias:     avg(buf.c)      // already between -1 and +1
+        bias:     ema(buf.c)
       });
       if(flowData.length>1000) flowData.pop();
       renderFlowGrid();
@@ -815,11 +815,11 @@ obiSSE.onmessage = async (e) => {
         for (let i=start;i<a.length;i++){ s += a[i]; n++; }
         return n ? s/n : 0;
         };
-    const c = fastAvg(buf.c),
+    const c = fastAvg(buf.c)}
     
-    w = avg(buf.w), 
-    s = avg(buf.s), 
-    f = avg(buf.f);
+    const w = ema(buf.w),  s = ema(buf.s),  f = ema(buf.f);
+    
+    
     
 
     updC(c); setGaugeStatus('statusConfirm',  c);
@@ -828,7 +828,7 @@ obiSSE.onmessage = async (e) => {
     updF(f); setGaugeStatus('statusFake',     f);
 
     /* 6-b) Line-chart point                                                */
-    const biasVal = avg(buf.c.concat(buf.w).slice(-P.WINDOW));
+    const biasVal = ema(buf.c.concat(buf.w).slice(-P.WINDOW));
     pushBuf(buf.bias, [now, biasVal]);
     setHtml('biasRoll', biasVal.toFixed(2));
     setHtml('biasRollTxt', biasVal > 0 ? 'Bullish' : biasVal < 0 ? 'Bearish' : 'Flat');
