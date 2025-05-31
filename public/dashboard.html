@@ -94,7 +94,7 @@
     background: rgba(255,255,255,0.7); border-radius: 7px;
     
   }  
-
+    .hidden { display:none !important; }
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
     .obi-block{background:#fff;padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
@@ -267,29 +267,29 @@
           <div class="obi-gauge-status" id="statusFake">Flat</div>
         </div>
 
-<!--        <div class="obi-gauge-col">
+        <div class="obi-gauge-col hidden">
           <div id="gLaR"></div>
           <div class="obi-gauge-label">LaR (5 min)</div>
           <div class="obi-gauge-status" id="statusLaR">Flat</div>
         </div>
 
-        <div class="obi-gauge-col">
+        <div class="obi-gauge-col hidden">
           <div id="gRes"></div>
           <div class="obi-gauge-label">Resilience</div>
           <div class="obi-gauge-status" id="statusRes">Flat</div>
         </div>
 
-        <div class="obi-gauge-col">
+        <div class="obi-gauge-col hidden">
           <div id="gShock"></div>
           <div class="obi-gauge-label">Multi-Lvl Shock</div>
           <div class="obi-gauge-status" id="statusShock">Flat</div>
         </div>
 
-      <div class="obi-gauge-col">
+      <div class="obi-gauge-col hidden">
         <div id="gMom"></div>
         <div class="obi-gauge-label">Momentum-Ignition</div>
         <div class="obi-gauge-status" id="statusMom">Flat</div>
-      </div>        -->
+      </div>        
 
       </div>
       <!-- BOOK BIAS + DONUTS -->
@@ -849,33 +849,50 @@ function regimeDetails(value) {
     // ─────────────────────────────────────────────────────────────────────
     // FETCH 24h & COIN META
     // ─────────────────────────────────────────────────────────────────────
-    async function fetch24h(){
-      const coin = $('obi-coin').value;
+    /******************************************************************
+     * Fetch Hyperliquid meta (24 h volume, OI, funding) and display
+     * it in the headline bar once at start-up and then every 30 s.
+     ******************************************************************/
+    async function fetchMarketStats() {
+      const coin = $('obi-coin').value.replace('-PERP', '');   // e.g. “BTC”
       try {
-        const r = await fetch(`/api/24hMetrics?coin=${coin}`);
-        if(!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = await r.json();
-        setHtml('sq24h', j.volume24h!=null ? `$${(j.volume24h/1e6).toFixed(1)}M` : 'N/A');
-        setHtml('abs24h', j.openInterest!=null ? `$${(j.openInterest/1e6).toFixed(1)}M` : 'N/A');
-      } catch(err){
-        console.warn('fetch24h failed', err);
-        setHtml('sq24h','N/A'); setHtml('abs24h','N/A');
-      }
-    }
-    async function fetchCoinMeta(){
-      try {
-        const r = await fetch(`/api/coinData?coin=${$('obi-coin').value}`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = await r.json();
-        /* … update your OI / funding gauges … */
-      } catch(err){
-        console.warn('fetchCoinMeta failed:', err);
-        // fallback to showing N/A
-        setHtml('oiVal', 'N/A'); dot('oiDot','yellow');
-        setHtml('fundVal', 'N/A'); dot('fundDot','yellow');
+        const res = await fetch('https://api.hyperliquid.xyz/info', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ type: 'perpetuals' })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Each element is { symbol, volume24h, openInterest, fundingRate8h, … }
+        const ctx = data.perpetuals.find(p => p.symbol === coin);
+        if (!ctx) throw new Error(`${coin} not found in response`);
+
+        /* 24 h volume */
+        setHtml('sq24h', `$${(ctx.volume24h / 1e6).toFixed(1)}M`);
+
+        /* open interest */
+        setHtml('oiVal',  `$${(ctx.openInterest / 1e6).toFixed(1)}M`);
+        dot('oiDot', 'green');         // always green, just a stat
+
+        /* funding – convert to %, colour by sign */
+        const fPct = (ctx.fundingRate8h * 100).toFixed(3) + '%';
+        setHtml('fundVal', fPct);
+        dot('fundDot',
+            ctx.fundingRate8h >  0 ? 'green' :
+            ctx.fundingRate8h <  0 ? 'red'   : 'yellow');
+
+      } catch (err) {
+        console.warn('fetchMarketStats failed:', err);
+        setHtml('sq24h','N/A');
+        setHtml('oiVal','N/A');   dot('oiDot','yellow');
+        setHtml('fundVal','N/A'); dot('fundDot','yellow');
       }
     }
 
+    /* run immediately and then every 30 s */
+    fetchMarketStats();
+    setInterval(fetchMarketStats, 30_000);
 
     // ─────────────────────────────────────────────────────────────────────
     // STREAM START / STOP
