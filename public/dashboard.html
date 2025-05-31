@@ -374,50 +374,35 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 * 2.  A tiny factory that returns a nice-looking horizontal gauge
 *************************************************************************/
 function makeProgress(containerID, titleText) {
-
   return Highcharts.chart(containerID, {
-
-    chart  : { type: 'bar', height: 80, spacing: [0, 10, 0, 10],
-               backgroundColor: 'transparent' },
-
-    title  : { text: `<b>${titleText}</b>`, align: 'center', y: 10,
-               style: { fontSize: '15px', textTransform: 'uppercase' } },
-
+    chart  : { type: 'bar', height: 80, spacing: [0, 10, 0, 10], backgroundColor: 'transparent' },
+    title  : { text: `<b>${titleText}</b>`, align: 'center', y: 10, style: { fontSize: '15px', textTransform: 'uppercase' } },
     xAxis  : { visible: false },
-
     yAxis  : {
       min: 0, max: 100, tickInterval: 25, gridLineWidth: 0, title: null,
-      plotBands: [{ from: 0, to: 100, color: '#e6e6e6' }],  // lighter gray
-      plotLines: [{               // the target at 75 %
-        value: 75, width: 2, color: '#555', zIndex: 3 }
-      ]
+      plotBands: [{ from: 0, to: 100, color: '#e6e6e6' }],
+      plotLines: [{ value: 75, width: 2, color: '#555', zIndex: 3 }]
     },
-
     legend : { enabled: false },
-
     tooltip: { enabled: false },
-
     plotOptions: {
       series: {
-        pointWidth: 30, // <--- thicken the bar!
-        color: progressColor, // Set to desired color
+        pointWidth: 30,
         borderRadius: 7,
         dataLabels: {
           enabled: true,
           inside: true,
-          align: 'left', // or 'center'
+          align: 'left',
           style: { color: '#fff', fontSize: '22px', fontWeight: 900, textOutline: '2px solid #333' },
           formatter() { return `${Math.round(this.y)} %`; }
         }
       }
     },
-
     credits : { enabled: false },
     exporting: { enabled: false },
-
     series : [{
-      data          : [0],        // single bar
-      color         : '#4dff88',  // will be overridden in updater
+      data          : [0],
+      color         : '#4dff88', // Will be overridden in runtime update
       showInLegend  : false
     }]
   });
