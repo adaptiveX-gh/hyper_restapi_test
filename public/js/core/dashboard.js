@@ -114,7 +114,10 @@
         SHOCK_SCALE: P.FULL_SCALE_SLOPE
       };
     }
-    P.WINDOW.adaptiveThresholds = adaptiveThresholds;
+    // expose helpers on the root P object instead
+    P.adaptiveThresholds = adaptiveThresholds;
+    P.startStreams       = start;
+    P.stopStreams        = stop;
 
     // ─── PARAMS & STATE ────────────────────────────────────────────────────
     
