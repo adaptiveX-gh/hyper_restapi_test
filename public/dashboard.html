@@ -52,6 +52,24 @@
     .obi-gauge-status.flat{color:#999}
     .obi-gauge-status.bear{color:#ff4d4d}
 
+    .obi-spectrum-row {
+      display: flex;
+      flex-direction: row;
+      gap: 40px;               /* adjust spacing as needed */
+      justify-content: flex-start; /* or center if you want */
+      margin-bottom: 30px;     /* add space after meters */
+    }
+    .spectrum-meter {
+      flex: 1 1 0;
+      min-width: 280px;        /* to avoid squishing */
+      height: 100px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 10px rgba(60,100,140,0.03);
+      padding: 14px 18px;
+    }      
+    
+
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
     .obi-block{background:#fff;padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
@@ -176,9 +194,10 @@
           </div>
         </div>
       </div>
-      <!-- 1⃣  Replace the two <div>s (keep the same ids) -->
-      <div id="bullMeter" style="width:45%; height:90px; display:inline-block;"></div>
-      <div id="bearMeter" style="width:45%; height:90px; display:inline-block; float:right;"></div>
+    <div class="obi-spectrum-row">
+      <div id="bullMeter" class="spectrum-meter"></div>
+      <div id="bearMeter" class="spectrum-meter"></div>
+    </div>
 
 
       <!-- SOLID-GAUGES -->
@@ -368,9 +387,7 @@ function makeProgress(containerID, titleText) {
 
     yAxis  : {
       min: 0, max: 100, tickInterval: 25, gridLineWidth: 0, title: null,
-      plotBands: [{               // grey “track”
-        from: 0, to: 100, color: '#f1f3f7'
-      }],
+      plotBands: [{ from: 0, to: 100, color: '#e6e6e6' }],  // lighter gray
       plotLines: [{               // the target at 75 %
         value: 75, width: 2, color: '#555', zIndex: 3 }
       ]
@@ -382,17 +399,14 @@ function makeProgress(containerID, titleText) {
 
     plotOptions: {
       series: {
-        cursor: 'default',
-        borderWidth: 0,
-        pointPadding: 0,
-        groupPadding: 0,
-        dataLabels: {              // the big number on the bar
+        pointWidth: 30, // <--- thicken the bar!
+        color: progressColor, // Set to desired color
+        borderRadius: 7,
+        dataLabels: {
           enabled: true,
-          inside : true,
-          align  : 'center',
-          verticalAlign: 'middle',
-          style  : { color: '#fff', fontSize: '16px',
-                     textOutline: 'none', fontWeight: 700 },
+          inside: true,
+          align: 'left', // or 'center'
+          style: { color: '#fff', fontSize: '22px', fontWeight: 900, textOutline: '2px solid #333' },
           formatter() { return `${Math.round(this.y)} %`; }
         }
       }
@@ -854,6 +868,13 @@ if (!obiSSE._lastDepthTs) {
 
   obiSSE.onerror = ()=> setHtml('obiRatio','--');
 
+  /*************************************************************************
+  * 3.  Create the two gauges once  (replaces your old bullet code)
+  *************************************************************************/
+  const bullGauge = makeProgress('bullMeter', 'BULL SPECTRUM');
+  const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
+
+
   // FLOW stream
   flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
 
@@ -862,27 +883,23 @@ if (!obiSSE._lastDepthTs) {
   // ──────────────────────────────────────────────────────────────
   flowSSE.onmessage = e => {
 
-    /* ─── 0. Skip heart-beats ─────────────────────────────────── */
+    /* 0. Skip heart-beats -------------------------------------------------- */
     if (e.data.trim().endsWith('heartbeat')) return;
 
-    /* ─── 1. Parse the trade/message object ───────────────────── */
+    /* 1. Parse trade / message object ------------------------------------- */
     let t;
     try { t = JSON.parse(e.data); } catch { return; }
 
-    /* ─── 2. Discard small prints ─────────────────────────────── */
+    /* 2. Discard small prints --------------------------------------------- */
     if (t.notional < MIN_NOTIONAL) return;
 
     const now = Date.now();
 
-    /* ────────────────────────────────────────────────────────────
-      3. Update all rolling buffers & scenario flags
-      ─────────────────────────────────────────────────────────── */
+    /* 3. Rolling buffers & scenario flags --------------------------------- */
     if (t.type === 'absorption') {
-      // 3-a) confirmation hit
       pushBuf(buf.c, t.side === 'buy' ? 1 : -1);
       lastNeutral = now;
 
-      // 3-b) possible fake-out hit
       const fake =
         t.notional >= FALSE_ABS &&
         now - lastNeutral >= FALSE_NEUTRAL
@@ -890,20 +907,16 @@ if (!obiSSE._lastDepthTs) {
           : 0;
       pushBuf(buf.f, fake);
 
-      // 3-c) remember heavy absorptions
       if (t.notional >= FALSE_ABS) lastHeavy = true;
     }
 
     if (t.type === 'exhaustion') {
-      // 3-d) remember last extreme to test for squeeze
       lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
 
-      // 3-e) early-warn hit (only after a heavy absorption)
       const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
       pushBuf(buf.w, warn);
-      lastHeavy = false;                        // consume the flag
+      lastHeavy = false;
 
-      // 3-f) squeeze hit (opposite side within S_STALE seconds)
       let sq = 0;
       const age = (now - lastExtreme.ts) / 1000;
       if (age <= S_STALE && lastExtreme.side) {
@@ -913,136 +926,59 @@ if (!obiSSE._lastDepthTs) {
       pushBuf(buf.s, sq);
     }
 
-    /* ─── 4. Momentum-ignition counter ─────────────────────────── */
+    /* 4. Momentum-ignition counter ---------------------------------------- */
     momTimes.push(now);
     while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) momTimes.shift();
     const momVal = momTimes.length > MOM_COUNT_THRESH
-      ? Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH)
-      : 0;
+        ? Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH)
+        : 0;
     updMom(momVal);
     setGaugeStatus('statusMom', momVal);
 
-    /* ─── 5. Donut counters & alert ticker ─────────────────────── */
-    if (t.type === 'absorption') absCount[t.side] ++;
+    /* 5. Donut counters & alert ticker ------------------------------------ */
+    if (t.type === 'absorption') absCount[t.side]++;
     if (t.type === 'absorption' && t.iceberg)
       pushTicker(`⛏️ Iceberg @ ${t.price.toFixed(0)} ($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
 
-    /* ─── 6. Throttle chart redraws (≈ 4 Hz) ───────────────────── */
+    /* 6. Throttle to ~4 Hz ------------------------------------------------- */
     if (now - (flowSSE.lastUpd || 0) < 300) return;
     flowSSE.lastUpd = now;
 
-    /* 6-a)  current averaged scenario scores */
-    const c = avg(buf.c);
-    const w = avg(buf.w);
-    const s = avg(buf.s);
-    const f = avg(buf.f);
+    /* 6-a) Scenario scores ------------------------------------------------- */
+    const c = avg(buf.c), w = avg(buf.w), s = avg(buf.s), f = avg(buf.f);
 
-    /* 6-b)  update the four solid gauges + status labels */
     updC(c); setGaugeStatus('statusConfirm',  c);
     updW(w); setGaugeStatus('statusWarn',     w);
     updS(s); setGaugeStatus('statusSqueeze',  s);
     updF(f); setGaugeStatus('statusFake',     f);
 
-    /* 6-c)  line chart point */
+    /* 6-b) Line-chart point                                                */
     const biasVal = avg(buf.c.concat(buf.w).slice(-WINDOW));
-    pushBuf(buf.bias, [ now, biasVal ]);
+    pushBuf(buf.bias, [now, biasVal]);
     setHtml('biasRoll', biasVal.toFixed(2));
-    setHtml('biasRollTxt',
-            biasVal >  0 ? 'Bullish' :
-            biasVal <  0 ? 'Bearish' : 'Flat');
+    setHtml('biasRollTxt', biasVal > 0 ? 'Bullish' : biasVal < 0 ? 'Bearish' : 'Flat');
     refreshLine();
 
-    /* 6-d)  bull / bear composites for the two bullet charts */
+    /* 6-c) Bull / bear composites ----------------------------------------- */
+    const raw = [
+      SAFE(c), SAFE(w), SAFE(s), SAFE(f),
+      SAFE(lastLaR), SAFE(avg(buf.r)),
+      SAFE(avg(buf.shock)), SAFE(momVal)
+    ];
 
+    const bullVal = pct(raw.reduce((s,v)=>s + Math.max(0,  v), 0) / raw.length * 100);
+    const bearVal = pct(raw.reduce((s,v)=>s + Math.max(0, -v), 0) / raw.length * 100);
 
-    const fixArray = arr => arr.map(v => Number.isFinite(v) ? v : 0);
-    const raw = fixArray([
-      SAFE(c),
-      SAFE(w),
-      SAFE(s),
-      SAFE(f),
-      SAFE(lastLaR),
-      SAFE(avg(buf.r)),
-      SAFE(avg(buf.shock)),
-      SAFE(momVal)
-    ]);
+    /* 6-d) Update the two progress bars ----------------------------------- */
+    const tint = (base, pct) =>
+        Highcharts.color(base).brighten(-pct/150).get();
 
-    raw.forEach((v, i) => {
-      if (!Number.isFinite(v)) console.warn('raw['+i+'] is invalid:', v);
-    });
+    bullGauge.series[0].points[0].update(
+      { y: bullVal, color: tint('#4dff88', bullVal) }, false);
+    bearGauge.series[0].points[0].update(
+      { y: bearVal, color: tint('#ff4d4d', bearVal) }, true);
 
-    // 2) derive the two composites
-    const bullComposite = raw.reduce((sum, v) => sum + Math.max(0,  v), 0) /
-                          raw.length * 100;
-    const bearComposite = raw.reduce((sum, v) => sum + Math.max(0, -v), 0) /
-                          raw.length * 100;
-
-    const clamp01 = v => {
-      if (!Number.isFinite(v)) return 0;
-      return Math.max(0, Math.min(100, v));
-    };
-
-    for (let i = 0; i < raw.length; i++) {
-      if (!Number.isFinite(raw[i])) {
-        console.warn(`raw[${i}] is invalid:`, raw[i]);
-        raw[i] = 0; // sanitize inline
-      }
-    }    
-    const bullVal = SAFE(bullComposite, 0);
-    const bearVal = SAFE(bearComposite, 0);  
-
-    /*************************************************************************
-    * 3.  Create the two gauges once  (replaces your old bullet code)
-    *************************************************************************/
-    const bullGauge = makeProgress('bullMeter', 'BULL SPECTRUM');
-    const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
-
-    /*************************************************************************
-    * 4.  In your stream-update section replace *only* the old bullet update
-    *************************************************************************/
-    // after you have calculated `bullVal` and `bearVal` (0-100)
-    /* colour logic: greener the more bullish, redder the more bearish */
-    const bullColour = Highcharts.color('#4dff88')
-                        .tweenTo(Highcharts.color('#d4fbe1'), 1 - bullVal/100);
-                        
-    const bearColour = Highcharts.color('#ff4d4d')
-                        .tweenTo(Highcharts.color('#fbd6d6'), 1 - bearVal / 100);
-                        
-
-    bullGauge.series[0].points[0].update({
-      y     : pct(bullVal),
-      color : bullColour
-    }, false);                                      // defer redraw
-
-    bearGauge.series[0].points[0].update({
-      y     : pct(bearVal),
-      color : bearColour
-    }, true);                                       // now redraw    
-    
-    console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
-    console.log("== Composite Inputs ==");
-    console.log("raw =", raw);
-    console.log("bullComposite =", bullComposite);
-    console.log("bearComposite =", bearComposite);
-    console.log("bullVal =", bullVal);
-    console.log("bearVal =", bearVal);
-
-    if (!Number.isFinite(bullVal)) {
-      console.error('❌ bullVal is NaN or invalid:', bullVal);
-    }
-    if (!Number.isFinite(bearVal)) {
-      console.error('❌ bearVal is NaN or invalid:', bearVal);
-    }
-
-    const datapoint = y => ({ y: SAFE(y), target: 75 }); // bullet expects an object
-    /* 5⃣  Your update code – replace only this part ---------------------- */
-    // after you have computed bullVal / bearVal (clamped 0-100):
-    bullMeter.series[0].points[0].update(N(bullVal), false);
-    bearMeter.series[0].points[0].update(N(bearVal),  true);
-    /* -------------------------------------------------------------------- */
-
-
-    /* 6-e)  donuts & grid ---------------------------------------- */
+    /* 6-e)  Donuts & grid -------------------------------------------------- */
     absChart.series[0].setData([
       { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
       { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
@@ -1053,32 +989,9 @@ if (!obiSSE._lastDepthTs) {
       { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
     ], true);
 
-    addFlow(t);            // push row into the live grid
+    addFlow(t);
   };
-
-
-  // fetch metas + kick ticker
-  fetchCoinMeta().catch(err=>{
-    console.warn('coinData endpoint unavailable, showing N/A', err);
-  });
-  fetch24h();
-     $('ticker-inner').textContent =
-       `Streaming ${$('obi-coin').value} …`;
-  // <-- This closes the async function start()
-    };
-
-function stop() {
-  running=false;
-  $('stream-btn').textContent='Start Streams';
-  if(obiSSE) obiSSE.close();
-  if(flowSSE) flowSSE.close();
-
-  // tell server to stop flowBus
-  fetch('/stopFlow',{method:'POST'}).catch(console.warn);
-
-  $('ticker-inner').textContent='Paused';
 }
-
 // ─────────────────────────────────────────────────────────────────────
 // HOOK UP UI
 // ─────────────────────────────────────────────────────────────────────
