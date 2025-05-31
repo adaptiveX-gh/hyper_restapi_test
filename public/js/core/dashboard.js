@@ -43,7 +43,13 @@
           setHtml=(id,t)=>{const e=$(id);if(e)e.textContent=t},
           dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
 
-
+    const fastAvg = a => {             // 25-tick look-back
+        const start = Math.max(0, a.length-25);
+        let s = 0, n = 0;
+        for (let i=start;i<a.length;i++){ s += a[i]; n++; }
+        return n ? s/n : 0;
+    };
+    
     let statsFeed = null;
 
     function startStats(sym) {
@@ -809,12 +815,7 @@ obiSSE.onmessage = async (e) => {
     flowSSE.lastUpd = now;
 
     /* 6-a) Scenario scores ------------------------------------------------- */
-     const fastAvg = a => {             // 25-tick look-back
-     const start = Math.max(0, a.length-25);
-        let s = 0, n = 0;
-        for (let i=start;i<a.length;i++){ s += a[i]; n++; }
-        return n ? s/n : 0;
-        };
+
     const c = fastAvg(buf.c)}
     
     const w = fastAvg(buf.w),  s = fastAvg(buf.s),  f = fastAvg(buf.f);
@@ -882,11 +883,10 @@ obiSSE.onmessage = async (e) => {
       { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
     ], true);
 
-    addFlow(t);
-  };
-}
+  addFlow(t);
+};
 
-  function stop () {
+function stop () {
     P.stopStreams        = stop;
     if (!running) return;
     running = false;
