@@ -523,9 +523,47 @@ function regimeDetails(value) {
     // ─────────────────────────────────────────────────────────────────────
     // GAUGE FACTORY
     // ─────────────────────────────────────────────────────────────────────
+    /* ─── Gauge help text ─────────────────────────────────────────────── */
+    const GAUGE_INFO = {
+      gConfirm : `<b>Confirmation</b><br>
+                  Tracks net absorptions: &nbsp;
+                  +1&nbsp;==&nbsp;strong buy absorption, -1&nbsp;==&nbsp;strong sell.<br>
+                  > 0.10 → bullish confirmation, < -0.10 → bearish.`,
+      gWarn    : `<b>Early-Warn</b><br>
+                  Large absorption followed by exhaustion on the *same* side.<br>
+                  Builds when a move runs out of steam and may reverse.`,
+      gSqueeze : `<b>Squeeze</b><br>
+                  Extremes of flow switching direction in < 5 s.<br>
+                  High absolute values often precede violent stop-runs.`,
+      gFake    : `<b>Fake-Out</b><br>
+                  Oversized absorption OUTSIDE normal bias window.<br>
+                  Spike → likely false break; fade the flow.`,
+      gLaR     : `<b>Liquidity-at-Risk (5 min)</b><br>
+                  Depth within ±10 bps ÷ realised-vol.<br>
+                  0 → fragile book, 1 → very resilient.`,
+      gRes     : `<b>Resilience</b><br>
+                  60-s slope of total depth (bid – ask).<br>
+                  Positive = bids being replenished faster.`,
+      gShock   : `<b>Multi-Level Shock</b><br>
+                  Sudden symmetric drop in deep book liquidity.<br>
+                  Negative = bid shock, Positive = ask shock.`,
+      gMom     : `<b>Momentum-Ignition</b><br>
+                  # of aggressive prints in 2 s vs adaptive threshold.<br>
+                  > 0 → expanding buying or selling frenzy.`
+    };
+
     function makeGauge(id){
       return Highcharts.chart(id,{
-        chart:{type:'solidgauge'}, title:null, tooltip:{enabled:false},
+        chart:{type:'solidgauge'},
+        title:null,
+        tooltip:{
+          useHTML:true,
+          borderWidth:0,
+          backgroundColor:'rgba(255,255,255,0.92)',
+          shadow:true,
+          style:{fontSize:'12px',lineHeight:'16px'},
+          formatter(){ return GAUGE_INFO[id] || '—'; }
+        },
         pane:{
           center:['50%','60%'], size:'100%',
           startAngle:-105,endAngle:105,
