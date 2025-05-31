@@ -5,8 +5,8 @@ require('dotenv').config();
 import express, { json as _json, static as expressStatic } from 'express';
 import cors from 'cors';
 import { join } from 'path';
-import { post as _post, get } from 'axios';
-import WebSocket, { OPEN } from 'ws';
+import axios from 'axios';                 // default export
+import { WebSocket } from 'ws';   // or:  import { WebSocket, WebSocketServer } from 'ws';
 import pLimit from 'p-limit';
 import { Transform, PassThrough } from 'stream';
 import { slowStatsCache } from './public/js/core/slowStatsCache.js';
@@ -18,6 +18,7 @@ const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
 const COIN         = (process.env.FLOW_COIN ?? 'BTC').toUpperCase();
 const DEPTH_LEVELS = 50;
 
+const { post: _post, get } = axios;        // same variables you had before
 
 let wss;  
 
@@ -107,7 +108,7 @@ app.use(expressStatic(join(__dirname,'public')));
 app.get('/api/__debug', (_,res) => res.json({ pid:process.pid, build:'2025-05-fix-levels' }));
 
 /* ── SDK lazy-init ──────────────────────────────────────────────── */
-import { fetchTraderAddresses } from './sheetHelper';
+import { fetchTraderAddresses } from './src/utils/sheetHelper.js';
 // ── SDK lazy-init ─────────────────────────────────────────────
 import { Hyperliquid } from 'hyperliquid';
 let sdk, initPromise;

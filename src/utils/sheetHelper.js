@@ -4,6 +4,8 @@
  * of a public Google Sheet. Optionally filters by min PnL, min Winrate,
  * min Duration.
  */
+
+
 const axios = require('axios');
 
 const GS_ID  = process.env.GS_ID;            // required
@@ -12,7 +14,7 @@ const GS_GID = process.env.GS_GID || '0';    // default first sheet tab
 /**
  * Parse duration string like "297h 37m" into milliseconds
  */
-function parseDuration(str) {
+export function parseDuration(str) {
   const hoursMatch = /([0-9]+)h/.exec(str);
   const minsMatch  = /([0-9]+)m/.exec(str);
   const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
@@ -25,7 +27,7 @@ function parseDuration(str) {
  * @param {{pnlMin?: number, winRateMin?: number, durationMinMs?: number}} [filters]
  * @returns {Promise<Array<{address:string,pnl:number,winRate:number,durationMs:number}>>}
  */
-async function fetchTraderAddresses(filters = {}) {
+export async function fetchTraderAddresses(filters = {}) {
   if (!GS_ID) throw new Error('Missing GS_ID env var');
   const csvUrl = `https://docs.google.com/spreadsheets/d/${GS_ID}/gviz/tq?tqx=out:csv&gid=${GS_GID}`;
 
