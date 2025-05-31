@@ -2,13 +2,16 @@
  *  Hyperliquid Strategy API – 2025-05-fix-levels                *
  *───────────────────────────────────────────────────────────────*/
 require('dotenv').config();
-const express    = require('express');
-const cors       = require('cors');
-const path       = require('path');
-const axios      = require('axios');
-const WebSocket  = require('ws');
-const pLimit     = require('p-limit');
-const { Transform, PassThrough } = require('stream');
+import express, { json as _json, static as expressStatic } from 'express';
+import cors from 'cors';
+import { join } from 'path';
+import { post as _post, get } from 'axios';
+import WebSocket, { OPEN } from 'ws';
+import pLimit from 'p-limit';
+import { Transform, PassThrough } from 'stream';
+import { slowStatsCache } from './public/js/core/slowStatsCache.js';
+
+slowStatsCache.start();
 
 /* ── Constants & WS setup (hoisted) ────────────────────────────── */
 const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
@@ -24,7 +27,8 @@ let depthReady = false;
 
 /* ── flowBus for SSE proxy ──────────────────────────────────────── */
 const flowBus = new PassThrough();
-module.exports.flowBus = flowBus;
+const _flowBus = flowBus;
+export { _flowBus as flowBus };
 
 /* ── helpers ────────────────────────────────────────────────────── */
 const limit      = pLimit(5);
@@ -49,7 +53,7 @@ function startFlowStream(coin) {
     flowBus.write(`heartbeat\n\n`);
   }, 5000);
 
-  if (wss.readyState === WebSocket.OPEN) {
+  if (wss.readyState === OPEN) {
     wss.send(JSON.stringify({
       method:'subscribe',
       subscription:{ type:'trades',    coin:currentFlowCoin }
@@ -97,15 +101,15 @@ function patchSide(sideArr, px, sz) {
 
 /* ── Express bootstrap ──────────────────────────────────────────── */
 const app = express();
-app.use(express.json({ limit:'5mb' }));
+app.use(_json({ limit:'5mb' }));
 app.use(cors());
-app.use(express.static(path.join(__dirname,'public')));
+app.use(expressStatic(join(__dirname,'public')));
 app.get('/api/__debug', (_,res) => res.json({ pid:process.pid, build:'2025-05-fix-levels' }));
 
 /* ── SDK lazy-init ──────────────────────────────────────────────── */
-const { fetchTraderAddresses } = require('./sheetHelper');
+import { fetchTraderAddresses } from './sheetHelper';
 // ── SDK lazy-init ─────────────────────────────────────────────
-const { Hyperliquid } = require('hyperliquid');
+import { Hyperliquid } from 'hyperliquid';
 let sdk, initPromise;
 
 async function getSdk () {
@@ -167,7 +171,7 @@ app.get('/flow', (req, res) => {
   flowBus.pipe(res);
   req.on('close', () => flowBus.unpipe(res));
 });
-app.post('/startFlow', express.json(), (req, res) => {
+app.post('/startFlow', _json(), (req, res) => {
   const coinParam = (req.body.coin || 'BTC-PERP').toUpperCase();
   startFlowStream(coinParam);
   res.json({ status:'started', coin: coinParam });
@@ -213,7 +217,7 @@ async function getL2Book(raw, depth = 50) {
       }
       // c) HTTP fallback via axios-post
       const { data } = await retry(() =>
-        axios.post(
+        _post(
           'https://api.hyperliquid.xyz/info',
           { type: 'l2Book', coin, depth },
           { timeout: 5_000 }
@@ -830,11 +834,11 @@ async function fetchRecentTrades (coin, limit = 60) {
     console.warn('getTrades helper not found – falling back to HTTP / GQL');
 
     // A. unauthenticated REST
-    const httpRes = await axios.get(TRADES_HTTP(coin, limit)).catch(() => null);
+    const httpRes = await get(TRADES_HTTP(coin, limit)).catch(() => null);
     if (httpRes?.data && Array.isArray(httpRes.data)) return httpRes.data;
 
     // B. last‑resort GraphQL
-    const gqlRes = await axios.post('https://api.hyperliquid.xyz/graphql', {
+    const gqlRes = await _post('https://api.hyperliquid.xyz/graphql', {
       query     : TRADES_GQL,
       variables : { market: coin, limit }
     }).catch(() => null);
@@ -916,7 +920,7 @@ req.on('close', () => {
 /* ── OI + funding snapshot ─────────────────────────────── */
 async function getOiFunding (raw = 'BTC-PERP') {
   const want = raw.toUpperCase();                 // keep caller’s form
-  const { data } = await axios.post(
+  const { data } = await _post(
     'https://api.hyperliquid.xyz/info',
     { type: 'metaAndAssetCtxs' },
     { timeout: 5_000 }
@@ -1000,7 +1004,7 @@ async function getCoinData(raw = 'BTC-PERP') {
   const wantCore = raw.toUpperCase().replace(/-PERP$/, '');
 
   // fetch the full meta + asset contexts
-  const { data } = await axios.post(
+  const { data } = await _post(
     'https://api.hyperliquid.xyz/info',
     { type: 'metaAndAssetCtxs' },
     { timeout: 5_000 }

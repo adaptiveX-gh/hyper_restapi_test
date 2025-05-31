@@ -2,7 +2,9 @@
     import { PerpStatsFeed } from "./livePerpStatsWS.js";
     import { subscribe } from "./throttle.js";
 
+    import { onCtx, onCandle } from './perpDataFeed.js';
 
+  
   (function(){
     const P = {
       WINDOW          : 50,
@@ -563,7 +565,32 @@ function regimeDetails(value) {
       biasLine.redraw();
     }
 
-    
+        /* ===== widgets that NEED <250 ms ===== */
+    onCtx(({ openInterest, funding, markPx }) => {
+        updateGauge('openIntGauge', openInterest);   // existing gauge-update fns
+        updateGauge('fundingGauge', funding * 8 * 100); // hourly → 8 h %
+        updateTicker(markPx);
+    });
+
+    let vol1m = 0, vol8h = 0, buckets = [];
+    onCandle(c => {
+        vol1m = +c.v;
+        buckets.push(vol1m);
+        if (buckets.length > 480) buckets.shift();   // keep 8 h of 1 m candles
+        vol8h = buckets.reduce((s, v) => s + v, 0);
+        updateGauge('volGauge', vol8h);
+    });
+
+    /* ===== widgets that can be slow-lane ===== */
+    async function pullSlowStats () {
+        const res = await fetch('/api/slow-stats');
+        const { oi, funding, vol24h, ts } = await res.json();
+        // maybe show a “last updated” time stamp
+        drawBigCards({ oi, funding8h: funding*8*100, vol24h, ts });
+    }
+    pullSlowStats();
+    setInterval(pullSlowStats, 30_000);            // every 30 s is plenty
+
     // ─────────────────────────────────────────────────────────────────────
     // STREAM START / STOP
     // ─────────────────────────────────────────────────────────────────────
