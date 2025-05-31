@@ -737,6 +737,7 @@ if (!obiSSE._lastDepthTs) {
     });
 
     const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
+    if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0; // Clamp negatives or NaN
 
     // Normalize into [0…1] so the gauge actually moves:
     const FULL_SCALE_LAR = 5e5;  // 500 k
@@ -904,7 +905,7 @@ if (!obiSSE._lastDepthTs) {
       SAFE(w),
       SAFE(s),
       SAFE(f),
-      SAFE(lastLaR / FULL_SCALE_LAR),
+      SAFE(normLaR), // Should be 0..1
       SAFE(avg(buf.r)),
       SAFE(avg(buf.shock)),
       SAFE(momVal)
@@ -918,6 +919,8 @@ if (!obiSSE._lastDepthTs) {
     const clamp01 = v => Math.max(0, Math.min(100, v|0));   // int 0-100
     const bullVal = clamp01(bullComposite);
     const bearVal = clamp01(bearComposite);
+    
+    console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
 
     // AFTER   ─ keep the series, move the single point in place
     bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
