@@ -358,57 +358,67 @@
           dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
 
 
-      /* ──────────────────────────────────────────────────────────── */
-      /* 2.  HYPERLIQUID META FETCH (24 h vol / OI / funding)        */
-      /* ──────────────────────────────────────────────────────────── */
+    let nextDelay = 30_000;          // start at 30 s
+      let timerId   = null;
+
       async function fetchMarketStats() {
-        const base = $('obi-coin').value.replace('-PERP', '');   // e.g. "BTC"
+        const coin = $('obi-coin').value.replace('-PERP', '');  // "BTC"
         try {
-          // batched RPC calls – one POST, three bodies
-          const [ sumR, oiR, fundR ] = await Promise.all([
-            fetch('https://api.hyperliquid.xyz/info', {
-              method :'POST', headers:{'Content-Type':'application/json'},
-              body   : JSON.stringify({type:'perpSummary',  symbol:base})
-            }),
-            fetch('https://api.hyperliquid.xyz/info', {
-              method :'POST', headers:{'Content-Type':'application/json'},
-              body   : JSON.stringify({type:'openInterest', symbol:base})
-            }),
-            fetch('https://api.hyperliquid.xyz/info', {
-              method :'POST', headers:{'Content-Type':'application/json'},
-              body   : JSON.stringify({type:'fundingRates', symbols:[base]})
-            })
-          ]);
+          const res = await fetch('https://api.hyperliquid.xyz/info', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ type: 'perpStats', symbol: coin })
+          });
 
-          if (!sumR.ok || !oiR.ok || !fundR.ok)
-            throw new Error(`HTTP ${sumR.status}/${oiR.status}/${fundR.status}`);
+          /* ---------- happy path ---------- */
+          if (res.ok) {
+            const ctx = await res.json();
 
-          const summary = await sumR .json(); // { volume24h, … }
-          const oiObj   = await oiR  .json(); // { oi }
-          const fundObj = await fundR.json(); // { fundingRates:[…] }
+            /* 24 h vol */
+            setHtml('sq24h', `$${(ctx.volume24h / 1e6).toFixed(1)}M`);
 
-          /* 24 h volume */
-          setTxt('sq24h',  `$${(summary.volume24h / 1e6).toFixed(1)}M`);
+            /* OI */
+            setHtml('oiVal', `$${(ctx.openInterest / 1e6).toFixed(1)}M`);
+            dot('oiDot', 'green');
 
-          /* Open interest */
-          setTxt('oiVal',  `$${(oiObj.oi / 1e6).toFixed(1)}M`);
-          dot   ('oiDot',  'green');
+            /* funding */
+            const fPct = (ctx.fundingRate8h * 100).toFixed(3) + '%';
+            setHtml('fundVal', fPct);
+            dot('fundDot',
+                ctx.fundingRate8h >  0 ? 'green' :
+                ctx.fundingRate8h <  0 ? 'red'   : 'yellow');
 
-          /* Funding */
-          const fund = fundObj.fundingRates[0];
-          setTxt('fundVal', (fund * 100).toFixed(3) + '%');
-          dot   ('fundDot', fund>0 ? 'green' : fund<0 ? 'red' : 'yellow');
+            /* reset back-off */
+            nextDelay = 30_000;
+          }
+
+          /* ---------- rate-limit ---------- */
+          else if (res.status === 429) {
+            console.warn('Hit HL rate-limit – backing off');
+            nextDelay = Math.min(nextDelay * 2, 300_000);   // cap at 5 min
+          }
+
+          /* ---------- other errors ---------- */
+          else {
+            throw new Error(`HTTP ${res.status}`);
+          }
 
         } catch (err) {
-          console.warn('fetchMarketStats()', err);
-          ['sq24h','oiVal','fundVal'].forEach(id => setTxt(id, 'N/A'));
-          ['oiDot','fundDot'].forEach(id => dot(id,'yellow'));
+          console.warn('fetchMarketStats failed:', err);
+          setHtml('sq24h',  'N/A');
+          setHtml('oiVal',  'N/A'); dot('oiDot',  'yellow');
+          setHtml('fundVal','N/A'); dot('fundDot','yellow');
+          nextDelay = 60_000;                       // retry in 60 s
         }
-      }
-      // run now + every 30 s
-      fetchMarketStats();
-      setInterval(fetchMarketStats, 30_000);
 
+        /* schedule next run */
+        clearTimeout(timerId);
+        timerId = setTimeout(fetchMarketStats, nextDelay);
+      }
+
+      /* kick-off once the dashboard is loaded */
+      fetchMarketStats();
+      
     // ──────────────────────────────────────────────────
     // 1) State & buffers
     // ──────────────────────────────────────────────────
