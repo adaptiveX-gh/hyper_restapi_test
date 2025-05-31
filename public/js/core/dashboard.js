@@ -1,7 +1,4 @@
 
-    import { PerpStatsFeed } from "./livePerpStatsWS.js";
-    import { subscribe } from "./throttle.js";
-
     import { onCtx, onCandle } from './perpDataFeed.js';
 
   
@@ -53,25 +50,6 @@
     };
     
     let statsFeed = null;
-
-    function startStats(sym) {
-      statsFeed?.off(updateHeadline);      // detach from old feed
-      statsFeed = new PerpStatsFeed(sym);
-      statsFeed.on(updateHeadline);
-    }
-
-    function updateHeadline(ctx) {
-      setHtml("sq24h" , `$${(ctx.volume24h   /1e6).toFixed(1)}M`);
-      setHtml("oiVal" , `$${(ctx.openInterest/1e6).toFixed(1)}M`);
-      dot   ("oiDot" , "green");
-
-      const f = ctx.fundingRate8h;
-      setHtml("fundVal", (f*100).toFixed(3) + "%");
-      dot("fundDot" , f>0 ? "green" : f<0 ? "red" : "yellow");
-    }
-
-    /* call this whenever the user changes the instrument */
-    startStats(document.getElementById("obi-coin").value);
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
