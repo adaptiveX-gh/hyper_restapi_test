@@ -304,10 +304,15 @@
         lastSpread  = null,
         lastLaR     = 0.3; // ◀── TODO: replace with your realized-vol calculation
 
+     if (!Number.isFinite(lastLaR)) lastLaR = 0;        
+
     // rolling buffers
     const buf = {c:[], w:[], s:[], f:[], r:[], shock:[], bias:[]};
     const pushBuf = (a,v)=>{ a.push(v); if(a.length>WINDOW) a.shift(); };
-    const avg     = a=>a.reduce((x,y)=>x+y,0)/(a.length||1);
+    const avg = a => {
+      const nums = a.filter(Number.isFinite);
+      return nums.length ? nums.reduce((x, y) => x + y, 0) / nums.length : 0;
+    };
 
     // donut counters
     let absCount = {buy:0,sell:0},
@@ -901,16 +906,24 @@ if (!obiSSE._lastDepthTs) {
     refreshLine();
 
     /* 6-d)  bull / bear composites for the two bullet charts */
-    const raw = [
+
+
+    const fixArray = arr => arr.map(v => Number.isFinite(v) ? v : 0);
+    const raw = fixArray([
       SAFE(c),
       SAFE(w),
       SAFE(s),
       SAFE(f),
-      SAFE(lastLaR), // Should be 0..1
+      SAFE(lastLaR),
       SAFE(avg(buf.r)),
       SAFE(avg(buf.shock)),
       SAFE(momVal)
-    ];
+    ]);
+
+    raw.forEach((v, i) => {
+      if (!Number.isFinite(v)) console.warn('raw['+i+'] is invalid:', v);
+    });
+
     // 2) derive the two composites
     const bullComposite = raw.reduce((sum, v) => sum + Math.max(0,  v), 0) /
                           raw.length * 100;
@@ -921,22 +934,43 @@ if (!obiSSE._lastDepthTs) {
       if (!Number.isFinite(v)) return 0;
       return Math.max(0, Math.min(100, v));
     };
+
+    for (let i = 0; i < raw.length; i++) {
+      if (!Number.isFinite(raw[i])) {
+        console.warn(`raw[${i}] is invalid:`, raw[i]);
+        raw[i] = 0; // sanitize inline
+      }
+    }    
     const bullVal = clamp01(bullComposite);
     const bearVal = clamp01(bearComposite);
     
     console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
+    console.log("== Composite Inputs ==");
+    console.log("raw =", raw);
+    console.log("bullComposite =", bullComposite);
+    console.log("bearComposite =", bearComposite);
+    console.log("bullVal =", bullVal);
+    console.log("bearVal =", bearVal);
+
+    if (!Number.isFinite(bullVal)) {
+      console.error('❌ bullVal is NaN or invalid:', bullVal);
+    }
+    if (!Number.isFinite(bearVal)) {
+      console.error('❌ bearVal is NaN or invalid:', bearVal);
+    }
 
     // AFTER   ─ keep the series, move the single point in place
     if (bullMeter.series[0].points.length) {
-      bullMeter.series[0].points[0].update({ x: 0, y: bullVal, target: 75 }, false);
+      bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
     } else {
       bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
     }
     if (bearMeter.series[0].points.length) {
-      bearMeter.series[0].points[0].update({ x: 0, y: bearVal, target: 75 }, true);
+      bearMeter.series[0].points[0].update({ y: bearVal, target: 75 }, true);
     } else {
       bearMeter.series[0].setData([{ y: bearVal, target: 75 }], true);
     }
+
 
     /* 6-e)  donuts & grid ---------------------------------------- */
     absChart.series[0].setData([
