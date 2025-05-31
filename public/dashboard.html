@@ -346,7 +346,68 @@
       return Math.sqrt(variance);
     }    
 
-    
+    /*************************************************************************
+* 1.  Shared helper – guarantees a finite number and clamps to 0-100
+*************************************************************************/
+const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+
+/*************************************************************************
+* 2.  A tiny factory that returns a nice-looking horizontal gauge
+*************************************************************************/
+function makeProgress(containerID, titleText) {
+
+  return Highcharts.chart(containerID, {
+
+    chart  : { type: 'bar', height: 80, spacing: [0, 10, 0, 10],
+               backgroundColor: 'transparent' },
+
+    title  : { text: `<b>${titleText}</b>`, align: 'center', y: 10,
+               style: { fontSize: '15px', textTransform: 'uppercase' } },
+
+    xAxis  : { visible: false },
+
+    yAxis  : {
+      min: 0, max: 100, tickInterval: 25, gridLineWidth: 0, title: null,
+      plotBands: [{               // grey “track”
+        from: 0, to: 100, color: '#f1f3f7'
+      }],
+      plotLines: [{               // the target at 75 %
+        value: 75, width: 2, color: '#555', zIndex: 3 }
+      ]
+    },
+
+    legend : { enabled: false },
+
+    tooltip: { enabled: false },
+
+    plotOptions: {
+      series: {
+        cursor: 'default',
+        borderWidth: 0,
+        pointPadding: 0,
+        groupPadding: 0,
+        dataLabels: {              // the big number on the bar
+          enabled: true,
+          inside : true,
+          align  : 'center',
+          verticalAlign: 'middle',
+          style  : { color: '#fff', fontSize: '16px',
+                     textOutline: 'none', fontWeight: 700 },
+          formatter() { return `${Math.round(this.y)} %`; }
+        }
+      }
+    },
+
+    credits : { enabled: false },
+    exporting: { enabled: false },
+
+    series : [{
+      data          : [0],        // single bar
+      color         : '#4dff88',  // will be overridden in updater
+      showInLegend  : false
+    }]
+  });
+}
 
     // ─────────────────────────────────────────────────────────────────────
     // GAUGE FACTORY
@@ -929,6 +990,34 @@ if (!obiSSE._lastDepthTs) {
     }    
     const bullVal = SAFE(bullComposite, 0);
     const bearVal = SAFE(bearComposite, 0);  
+
+    /*************************************************************************
+    * 3.  Create the two gauges once  (replaces your old bullet code)
+    *************************************************************************/
+    const bullGauge = makeProgress('bullMeter', 'BULL SPECTRUM');
+    const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
+
+    /*************************************************************************
+    * 4.  In your stream-update section replace *only* the old bullet update
+    *************************************************************************/
+    // after you have calculated `bullVal` and `bearVal` (0-100)
+    /* colour logic: greener the more bullish, redder the more bearish */
+    const bullColour = Highcharts.color('#4dff88')
+                        .tweenTo(Highcharts.color('#d4fbe1'), 1 - bullVal / 100)
+                        .get();        // -> hex string again
+    const bearColour = Highcharts.color('#ff4d4d')
+                        .tweenTo(Highcharts.color('#fbd6d6'), 1 - bearVal / 100)
+                        .get();
+
+    bullGauge.series[0].points[0].update({
+      y     : pct(bullVal),
+      color : bullColour
+    }, false);                                      // defer redraw
+
+    bearGauge.series[0].points[0].update({
+      y     : pct(bearVal),
+      color : bearColour
+    }, true);                                       // now redraw    
     
     console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
     console.log("== Composite Inputs ==");
