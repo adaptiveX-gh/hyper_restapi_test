@@ -1003,11 +1003,11 @@ if (!obiSSE._lastDepthTs) {
     // after you have calculated `bullVal` and `bearVal` (0-100)
     /* colour logic: greener the more bullish, redder the more bearish */
     const bullColour = Highcharts.color('#4dff88')
-                        .tweenTo(Highcharts.color('#d4fbe1'), 1 - bullVal / 100)
-                        .get();        // -> hex string again
+                        .tweenTo(Highcharts.color('#d4fbe1'), 1 - bullVal/100);
+                        
     const bearColour = Highcharts.color('#ff4d4d')
-                        .tweenTo(Highcharts.color('#fbd6d6'), 1 - bearVal / 100)
-                        .get();
+                        .tweenTo(Highcharts.color('#fbd6d6'), 1 - bearVal / 100);
+                        
 
     bullGauge.series[0].points[0].update({
       y     : pct(bullVal),
