@@ -316,8 +316,7 @@
     };
     window.P = P;               // expose for quick console debugging
 
-    const DEPTH_BPS = 0.001;   // 10 bp = 0.10 %
-  
+      
     /******************************************************************
     * RollingStats – push(x) then get median(), mean(), std(), pct(q)
     ******************************************************************/
@@ -352,14 +351,19 @@
     /* helper to protect against zeros until buffers warm up */
     const SAFE = (v, dflt) => (Number.isFinite(v) && v > 0 ? v : dflt);
 
+    let lastAdaptive = 0;
     function refreshAdaptive () {
+    if (Date.now() - lastAdaptive < 1000) return;  // debounce 1 s
+    lastAdaptive = Date.now();
+
     const medSize   = SAFE(sizeStats.median(), 10_000);
     const printStd  = SAFE(sizeStats.std(),     5_000);
     const depthStd  = SAFE(depthStats.std(),   1e6);
     const printRate = sizeStats.buf.length / 300; // prints/s last 5‑10 min
 
     P.FALSE_ABS        = Math.max(50_000, 3 * medSize);
-    P.FALSE_NEUTRAL    = Math.max(1.2, 3 / Math.max(printRate, 1)) * 1000; // ms
+    const minCool = printRate > 1.5 ? 2000 : 1200;         // ≥ 2 s if flow is high
+    P.FALSE_NEUTRAL    = Math.max(minCool, 3000/Math.max(printRate,1));
     P.MOM_COUNT_THRESH = Math.max(5, Math.round((2 * printStd) / 10_000));
     P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStd);
   }
@@ -393,13 +397,12 @@
     }
 
     ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
-    if (typeof P[k] === 'undefined')
+    if (!(k in P))
         console.warn(`Parameter ${k} is missing or typo-ed`);
     });
 
 
-    const FULL_SCALE_LAR   = 5e5;   // already there
-    // Removed redeclaration of P.FULL_SCALE_SLOPE to avoid conflict
+    
 
 
 
@@ -862,7 +865,7 @@ obiSSE.onmessage = async (e) => {
     // b) realised vol over last 5 min
     const now = Date.now();
     priceBuf.push({ ts: now, mid });
-    while (now - priceBuf[0].ts > P.VOL_WINDOW) priceBuf.shift();
+    while (priceBuf.length && now - priceBuf[0].ts > P.VOL_WINDOW) priceBuf.shift();
     const vol5m = calcRealizedVol(priceBuf);
 
     // c) deep book depth → raw LaR
@@ -875,21 +878,16 @@ obiSSE.onmessage = async (e) => {
     deepBk.bids.forEach(([px, sz]) => { if (px >= lower) depth10bps += px * sz; });
     deepBk.asks.forEach(([px, sz]) => { if (px <= upper) depth10bps += px * sz; });
 
-    let rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
+    const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
     const FULL_SCALE_LAR = 5e5;                     // keep constant scale
 
     const scaledLaR = Math.min(1, rawLaR / P.FULL_SCALE_LAR);
-    lastLaR = scaledLaR;         // store 0-1 for the composite
-    updL(scaledLaR);             // feed the gauge the scaled value
+    lastLaR = scaledLaR;          // keep for spectrum composite
+    updL(scaledLaR);              // drive the gauge
     setGaugeStatus('statusLaR', scaledLaR);
 
-    // d) update the LaR gauge
-    gL.series[0].points[0].update(lastLaR);
-    setHtml('larVal', `${(lastLaR * 100).toFixed(1)} %`);
-    setHtml('larTxt', regimeName(lastLaR * 100));
-    dot('larDot', lastLaR > 0.5 ? 'green' : 'yellow');
 
   } catch (err) {
     console.warn('Error computing LaR:', err);
@@ -944,9 +942,15 @@ obiSSE.onmessage = async (e) => {
     if (e.data.trim().endsWith('heartbeat')) return;
     let t; try { t = JSON.parse(e.data); } catch { return; }
     sizeStats.push(t.notional);
-    if (t.notional < P.MIN_NOTIONAL) return;
+    
+    const now = Date.now();            // ① get timestamp up-front
 
-    const now = Date.now();
+    // still apply MIN_NOTIONAL to *gauges* but let momentum count all prints
+    if (t.notional < P.MIN_NOTIONAL) {
+      momTimes.push(now);              // ② safe to use
+      return;
+    }
+    
 
     /* 3. Rolling buffers & scenario flags --------------------------------- */
     if (t.type === 'absorption') {
@@ -1020,11 +1024,13 @@ obiSSE.onmessage = async (e) => {
     ];
 
     // after computing bullVal / bearVal
-    const amplify = 1.5;                // 1.0 = current, 2.0 = twice as lively
+    const W = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6];   // same order as `raw`
+    const sumW = W.reduce((a,b)=>a+b,0);
+    const amplify = 1.5;
     const bullVal = pct( amplify *
-          raw.reduce((s,v)=>s + Math.max(0,  v), 0) / raw.length * 100);
+          raw.reduce((s,v,i)=>s + Math.max(0,  v)*W[i], 0) / sumW * 100 );
     const bearVal = pct( amplify *
-          raw.reduce((s,v)=>s + Math.max(0, -v), 0) / raw.length * 100);
+          raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100 );
 
     /* 6-d) Update the two progress bars ----------------------------------- */
     const tint = (base, pct) =>
