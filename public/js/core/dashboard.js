@@ -147,11 +147,7 @@
     ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
     if (!(k in P))
         console.warn(`Parameter ${k} is missing or typo-ed`);
-    });
-
-
-    
-
+    });  
 
 
     const S_HI          = 1.8,
@@ -816,9 +812,11 @@ obiSSE.onmessage = async (e) => {
 
     /* 6-a) Scenario scores ------------------------------------------------- */
 
-    const c = fastAvg(buf.c)}
+    const c = fastAvg(buf.c)
     
-    const w = fastAvg(buf.w),  s = fastAvg(buf.s),  f = fastAvg(buf.f);
+    const w = fastAvg(buf.w),  
+    s = fastAvg(buf.s),  
+    f = fastAvg(buf.f);
     
     
     
@@ -838,8 +836,8 @@ obiSSE.onmessage = async (e) => {
     /* 6-c) Bull / bear composites ----------------------------------------- */
     const raw = [
       SAFE(c), SAFE(w), SAFE(s), SAFE(f),
-      SAFE(lastLaR), SAFE(avg(buf.r)),
-      SAFE(avg(buf.shock)), SAFE(momVal)
+      SAFE(lastLaR), SAFE(fastAvg(buf.r)),
+      SAFE(fastAvg(buf.shock)), SAFE(momVal)
     ];
 
     // after computing bullVal / bearVal
@@ -885,6 +883,7 @@ obiSSE.onmessage = async (e) => {
 
   addFlow(t);
 };
+}
 
 function stop () {
     P.stopStreams        = stop;
