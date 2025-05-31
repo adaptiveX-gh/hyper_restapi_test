@@ -114,10 +114,7 @@
         SHOCK_SCALE: P.FULL_SCALE_SLOPE
       };
     }
-    // expose helpers on the root P object instead
     P.adaptiveThresholds = adaptiveThresholds;
-    P.startStreams       = start;
-    P.stopStreams        = stop;
 
     // ─── PARAMS & STATE ────────────────────────────────────────────────────
     
@@ -563,7 +560,7 @@ function regimeDetails(value) {
     // ─────────────────────────────────────────────────────────────────────
     let obiSSE, flowSSE, running=false;
     async function start () {
-        P.WINDOW.start = start;
+        P.startStreams       = start;
         if (running) return;
         readParams();
         running = true;
@@ -868,7 +865,7 @@ obiSSE.onmessage = async (e) => {
 }
 
   function stop () {
-    P.WINDOW.stop = stop;
+    P.stopStreams        = stop;
     if (!running) return;
     running = false;
     $('stream-btn').textContent = 'Start Streams';
