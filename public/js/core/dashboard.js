@@ -1,7 +1,7 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
 
-  
+ 
   (function(){
     const P = {
       WINDOW          : 50,
@@ -122,6 +122,35 @@
       P.MOM_COUNT_THRESH= +$('obi-momthresh').value;
     }
 
+  // ----  NEW: spawn worker  -----------------------------------
+ const worker = new Worker('./js/worker/metricsWorker.js', { type:'module' });
+
+ // proxy: push tunables every time they change
+ function sendConfig () {
+   worker.postMessage({ type:'config', payload:{
+     WINDOW:P.WINDOW, DEPTH_PARAM:P.DEPTH_PARAM,
+     FALSE_ABS:P.FALSE_ABS, FALSE_NEUTRAL:P.FALSE_NEUTRAL,
+     MOM_COUNT_THRESH:P.MOM_COUNT_THRESH, VOL_WINDOW:P.VOL_WINDOW
+   }});
+ }
+ sendConfig();          // once at start
+
+  worker.onmessage = ({ data }) => {
+  if (data.type === 'adapt') {
+    const a = data.payload;
+    P.FALSE_ABS       = a.FALSE_ABS;
+    P.FALSE_NEUTRAL   = a.FALSE_NEUT;
+    P.MOM_COUNT_THRESH= a.MOM_THRESH;
+    P.FULL_SCALE_SLOPE= a.FULL_SCALE_SLOPE;
+  }
+  if (data.type === 'gauges') {
+    const g = data.payload;
+    updC(g.confirm); setGaugeStatus('statusConfirm', g.confirm);
+    updW(g.warn);    setGaugeStatus('statusWarn',    g.warn);
+    updS(g.squeeze); setGaugeStatus('statusSqueeze', g.squeeze);
+    updF(g.fake);    setGaugeStatus('statusFake',    g.fake);
+  }
+};
 
 
     ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
@@ -591,6 +620,9 @@ function regimeDetails(value) {
     pullSlowStats();
     setInterval(pullSlowStats, 30_000);            // every 30 s is plenty
 
+
+
+
     // ─────────────────────────────────────────────────────────────────────
     // STREAM START / STOP
     // ─────────────────────────────────────────────────────────────────────
@@ -615,11 +647,11 @@ function regimeDetails(value) {
                               `&depth=${P.DEPTH_PARAM}&period=${P.REFRESH_PERIOD}`);
 
 
+
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
-  depthStats.push(d.bidDepth + d.askDepth);
-  refreshAdaptive();
+  worker.postMessage({ type:'depthSnap', payload:d });
 
   /* 2. Re‑compute adaptive scalers and overwrite globals */
   const adapt = adaptiveThresholds();
@@ -766,7 +798,9 @@ obiSSE.onmessage = async (e) => {
   flowSSE.onmessage = (e) => {
     if (e.data.trim().endsWith('heartbeat')) return;
     let t; try { t = JSON.parse(e.data); } catch { return; }
-    sizeStats.push(t.notional);
+    worker.postMessage({ type:'trade', payload:{
+      side:t.side, notional:t.notional, kind:t.type   // plus any fields you need
+  }});
     
     const now = Date.now();            // ① get timestamp up-front
 
@@ -949,5 +983,7 @@ $('liqTxt').title = () =>
 // AUTO-START
 ensureLine();
 start();
+
+ 
 
 })();
