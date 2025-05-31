@@ -120,10 +120,11 @@
       P.FALSE_ABS       = +$('obi-falseabs').value;
       P.FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000; // s → ms
       P.MOM_COUNT_THRESH= +$('obi-momthresh').value;
+      sendConfig();
     }
 
   // ----  NEW: spawn worker  -----------------------------------
- const worker = new Worker('./js/worker/metricsWorker.js', { type:'module' });
+ const worker = new Worker('./js/worker/metricsWorker.js');   // classic worker
 
  // proxy: push tunables every time they change
  function sendConfig () {
