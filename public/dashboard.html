@@ -960,7 +960,7 @@ if (!obiSSE._lastDepthTs) {
       console.error('❌ bearVal is NaN or invalid:', bearVal);
     }
 
-    const datapoint = y => ({ y: N(y), target: 75 }); // bullet expects an object
+    const datapoint = y => ({ y: SAFE(y), target: 75 }); // bullet expects an object
     bullMeter.series[0].setData([datapoint(bullVal)], false);
     bearMeter.series[0].setData([datapoint(bearVal)],  true);
 
