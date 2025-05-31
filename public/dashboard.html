@@ -317,6 +317,10 @@
   </div>
 
   <script>
+    import { PerpStatsFeed } from "./livePerpStatsWS.js";
+    import { subscribe } from "./throttle.js";
+
+
   (function(){
     const P = {
       WINDOW          : 50,
@@ -358,59 +362,27 @@
           dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
 
 
-/* ─── dashboard-wide market stats (24 h vol, OI, funding) ──────────────── */
-let retryDelay = 30_000;                   // start at 30 s
-let retryTimer = null;
+    let statsFeed = null;
 
-async function fetchMarketStats() {
-  const sym = $('obi-coin').value;         // e.g. "BTC-PERP"
-
-  try {
-    /* hit the single-market endpoint – cheaper and lighter */
-    const res = await fetch('https://api.hyperliquid.xyz/info', {
-      method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ type: 'perpStats', symbol: sym })
-    });
-
-    if (res.status === 429) {              // rate-limited → back off
-      retryDelay = Math.min(retryDelay * 2, 5 * 60_000);
-      scheduleNext();
-      return;
+    function startStats(sym) {
+      statsFeed?.off(updateHeadline);      // detach from old feed
+      statsFeed = new PerpStatsFeed(sym);
+      statsFeed.on(updateHeadline);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    /* happy path */
-    const m = await res.json();            // { volume24h, openInterest, fundingRate8h, … }
+    function updateHeadline(ctx) {
+      setHtml("sq24h" , `$${(ctx.volume24h   /1e6).toFixed(1)}M`);
+      setHtml("oiVal" , `$${(ctx.openInterest/1e6).toFixed(1)}M`);
+      dot   ("oiDot" , "green");
 
-    setHtml('sq24h',  `$${(m.volume24h   / 1e6).toFixed(1)}M`);
-    setHtml('oiVal',  `$${(m.openInterest/ 1e6).toFixed(1)}M`);
-    dot     ('oiDot', 'green');
+      const f = ctx.fundingRate8h;
+      setHtml("fundVal", (f*100).toFixed(3) + "%");
+      dot("fundDot" , f>0 ? "green" : f<0 ? "red" : "yellow");
+    }
 
-    const f = m.fundingRate8h * 100;
-    setHtml('fundVal',  f.toFixed(3) + '%');
-    dot('fundDot', f > 0 ? 'green' : f < 0 ? 'red' : 'yellow');
+    /* call this whenever the user changes the instrument */
+    startStats(document.getElementById("obi-coin").value);
 
-    retryDelay = 30_000;                   // reset on success
-  } catch (err) {
-    console.warn('fetchMarketStats failed:', err);
-    setHtml('sq24h',  'N/A');
-    setHtml('oiVal',  'N/A'); dot('oiDot',  'yellow');
-    setHtml('fundVal','N/A'); dot('fundDot','yellow');
-    retryDelay = 60_000;                   // try again in 60 s
-  }
-
-  scheduleNext();
-}
-
-function scheduleNext() {
-  clearTimeout(retryTimer);
-  retryTimer = setTimeout(fetchMarketStats, retryDelay);
-}
-
-/* kick-off once */
-fetchMarketStats();
-      
     // ──────────────────────────────────────────────────
     // 1) State & buffers
     // ──────────────────────────────────────────────────
