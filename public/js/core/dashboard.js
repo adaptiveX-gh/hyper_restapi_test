@@ -124,7 +124,7 @@
     }
 
   // ----  NEW: spawn worker  -----------------------------------
- const worker = new Worker('./js/worker/metricsWorker.js');   // classic worker
+ const worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
 
  // proxy: push tunables every time they change
  function sendConfig () {
