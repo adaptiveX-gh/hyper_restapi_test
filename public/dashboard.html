@@ -736,8 +736,8 @@ if (!obiSSE._lastDepthTs) {
       if (px <= upper) depth10bps += px * sz;
     });
 
-    const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
-    if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0; // Clamp negatives or NaN
+    let rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
+    if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
     // Normalize into [0…1] so the gauge actually moves:
     const FULL_SCALE_LAR = 5e5;  // 500 k
@@ -905,7 +905,7 @@ if (!obiSSE._lastDepthTs) {
       SAFE(w),
       SAFE(s),
       SAFE(f),
-      SAFE(normLaR), // Should be 0..1
+      SAFE(lastLaR), // Should be 0..1
       SAFE(avg(buf.r)),
       SAFE(avg(buf.shock)),
       SAFE(momVal)
@@ -916,16 +916,26 @@ if (!obiSSE._lastDepthTs) {
     const bearComposite = raw.reduce((sum, v) => sum + Math.max(0, -v), 0) /
                           raw.length * 100;
 
-    const clamp01 = v => Math.max(0, Math.min(100, v|0));   // int 0-100
+    const clamp01 = v => {
+      if (!Number.isFinite(v)) return 0;
+      return Math.max(0, Math.min(100, v));
+    };
     const bullVal = clamp01(bullComposite);
     const bearVal = clamp01(bearComposite);
     
     console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
 
     // AFTER   ─ keep the series, move the single point in place
-    bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
-    bearMeter.series[0].points[0].update({ y: bearVal, target: 75 },  true);
-
+    if (bullMeter.series[0].points.length) {
+      bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
+    } else {
+      bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
+    }
+    if (bearMeter.series[0].points.length) {
+      bearMeter.series[0].points[0].update({ y: bearVal, target: 75 }, true);
+    } else {
+      bearMeter.series[0].setData([{ y: bearVal, target: 75 }], true);
+    }
 
     /* 6-e)  donuts & grid ---------------------------------------- */
     absChart.series[0].setData([
