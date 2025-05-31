@@ -349,7 +349,8 @@
     const depthStats = new RollingStats(120);   // ≈ 2 min of 1‑second book snaps
 
     /* helper to protect against zeros until buffers warm up */
-    const SAFE = (v, dflt) => (Number.isFinite(v) && v > 0 ? v : dflt);
+    // return the value if it’s a number, otherwise 0
+    const SAFE = v => (Number.isFinite(v) ? v : 0);
 
     let lastAdaptive = 0;
     function refreshAdaptive () {
