@@ -82,25 +82,26 @@
     let LIQ_THIN  = 0;
     let LIQ_THICK = 0;
 
+
     function refreshAdaptive () {
-    if (Date.now() - lastAdaptive < 1000) return;  // debounce 1 s
-    lastAdaptive = Date.now();
+        if (Date.now() - lastAdaptive < 1000) return;
+        lastAdaptive = Date.now();
 
-    const medSize   = SAFE(sizeStats.median(), 10_000);
-    const printStd  = SAFE(sizeStats.std(),     5_000);
-    const depthStd  = SAFE(depthStats.std(),   1e6);
-    const printRate = sizeStats.buf.length / 300; // prints/s last 5‑10 min
+        /* a) 90-th percentile of the last ~10 min is a nicer “big print” cut-off */
+        const p90Size  = SAFE(sizeStats.pct(0.9), 20_000);   // fallback 20 k
+        P.FALSE_ABS    = Math.max(25_000, p90Size);          // 90-pct, floor 25 k
 
-    P.FALSE_ABS        = Math.max(50_000, 3 * medSize);
-    const minCool = printRate > 1.5 ? 2000 : 1200;         // ≥ 2 s if flow is high
-    P.FALSE_NEUTRAL    = Math.max(minCool, 3000/Math.max(printRate,1));
-    P.MOM_COUNT_THRESH = Math.max(5, Math.round((2 * printStd) / 10_000));
-    P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStd);
+        /* b) cooldown  =  1.2 × median inter-print interval */
+        const printRate = sizeStats.buf.length / 300;        // prints per sec
+        P.FALSE_NEUTRAL = Math.max(800, 1_200/Math.max(printRate, 0.2));  // ms
 
-    /* ── NEW: compute depth thresholds for Thin / Thick ── */
-    const medDepth = SAFE(depthStats.median(), 5e7);   // fallback 50 M
-    LIQ_THIN  = medDepth - 0.5 * depthStd;             // below ⇒ “Thin”
-    LIQ_THICK = medDepth + 1.0 * depthStd;             // above ⇒ “Thick”
+        /* rest unchanged … */
+        P.MOM_COUNT_THRESH = Math.max(5, Math.round(2 * sizeStats.std() / 10_000));
+        P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStats.std());
+        /* ── NEW: compute depth thresholds for Thin / Thick ── */
+        const medDepth = SAFE(depthStats.median(), 5e7);   // fallback 50 M
+        LIQ_THIN  = medDepth - 0.5 * depthStd;             // below ⇒ “Thin”
+        LIQ_THICK = medDepth + 1.0 * depthStd;             // above ⇒ “Thick”
 
   }
 
@@ -161,7 +162,10 @@
       * 4.  Gauges, charts, buffers  (original logic, but use P.*)     *
       *****************************************************************/
       const buf = { c: [], w: [], s: [], f: [], r: [], shock: [], bias: [] };
-      const pushBuf = (a, v) => { a.push(v); if (a.length > P.WINDOW) a.shift(); };
+      const pushBuf = (a, v, maxLen = P.WINDOW) => {
+        a.push(v);
+        if (a.length > maxLen) a.shift();
+      };
       const avg = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
       /* *** ADD THIS LINE *** */
       const priceBuf = [];              // stores { ts, mid } for realised-vol calc
@@ -753,7 +757,7 @@ obiSSE.onmessage = async (e) => {
         now - lastNeutral >= P.FALSE_NEUTRAL
           ? (t.side === 'sell' ? 1 : -1)
           : 0;
-      pushBuf(buf.f, fake);
+      pushBuf(buf.f, fake, 15);     // Fake-out
 
        // ── count confirmations (big absorptions that AREN'T fake) ──
        if (t.notional >= P.FALSE_ABS && fake === 0) {
@@ -767,7 +771,7 @@ obiSSE.onmessage = async (e) => {
       lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
 
       const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
-      pushBuf(buf.w, warn);
+      pushBuf(buf.w, warn, 15);     // Early-Warn over last 15 ticks   (~15-25 s)
       lastHeavy = false;
 
       let sq = 0;
@@ -776,7 +780,7 @@ obiSSE.onmessage = async (e) => {
         if ( lastExtreme.side ===  1 && t.side === 'sell') sq = -1;
         if ( lastExtreme.side === -1 && t.side === 'buy')  sq =  1;
       }
-      pushBuf(buf.s, sq);
+      pushBuf(buf.s, sq  , 15);     // Squeeze
     }
 
     /* 4. Momentum-ignition counter ---------------------------------------- */
