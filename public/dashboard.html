@@ -980,12 +980,13 @@ if (!obiSSE._lastDepthTs) {
 // ─────────────────────────────────────────────────────────────────────
 // HOOK UP UI
 // ─────────────────────────────────────────────────────────────────────
+
 $('stream-btn').onclick = ()=> running ? stop() : start();
 $('update-conn-btn').onclick = ()=>{
   readParams();
   if (running) {
     stop();
-    start();
+    setTimeout(start, 400); // wait 400ms before restarting
   }
 };
 $('toggle-advanced').onclick = function(){
