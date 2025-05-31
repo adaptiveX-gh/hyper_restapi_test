@@ -176,10 +176,10 @@
           </div>
         </div>
       </div>
-      <div class="obi-spectrum-row">
-        <div id="bullMeter" style="width:45%; height:80px; display:inline-block;"></div>
-        <div id="bearMeter" style="width:45%; height:80px; display:inline-block; float:right;"></div>
-      </div>
+      <!-- 1⃣  Replace the two <div>s (keep the same ids) -->
+      <div id="bullMeter" style="width:45%; height:90px; display:inline-block;"></div>
+      <div id="bearMeter" style="width:45%; height:90px; display:inline-block; float:right;"></div>
+
 
       <!-- SOLID-GAUGES -->
       <div class="obi-gauges-row">
@@ -376,70 +376,55 @@
       });
     }
 
+    /* 2⃣  A tiny helper so we never feed NaN into the chart */
+    const N = v => (Number.isFinite(v = +v) ? v : 0);
 
-          // ------------------------------------------------------------------
-      // 1) A reusable options object
-      // ------------------------------------------------------------------
-      const bulletOpts = {
-        chart:  { inverted:true, type:'bullet', height: 80, marginLeft: 65 },
-        title:  { text:null },
-        legend: { enabled:false },
-        xAxis:  {
-          categories:[''],                 // one row, one label
-          tickLength:0, gridLineWidth:0,
-          labels:{ enabled:false }
-        },
-        yAxis : {
-          min:0, max:100,                  // 0-100 spectrum
-          tickInterval:25,
-          gridLineWidth:0,                 // no grid lines
-          title:null,
-          // three grey-scale qualitative ranges like the HC demo:
-          plotBands:[                      //   ↙ tweak colours here
-            { from:0,  to:33, color:'#666' },
-            { from:33, to:66, color:'#999' },
-            { from:66, to:100,color:'#bbb'}
-          ]
-        },
-        plotOptions:{
-          series:{
-            pointPadding:0.25,                // no white gaps
-            pointWidth: 12,
-            borderWidth:1,
-            color:'#000',                  // the “measure” bar colour
-            targetOptions:{                // the thin marker
-              width:'200%',                // width relative to bar
-              height:'75%',                // keep it legible in 80-px chart
-              color:'#000'
-            }
-          }
-        },
-        tooltip:{
-          pointFormat:
-            '<b>{point.y:.1f}</b> (target {point.target:.1f})'
-        },
-        credits:{ enabled:false },
-        exporting:{ enabled:false }
-      };
+    /* 3⃣  A common options object ---------------------------------------- */
+    const barOpts = {
+      chart   : { type: 'bar', inverted: true, spacing: [0, 10, 0, 10] },
+      title   : { text: null },
+      xAxis   : { visible: false },
+      yAxis   : {
+        min: 0, max: 100,
+        tickInterval: 25,
+        gridLineWidth: 0,
+        plotLines: [{              // static “target” line
+          value : 75,
+          width : 2,
+          color : '#222'
+        }],
+        title: null
+      },
+      tooltip : { enabled: false },
+      plotOptions: {
+        series: {
+          color: '#222',            // bar colour
+          borderWidth: 0,
+          pointPadding: 0,
+          groupPadding: 0
+        }
+      },
+      credits : { enabled: false },
+      exporting: { enabled: false },
+      series : [{ data: [0] }]     // single bar, single value
+    };
 
-      // ------------------------------------------------------------------
-      // 2) Instantiate the two charts
-      // ------------------------------------------------------------------
-      const bullMeter = Highcharts.chart(
-        'bullMeter',
-        Highcharts.merge(bulletOpts, {
-          title:{ text:'<b>Bull Spectrum</b>' },
-          series:[{ data:[{ y:50, target:75 }] }]
-        })
-      );
+    /* 4⃣  Instantiate the two spectra ------------------------------------ */
+    const bullMeter = Highcharts.chart(
+      'bullMeter',
+      Highcharts.merge(barOpts, {
+        chart: { backgroundColor: 'transparent' },
+        title: { text: '<b>Bull Spectrum</b>', align: 'center', y: 10 }
+      })
+    );
 
-      const bearMeter = Highcharts.chart(
-        'bearMeter',
-        Highcharts.merge(bulletOpts, {
-          title:{ text:'<b>Bear Spectrum</b>' },
-          series:[{ data:[{ y:50, target:75 }] }]
-        })
-      );
+    const bearMeter = Highcharts.chart(
+      'bearMeter',
+      Highcharts.merge(barOpts, {
+        chart: { backgroundColor: 'transparent' },
+        title: { text: '<b>Bear Spectrum</b>', align: 'center', y: 10 }
+      })
+    );
 
 
     
@@ -961,8 +946,11 @@ if (!obiSSE._lastDepthTs) {
     }
 
     const datapoint = y => ({ y: SAFE(y), target: 75 }); // bullet expects an object
-    bullMeter.series[0].setData([datapoint(bullVal)], false);
-    bearMeter.series[0].setData([datapoint(bearVal)],  true);
+    /* 5⃣  Your update code – replace only this part ---------------------- */
+    // after you have computed bullVal / bearVal (clamped 0-100):
+    bullMeter.series[0].points[0].update(N(bullVal), false);
+    bearMeter.series[0].points[0].update(N(bearVal),  true);
+    /* -------------------------------------------------------------------- */
 
 
     /* 6-e)  donuts & grid ---------------------------------------- */
