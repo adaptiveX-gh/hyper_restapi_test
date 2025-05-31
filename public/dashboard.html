@@ -69,6 +69,14 @@
       padding: 14px 18px;
     }      
     
+  .spectrum-regime {
+    text-align: center;
+    font-weight: bold;
+    font-size: 1rem;
+    margin-top: 3px;
+    letter-spacing: .13em;
+    color: #235;
+  }    
 
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
@@ -197,8 +205,11 @@
     <div class="obi-spectrum-row">
       <div id="bullMeter" class="spectrum-meter"></div>
       <div id="bearMeter" class="spectrum-meter"></div>
-    </div>
 
+      <!-- INSIDE .obi-spectrum-row, after bull/bear meters -->
+      <div id="bullRegime" class="spectrum-regime"></div>
+      <div id="bearRegime" class="spectrum-regime"></div>    
+    </div>
 
       <!-- SOLID-GAUGES -->
       <div class="obi-gauges-row">
@@ -406,6 +417,21 @@ function makeProgress(containerID, titleText) {
       showInLegend  : false
     }]
   });
+}
+
+// Takes a value 0-100 and returns the regime category as a string
+function regimeName(value) {
+  if (value < 33) return "Mean Reversion";
+  if (value < 66) return "Trend Pullback";
+  return "Breakout Continuation";
+}
+
+function regimeDetails(value) {
+  if (value < 33) 
+    return {name: "Mean Reversion", desc:"Fade moves, play reversals"};
+  if (value < 66)
+    return {name: "Trend Pullback", desc:"Ride trends on dips/pullbacks"};
+  return {name: "Breakout", desc:"Momentum & breakout trades"};
 }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -962,6 +988,17 @@ if (!obiSSE._lastDepthTs) {
       { y: bullVal, color: tint('#4dff88', bullVal) }, false);
     bearGauge.series[0].points[0].update(
       { y: bearVal, color: tint('#ff4d4d', bearVal) }, true);
+
+      // After updating the progress bars:
+    const bullRegime = regimeName(bullVal);
+    const bearRegime = regimeName(bearVal);
+
+    $('bullRegime').textContent = "Strategy: " + bullRegime;
+    $('bearRegime').textContent = "Strategy: " + bearRegime;
+
+    // Optionally, display descriptions
+    $('bullRegime').title = regimeDetails(bullVal).desc;
+    $('bearRegime').title = regimeDetails(bearVal).desc;
 
     /* 6-e)  Donuts & grid -------------------------------------------------- */
     absChart.series[0].setData([
