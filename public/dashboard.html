@@ -289,8 +289,6 @@
 
     const FULL_SCALE_LAR   = 5e5;   // already there
     const FULL_SCALE_SLOPE = 1e8;   // new – tune for your order-book
-    const SAFE = v => Number.isFinite(v) ? v : 0;
-
 
 
 
@@ -324,6 +322,12 @@
       squeeze:     false,
       fakeout:     false,
       earlywarn:   false
+    };
+
+    // Helper that guarantees a finite number (default = 0)
+    const SAFE = (v, d = 0) => {
+      v = Number(v);
+      return Number.isFinite(v) ? v : d;
     };
 
     function pushTicker(msg){
@@ -941,8 +945,8 @@ if (!obiSSE._lastDepthTs) {
         raw[i] = 0; // sanitize inline
       }
     }    
-    const bullVal = clamp01(bullComposite);
-    const bearVal = clamp01(bearComposite);
+    const bullVal = NUM(bullComposite, 0);
+    const bearVal = NUM(bearComposite, 0);  
     
     console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
     console.log("== Composite Inputs ==");
