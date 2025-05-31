@@ -84,6 +84,8 @@
 
 
     function refreshAdaptive () {
+        const depthStd = SAFE(depthStats.std(), 1e6);   // fallback 1 M USD if NaN
+
         if (Date.now() - lastAdaptive < 1000) return;
         lastAdaptive = Date.now();
 
@@ -96,7 +98,8 @@
         P.FALSE_NEUTRAL = Math.max(800, 1_200/Math.max(printRate, 0.2));  // ms
 
         /* rest unchanged … */
-        P.MOM_COUNT_THRESH = Math.max(5, Math.round(2 * sizeStats.std() / 10_000));
+        // use the 90-th percentile of trade counts seen in the last 5-10 min
+        P.MOM_COUNT_THRESH = Math.max(5, sizeStats.pct(0.90));
         P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStats.std());
         /* ── NEW: compute depth thresholds for Thin / Thick ── */
         const medDepth = SAFE(depthStats.median(), 5e7);   // fallback 50 M
@@ -166,7 +169,7 @@
         a.push(v);
         if (a.length > maxLen) a.shift();
       };
-      const avg = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+      
       /* *** ADD THIS LINE *** */
       const priceBuf = [];              // stores { ts, mid } for realised-vol calc
 
@@ -669,7 +672,11 @@ obiSSE.onmessage = async (e) => {
     const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
-    const FULL_SCALE_LAR = Math.max(1e5, 6 * depthStats.std()); // adaptive
+    const FULL_SCALE_LAR = Math.max(
+        50_000,                    // absolute floor
+        3 * depthStats.std(),      // softer scale
+        SAFE(depthStats.median(),5e7) * 0.6   // 60 % of median depth
+    );
     const scaledLaR      = Math.min(1, rawLaR / FULL_SCALE_LAR);
     lastLaR = scaledLaR;          // keep for spectrum composite
     updL(scaledLaR);              // drive the gauge
@@ -802,7 +809,17 @@ obiSSE.onmessage = async (e) => {
     flowSSE.lastUpd = now;
 
     /* 6-a) Scenario scores ------------------------------------------------- */
-    const c = avg(buf.c), w = avg(buf.w), s = avg(buf.s), f = avg(buf.f);
+     const fastAvg = a => {             // 25-tick look-back
+     const start = Math.max(0, a.length-25);
+        let s = 0, n = 0;
+        for (let i=start;i<a.length;i++){ s += a[i]; n++; }
+        return n ? s/n : 0;
+        };
+    const c = fastAvg(buf.c),
+    
+    w = avg(buf.w), 
+    s = avg(buf.s), 
+    f = avg(buf.f);
     
 
     updC(c); setGaugeStatus('statusConfirm',  c);
