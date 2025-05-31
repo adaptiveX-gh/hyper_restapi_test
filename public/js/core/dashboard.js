@@ -526,7 +526,7 @@ function regimeDetails(value) {
         type:     t.type,
         price:    t.price.toFixed(0),
         time:     new Date(t.ts).toLocaleTimeString('en-US',{hour12:false}),
-        bias:     ema(buf.c)
+        bias:     fastAvg(buf.c)
       });
       if(flowData.length>1000) flowData.pop();
       renderFlowGrid();
@@ -817,7 +817,7 @@ obiSSE.onmessage = async (e) => {
         };
     const c = fastAvg(buf.c)}
     
-    const w = ema(buf.w),  s = ema(buf.s),  f = ema(buf.f);
+    const w = fastAvg(buf.w),  s = fastAvg(buf.s),  f = fastAvg(buf.f);
     
     
     
@@ -828,7 +828,7 @@ obiSSE.onmessage = async (e) => {
     updF(f); setGaugeStatus('statusFake',     f);
 
     /* 6-b) Line-chart point                                                */
-    const biasVal = ema(buf.c.concat(buf.w).slice(-P.WINDOW));
+    const biasVal = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
     pushBuf(buf.bias, [now, biasVal]);
     setHtml('biasRoll', biasVal.toFixed(2));
     setHtml('biasRollTxt', biasVal > 0 ? 'Bullish' : biasVal < 0 ? 'Bearish' : 'Flat');
