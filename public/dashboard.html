@@ -126,13 +126,13 @@
       <button id="toggle-advanced">⚙ Advanced ▾</button>
       <div id="advanced-settings">
   <!-- ─── TUNABLE PARAMS ─────────────────────────────────────────────────── -->
-        <label for="obi-window">Rolling window (ticks):</label>
+        <label for="obi-window">Rolling P.WINDOW (ticks):</label>
         <input id="obi-window" type="number" min="5"   max="200" value="50">
 
         <label for="min-notional">Min notional (USD):</label>
         <input id="min-notional" type="number" step="100" value="10000">
 
-        <label for="obi-depth">Depth window (levels):</label>
+        <label for="obi-depth">Depth P.WINDOW (levels):</label>
         <input id="obi-depth" type="number" min="5"   max="100" value="25">
 
         <label for="obi-period">Refresh period (s):</label>
@@ -301,6 +301,38 @@
 
   <script>
   (function(){
+    const P = {
+      WINDOW          : 50,
+      MIN_NOTIONAL    : 10_000,
+      DEPTH_PARAM     : 25,
+      DEPTH_BPS       : 0.0005,
+      REFRESH_PERIOD  : 1,
+      VOL_WINDOW      : 60_000,
+      FALSE_ABS       : 200_000,
+      FALSE_NEUTRAL   : 1_200,   // ms
+      MOM_COUNT_THRESH: 30,
+      FULL_SCALE_LAR  : 5e5,
+      FULL_SCALE_SLOPE: 1e8
+    };
+    window.P = P;               // expose for quick console debugging
+
+    const DEPTH_BPS = 0.001;   // 10 bp = 0.10 %
+  
+    /******************************************************************
+    * RollingStats – push(x) then get median(), mean(), std(), pct(q)
+    ******************************************************************/
+    class RollingStats {
+      constructor(size = 300) { this.size = size; this.buf = []; }
+      push(x) { this.buf.push(x); if (this.buf.length > this.size) this.buf.shift(); }
+      _sorted() { return [...this.buf].sort((a,b)=>a-b); }
+      median()  { const s = this._sorted(); const m = s.length>>1;
+                  return s.length ? (s.length%2 ? s[m] : 0.5*(s[m-1]+s[m])) : 0; }
+      mean()    { return this.buf.reduce((a,b)=>a+b,0)/this.buf.length || 0; }
+      std()     { const μ=this.mean(); return Math.sqrt(this.buf
+                    .reduce((s,x)=>s+(x-μ)**2,0)/(this.buf.length||1)); }
+      pct(q)    { const s=this._sorted(); return s.length?s[Math.floor(q*s.length)]:0; }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // HELPERS & STATE
     // ─────────────────────────────────────────────────────────────────────
@@ -309,32 +341,65 @@
           setHtml=(id,t)=>{const e=$(id);if(e)e.textContent=t},
           dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
 
+
+
     // ──────────────────────────────────────────────────
     // 1) State & buffers
     // ──────────────────────────────────────────────────
-    const priceBuf = [];            // {ts, mid}
-    const DEPTH_BPS = 0.001;        // 10 bps = 0.001
+    const sizeStats  = new RollingStats(600);   // ≈ 5‑10 min of prints on BTC
+    const depthStats = new RollingStats(120);   // ≈ 2 min of 1‑second book snaps
+
+    /* helper to protect against zeros until buffers warm up */
+    const SAFE = (v, dflt) => (Number.isFinite(v) && v > 0 ? v : dflt);
+
+    function refreshAdaptive () {
+    const medSize   = SAFE(sizeStats.median(), 10_000);
+    const printStd  = SAFE(sizeStats.std(),     5_000);
+    const depthStd  = SAFE(depthStats.std(),   1e6);
+    const printRate = sizeStats.buf.length / 300; // prints/s last 5‑10 min
+
+    P.FALSE_ABS        = Math.max(50_000, 3 * medSize);
+    P.FALSE_NEUTRAL    = Math.max(1.2, 3 / Math.max(printRate, 1)) * 1000; // ms
+    P.MOM_COUNT_THRESH = Math.max(5, Math.round((2 * printStd) / 10_000));
+    P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStd);
+  }
+
+    function adaptiveThresholds () {
+      // always refresh first so the numbers are current
+      refreshAdaptive();
+      return {
+        FALSE_ABS: P.FALSE_ABS,
+        FALSE_NEUT: P.FALSE_NEUTRAL / 1000,   // legacy wants seconds
+        MOM_THRESH: P.MOM_COUNT_THRESH,
+        SHOCK_SCALE: P.FULL_SCALE_SLOPE
+      };
+    }
+    P.WINDOW.adaptiveThresholds = adaptiveThresholds;
 
     // ─── PARAMS & STATE ────────────────────────────────────────────────────
-    let WINDOW, MIN_NOTIONAL, DEPTH_PARAM, REFRESH_PERIOD;
-    let VOL_WINDOW, FALSE_ABS, FALSE_NEUTRAL, MOM_COUNT_THRESH;
+    
 
-    function readParams(){
-      WINDOW         = +$('obi-window').value;
-      MIN_NOTIONAL   = +$('min-notional').value;
-      DEPTH_PARAM    = +$('obi-depth').value;
-      REFRESH_PERIOD = +$('obi-period').value;
+    /*  tiny helper reinstated  */
+    function readParams () {
+      P.WINDOW          = +$('obi-window').value;
+      P.MIN_NOTIONAL    = +$('min-notional').value;
+      P.DEPTH_PARAM     = +$('obi-depth').value;
+      P.REFRESH_PERIOD  = +$('obi-period').value;
 
-      VOL_WINDOW      = +$('obi-vollook').value;
-      FALSE_ABS       = +$('obi-falseabs').value;
-      FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000;  // convert s→ms
-      MOM_COUNT_THRESH= +$('obi-momthresh').value;
-      
-      absCount = { buy:0, sell:0 }
+      P.VOL_WINDOW      = +$('obi-vollook').value;
+      P.FALSE_ABS       = +$('obi-falseabs').value;
+      P.FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000; // s → ms
+      P.MOM_COUNT_THRESH= +$('obi-momthresh').value;
     }
 
+    ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
+    if (typeof P[k] === 'undefined')
+        console.warn(`Parameter ${k} is missing or typo-ed`);
+    });
+
+
     const FULL_SCALE_LAR   = 5e5;   // already there
-    const FULL_SCALE_SLOPE = 1e8;   // new – tune for your order-book
+    // Removed redeclaration of P.FULL_SCALE_SLOPE to avoid conflict
 
 
 
@@ -351,12 +416,15 @@
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
     // rolling buffers
-    const buf = {c:[], w:[], s:[], f:[], r:[], shock:[], bias:[]};
-    const pushBuf = (a,v)=>{ a.push(v); if(a.length>WINDOW) a.shift(); };
-    const avg = a => {
-      const nums = a.filter(Number.isFinite);
-      return nums.length ? nums.reduce((x, y) => x + y, 0) / nums.length : 0;
-    };
+    /*****************************************************************
+      * 4.  Gauges, charts, buffers  (original logic, but use P.*)     *
+      *****************************************************************/
+      const buf = { c: [], w: [], s: [], f: [], r: [], shock: [], bias: [] };
+      const pushBuf = (a, v) => { a.push(v); if (a.length > P.WINDOW) a.shift(); };
+      const avg = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+      /* *** ADD THIS LINE *** */
+      const priceBuf = [];              // stores { ts, mid } for realised-vol calc
+
 
     // donut counters
     let absCount = {buy:0,sell:0},
@@ -370,8 +438,6 @@
       earlywarn:   false
     };
 
-    // Helper that guarantees a finite number (default = 0)
-    const SAFE = v => Number.isFinite(v = +v) ? v : 0;
 
     function pushTicker(msg){
       $('ticker-inner').textContent = msg;
@@ -527,8 +593,6 @@ function regimeDetails(value) {
         title: { text: '<b>Bear Spectrum</b>', align: 'center', y: 10 }
       })
     );
-
-
     
     const gC = makeGauge('gConfirm'),
           gW = makeGauge('gWarn'),
@@ -556,9 +620,7 @@ function regimeDetails(value) {
     // 2) Keep your helper exactly the same:
 
     const updL = v => gL.series[0].points[0].update(Math.max(0, v));
-
-
-    
+  
     // helper to update Resilience
     function updR(v){ 
       gR.series[0].points[0].update(v); 
@@ -715,156 +777,135 @@ function regimeDetails(value) {
     // STREAM START / STOP
     // ─────────────────────────────────────────────────────────────────────
     let obiSSE, flowSSE, running=false;
-    async function start(){
-      if(running) return;
-      readParams();
-      running=true;
-      $('stream-btn').textContent='Stop Streams';
-      absCount={buy:0,sell:0};
-      cfCount={confirm:0,fake:0};
+    async function start () {
+        P.WINDOW.start = start;
+        if (running) return;
+        readParams();
+        running = true;
+        $('stream-btn').textContent = 'Stop Streams';
 
-      // tell server to start flowBus
-      fetch('/startFlow',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({coin:$('obi-coin').value})
-      }).catch(console.warn);
+        /* tell server to spin up feed */
+        fetch('/startFlow', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ coin: $('obi-coin').value })
+        }).catch(console.warn);
 
       // OBI imbalance stream
-      obiSSE = new EventSource(
-        `/api/obImbalanceLive?coin=${$('obi-coin').value}`+
-        `&depth=${DEPTH_PARAM}`+
-        `&period=${REFRESH_PERIOD}`
-      );
-// assumes these are defined in outer scope:
-//   let priceBuf = [];                // [{ts, mid}, …]
-//   const VOL_WINDOW = 5*60*1000;     // 5 min in ms
-//   const DEPTH_BPS   = 0.001;         // 10 bps = 0.001
-//   function calcRealizedVol(buf){…}   // your vol‐calc
-//   const gL = makeGauge('gLaR');
-//   const updL = v => gL.series[0].points[0].update(v);
-//   function setGaugeStatus(id,v){…}   // sets text+class
+      /* ── OBI stream ----------------------------------------------------- */
+      obiSSE = new EventSource(`/api/obImbalanceLive?coin=${$('obi-coin').value}` +
+                              `&depth=${P.DEPTH_PARAM}&period=${P.REFRESH_PERIOD}`);
+
 
 obiSSE.onmessage = async (e) => {
-  // 1) parse SSE payload
-  let d;
-  try {
-    d = JSON.parse(e.data);
-  } catch {
-    return; // heartbeat or malformed
-  }
+  /* 0. Parse payload (skip heartbeats) */
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+  depthStats.push(d.bidDepth + d.askDepth);
+  refreshAdaptive();
 
+  /* 2. Re‑compute adaptive scalers and overwrite globals */
+  const adapt = adaptiveThresholds();
+  // globals declared elsewhere with "let" so we can mutate them:
+  P.FALSE_ABS          = adapt.FALSE_ABS;
+  P.FALSE_NEUTRAL      = adapt.FALSE_NEUT * 1000;   // store in ms
+  P.MOM_COUNT_THRESH   = adapt.MOM_THRESH;
+  P.FULL_SCALE_SLOPE   = adapt.SHOCK_SCALE;         // used in resilience & shock
 
-  // 1) grab your symbol and depth once
-  const symbol     = $('obi-coin').value.replace(/-PERP$/,'');
-  const depthParam = DEPTH_PARAM;
+  // grab symbol / depth once
+  const symbol     = $('obi-coin').value.replace(/-PERP$/, '');
+  const depthParam = P.DEPTH_PARAM;
 
-  // 2) Update Live OBI ratio KPIs
+  /* 3.  Update KPIs – OBI ratio, liquidity */
   const r = d.ratio;
   setHtml('obiRatio', r.toFixed(2));
-  setHtml('obiRatioTxt',
-    r >= 1.4 ? 'Bid-Heavy' :
-    r <= 0.6 ? 'Ask-Heavy' : 'Balanced'
-  );
+  setHtml('obiRatioTxt', r >= 1.4 ? 'Bid‑Heavy' : r <= 0.6 ? 'Ask‑Heavy' : 'Balanced');
 
-  // 3) Update Liquidity KPI
-  const liq = d.bidDepth + d.askDepth;
-  setHtml('liqVal', fmtUsd(liq));
-  setHtml('liqTxt', liq > 1e8 ? 'Thick' : 'Balanced');
-  dot('liqDot', liq > 1e8 ? 'green' : 'yellow');
+  const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
+  depthStats.push(totalDepthSnap);
 
-// 4) Book Resilience → slope of total depth over time
-const totalDepth = d.bidDepth + d.askDepth;
-if (!obiSSE._lastDepthTs) {
-  obiSSE._lastDepth   = totalDepth;
-  obiSSE._lastDepthTs = d.ts;
-} else {
-  const dt = (d.ts - obiSSE._lastDepthTs) / 1000; // sec
-  const prev = obiSSE._lastDepth;
-  obiSSE._lastDepth   = totalDepth;
-  obiSSE._lastDepthTs = d.ts;
+  setHtml('liqVal', fmtUsd(totalDepthSnap));
+  const thickBook = totalDepthSnap > 1e8;
+  setHtml('liqTxt', thickBook ? 'Thick' : 'Balanced');
+  dot('liqDot', thickBook ? 'green' : 'yellow');
 
-  const rawSlope  = dt ? (totalDepth - prev) / dt : 0;   // avoid 0/0
-  const normSlope = Math.max(-1, Math.min(1, rawSlope / FULL_SCALE_SLOPE));
+  /* 4.  Book Resilience – slope of depth change */
+  if (!obiSSE._lastDepthTs) {
+    obiSSE._lastDepth   = totalDepthSnap;
+    obiSSE._lastDepthTs = d.ts;
+  } else {
+    const dt   = (d.ts - obiSSE._lastDepthTs) / 1000; // sec
+    const prev = obiSSE._lastDepth;
+    obiSSE._lastDepth   = totalDepthSnap;
+    obiSSE._lastDepthTs = d.ts;
 
+    const rawSlope  = dt ? (totalDepthSnap - prev) / dt : 0;
+    const normSlope = Math.max(-1, Math.min(1, rawSlope / P.FULL_SCALE_SLOPE));
 
-  buf.r.push(normSlope);
-  if (buf.r.length>WINDOW) buf.r.shift();
-  const avgR = buf.r.reduce((a,b)=>a+b,0)/buf.r.length;
-  updR(avgR);
-  setGaugeStatus('statusRes', avgR);
-}
+    buf.r.push(normSlope);
+    if (buf.r.length > P.WINDOW) buf.r.shift();
+    const avgR = buf.r.reduce((a, b) => a + b, 0) / buf.r.length;
+    updR(avgR);
+    setGaugeStatus('statusRes', avgR);
+  }
 
-
-  // 5) Compute spread & LaR (with fallback to flat)
+  /* 5.  Spread & LaR (unchanged, uses dynamic FULL_SCALE_LAR) */
   try {
-    const symbol     = $('obi-coin').value.replace(/-PERP$/, '');
-    const depthParam = DEPTH_PARAM;
-
-    // a) Top-of-book → spread
+    // a) top‑of‑book spread
     const topResp = await fetch(`/books/${symbol}?depth=${depthParam}`);
     if (!topResp.ok) throw new Error(`HTTP ${topResp.status}`);
-    const topBk = await topResp.json();
-    const bidPx = +topBk.bids[0][0];
-    const askPx = +topBk.asks[0][0];
-    const mid   = (bidPx + askPx) / 2;
-    lastSpread  = (askPx - bidPx) / mid;
+    const topBk  = await topResp.json();
+    const bidPx  = +topBk.bids[0][0];
+    const askPx  = +topBk.asks[0][0];
+    const mid    = (bidPx + askPx) / 2;
+    lastSpread   = (askPx - bidPx) / mid;
 
-    // b) Realized vol over last 5 min
+    // b) realised vol over last 5 min
     const now = Date.now();
     priceBuf.push({ ts: now, mid });
-    while (now - priceBuf[0].ts > VOL_WINDOW) priceBuf.shift();
+    while (now - priceBuf[0].ts > P.VOL_WINDOW) priceBuf.shift();
     const vol5m = calcRealizedVol(priceBuf);
 
-    // c) Deep-book → raw LaR
+    // c) deep book depth → raw LaR
     const deepResp = await fetch(`/books/${symbol}?depth=${depthParam * 2}`);
     if (!deepResp.ok) throw new Error(`HTTP ${deepResp.status}`);
     const deepBk = await deepResp.json();
-
     let depth10bps = 0;
-    const lower = mid * (1 - DEPTH_BPS), upper = mid * (1 + DEPTH_BPS);
-    deepBk.bids.forEach(([px, sz]) => {
-      if (px >= lower) depth10bps += px * sz;
-    });
-    deepBk.asks.forEach(([px, sz]) => {
-      if (px <= upper) depth10bps += px * sz;
-    });
+    const lower = mid * (1 - P.DEPTH_BPS),
+      upper = mid * (1 + P.DEPTH_BPS);
+    deepBk.bids.forEach(([px, sz]) => { if (px >= lower) depth10bps += px * sz; });
+    deepBk.asks.forEach(([px, sz]) => { if (px <= upper) depth10bps += px * sz; });
 
     let rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
-    // Normalize into [0…1] so the gauge actually moves:
-    const FULL_SCALE_LAR = 5e5;  // 500 k
-    const normLaR       = Math.min(1, rawLaR / FULL_SCALE_LAR);
-    lastLaR = normLaR;
+    const FULL_SCALE_LAR = 5e5;                     // keep constant scale
 
-    updL(rawLaR);
-    setGaugeStatus('statusLaR', rawLaR / FULL_SCALE_LAR);
+    const scaledLaR = Math.min(1, rawLaR / P.FULL_SCALE_LAR);
+    lastLaR = scaledLaR;         // store 0-1 for the composite
+    updL(scaledLaR);             // feed the gauge the scaled value
+    setGaugeStatus('statusLaR', scaledLaR);
 
-    // 2) if you have a label for the raw number, update it too:
-    // setHtml('larRawVal', rawLaR.toFixed(2));
+    // d) update the LaR gauge
+    gL.series[0].points[0].update(lastLaR);
+    setHtml('larVal', `${(lastLaR * 100).toFixed(1)} %`);
+    setHtml('larTxt', regimeName(lastLaR * 100));
+    dot('larDot', lastLaR > 0.5 ? 'green' : 'yellow');
 
   } catch (err) {
-    console.warn('Error computing spread/LaR:', err);
+    console.warn('Error computing LaR:', err);
     lastSpread = null;
     updL(0);
     setGaugeStatus('statusLaR', 0);
   }
 
-
-
-    // ─── 6) Multi-Level Liquidity Shock ─────────────────────────────────
+  /* 6.  Multi‑Level Liquidity Shock (uses dynamic P.FULL_SCALE_SLOPE) */
   try {
-    // fetch a deeper snapshot of the book (e.g. 5× your normal depth)
     const deepResp2 = await fetch(`/books/${symbol}?depth=${depthParam * 5}`);
     if (!deepResp2.ok) throw new Error(`HTTP ${deepResp2.status}`);
     const deepBk2 = await deepResp2.json();
+    const totalBid = deepBk2.bids.reduce((s, [px, sz]) => s + px * sz, 0);
+    const totalAsk = deepBk2.asks.reduce((s, [px, sz]) => s + px * sz, 0);
 
-    // compute total volume on each side
-    const totalBid = deepBk2.bids.reduce((sum, [px, sz]) => sum + px * sz, 0);
-    const totalAsk = deepBk2.asks.reduce((sum, [px, sz]) => sum + px * sz, 0);
-
-    // compare to last tick
     if (!obiSSE._lastTotalBid) {
       obiSSE._lastTotalBid = totalBid;
       obiSSE._lastTotalAsk = totalAsk;
@@ -874,25 +915,20 @@ if (!obiSSE._lastDepthTs) {
       obiSSE._lastTotalBid = totalBid;
       obiSSE._lastTotalAsk = totalAsk;
 
-      // shock = normalized sweep across many levels (ask-side blowout = negative)
-      const shock = Math.max(-1, Math.min(1, bidDiff - askDiff));
+      const shock = Math.max(-1, Math.min(1, (bidDiff - askDiff)));
       buf.shock.push(shock);
-      if (buf.shock.length > WINDOW) buf.shock.shift();
+      if (buf.shock.length > P.WINDOW) buf.shock.shift();
 
       const avgShock = buf.shock.reduce((a, b) => a + b, 0) / buf.shock.length;
       updShock(avgShock);
       setGaugeStatus('statusShock', avgShock);
     }
   } catch (err) {
-    console.warn('Error computing Multi-Level Shock:', err);
+    console.warn('Error computing shock:', err);
     updShock(0);
     setGaugeStatus('statusShock', 0);
   }
-
-
-
-  };
-
+};
   obiSSE.onerror = ()=> setHtml('obiRatio','--');
 
   /*************************************************************************
@@ -904,21 +940,11 @@ if (!obiSSE._lastDepthTs) {
 
   // FLOW stream
   flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
-
-  // ──────────────────────────────────────────────────────────────
-  //  FLOW STREAM HANDLER  (replace the old block with this one)
-  // ──────────────────────────────────────────────────────────────
-  flowSSE.onmessage = e => {
-
-    /* 0. Skip heart-beats -------------------------------------------------- */
+  flowSSE.onmessage = (e) => {
     if (e.data.trim().endsWith('heartbeat')) return;
-
-    /* 1. Parse trade / message object ------------------------------------- */
-    let t;
-    try { t = JSON.parse(e.data); } catch { return; }
-
-    /* 2. Discard small prints --------------------------------------------- */
-    if (t.notional < MIN_NOTIONAL) return;
+    let t; try { t = JSON.parse(e.data); } catch { return; }
+    sizeStats.push(t.notional);
+    if (t.notional < P.MIN_NOTIONAL) return;
 
     const now = Date.now();
 
@@ -928,13 +954,13 @@ if (!obiSSE._lastDepthTs) {
       lastNeutral = now;
 
       const fake =
-        t.notional >= FALSE_ABS &&
-        now - lastNeutral >= FALSE_NEUTRAL
+        t.notional >= P.FALSE_ABS &&
+        now - lastNeutral >= P.FALSE_NEUTRAL
           ? (t.side === 'sell' ? 1 : -1)
           : 0;
       pushBuf(buf.f, fake);
 
-      if (t.notional >= FALSE_ABS) lastHeavy = true;
+      if (t.notional >= P.FALSE_ABS) lastHeavy = true;
     }
 
     if (t.type === 'exhaustion') {
@@ -956,8 +982,8 @@ if (!obiSSE._lastDepthTs) {
     /* 4. Momentum-ignition counter ---------------------------------------- */
     momTimes.push(now);
     while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) momTimes.shift();
-    const momVal = momTimes.length > MOM_COUNT_THRESH
-        ? Math.min(1, (momTimes.length - MOM_COUNT_THRESH) / MOM_COUNT_THRESH)
+    const momVal = momTimes.length > P.MOM_COUNT_THRESH
+        ? Math.min(1, (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
         : 0;
     updMom(momVal);
     setGaugeStatus('statusMom', momVal);
@@ -980,7 +1006,7 @@ if (!obiSSE._lastDepthTs) {
     updF(f); setGaugeStatus('statusFake',     f);
 
     /* 6-b) Line-chart point                                                */
-    const biasVal = avg(buf.c.concat(buf.w).slice(-WINDOW));
+    const biasVal = avg(buf.c.concat(buf.w).slice(-P.WINDOW));
     pushBuf(buf.bias, [now, biasVal]);
     setHtml('biasRoll', biasVal.toFixed(2));
     setHtml('biasRollTxt', biasVal > 0 ? 'Bullish' : biasVal < 0 ? 'Bearish' : 'Flat');
@@ -993,8 +1019,12 @@ if (!obiSSE._lastDepthTs) {
       SAFE(avg(buf.shock)), SAFE(momVal)
     ];
 
-    const bullVal = pct(raw.reduce((s,v)=>s + Math.max(0,  v), 0) / raw.length * 100);
-    const bearVal = pct(raw.reduce((s,v)=>s + Math.max(0, -v), 0) / raw.length * 100);
+    // after computing bullVal / bearVal
+    const amplify = 1.5;                // 1.0 = current, 2.0 = twice as lively
+    const bullVal = pct( amplify *
+          raw.reduce((s,v)=>s + Math.max(0,  v), 0) / raw.length * 100);
+    const bearVal = pct( amplify *
+          raw.reduce((s,v)=>s + Math.max(0, -v), 0) / raw.length * 100);
 
     /* 6-d) Update the two progress bars ----------------------------------- */
     const tint = (base, pct) =>
@@ -1030,6 +1060,17 @@ if (!obiSSE._lastDepthTs) {
     addFlow(t);
   };
 }
+
+  function stop () {
+    P.WINDOW.stop = stop;
+    if (!running) return;
+    running = false;
+    $('stream-btn').textContent = 'Start Streams';
+    obiSSE  && obiSSE.close();
+    flowSSE && flowSSE.close();
+  }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // HOOK UP UI
 // ─────────────────────────────────────────────────────────────────────
@@ -1048,7 +1089,7 @@ $('toggle-advanced').onclick = function(){
   adv.style.display = open?'none':'block';
   this.textContent = '⚙ Advanced '+(open?'▾':'▴');
 };
-$('min-notional').onchange = e=> MIN_NOTIONAL=+e.target.value;
+$('min-notional').onchange = e=> P.MIN_NOTIONAL=+e.target.value;
 
 // AUTO-START
 ensureLine();
