@@ -358,6 +358,56 @@
           dot=(id,c)=>{const e=$(id);if(e)e.className='status-dot '+c};
 
 
+      /* ──────────────────────────────────────────────────────────── */
+      /* 2.  HYPERLIQUID META FETCH (24 h vol / OI / funding)        */
+      /* ──────────────────────────────────────────────────────────── */
+      async function fetchMarketStats() {
+        const base = $('obi-coin').value.replace('-PERP', '');   // e.g. "BTC"
+        try {
+          // batched RPC calls – one POST, three bodies
+          const [ sumR, oiR, fundR ] = await Promise.all([
+            fetch('https://api.hyperliquid.xyz/info', {
+              method :'POST', headers:{'Content-Type':'application/json'},
+              body   : JSON.stringify({type:'perpSummary',  symbol:base})
+            }),
+            fetch('https://api.hyperliquid.xyz/info', {
+              method :'POST', headers:{'Content-Type':'application/json'},
+              body   : JSON.stringify({type:'openInterest', symbol:base})
+            }),
+            fetch('https://api.hyperliquid.xyz/info', {
+              method :'POST', headers:{'Content-Type':'application/json'},
+              body   : JSON.stringify({type:'fundingRates', symbols:[base]})
+            })
+          ]);
+
+          if (!sumR.ok || !oiR.ok || !fundR.ok)
+            throw new Error(`HTTP ${sumR.status}/${oiR.status}/${fundR.status}`);
+
+          const summary = await sumR .json(); // { volume24h, … }
+          const oiObj   = await oiR  .json(); // { oi }
+          const fundObj = await fundR.json(); // { fundingRates:[…] }
+
+          /* 24 h volume */
+          setTxt('sq24h',  `$${(summary.volume24h / 1e6).toFixed(1)}M`);
+
+          /* Open interest */
+          setTxt('oiVal',  `$${(oiObj.oi / 1e6).toFixed(1)}M`);
+          dot   ('oiDot',  'green');
+
+          /* Funding */
+          const fund = fundObj.fundingRates[0];
+          setTxt('fundVal', (fund * 100).toFixed(3) + '%');
+          dot   ('fundDot', fund>0 ? 'green' : fund<0 ? 'red' : 'yellow');
+
+        } catch (err) {
+          console.warn('fetchMarketStats()', err);
+          ['sq24h','oiVal','fundVal'].forEach(id => setTxt(id, 'N/A'));
+          ['oiDot','fundDot'].forEach(id => dot(id,'yellow'));
+        }
+      }
+      // run now + every 30 s
+      fetchMarketStats();
+      setInterval(fetchMarketStats, 30_000);
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
@@ -425,6 +475,8 @@
       P.FALSE_NEUTRAL   = +$('obi-falseneut').value * 1000; // s → ms
       P.MOM_COUNT_THRESH= +$('obi-momthresh').value;
     }
+
+
 
     ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
     if (!(k in P))
