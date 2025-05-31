@@ -84,7 +84,7 @@
   right: 0;
   bottom: 8px; /* Adjust distance from bottom as needed */
   text-align: center;
-  font-size: 1.04rem;
+  font-size: .90rem;          /* a bit smaller */
   font-weight: bold;
   color: #235;
   letter-spacing: .12em;
@@ -218,13 +218,16 @@
           </div>
         </div>
       </div>
-      <div class="spectrum-meter">
-        <div id="bullMeter"></div>
-        <div id="bullRegime" class="spectrum-regime-overlay"></div>
-      </div>
-      <div class="spectrum-meter">
-        <div id="bearMeter"></div>
-        <div id="bearRegime" class="spectrum-regime-overlay"></div>
+      <!-- Bull + Bear side-by-side ------------------------------------- -->
+      <div class="obi-spectrum-row">
+        <div class="spectrum-meter">
+          <div id="bullMeter"></div>
+          <div id="bullRegime" class="spectrum-regime-overlay"></div>
+        </div>
+        <div class="spectrum-meter">
+          <div id="bearMeter"></div>
+          <div id="bearRegime" class="spectrum-regime-overlay"></div>
+        </div>
       </div>
 
       <!-- SOLID-GAUGES -->
@@ -508,8 +511,8 @@ function makeProgress(containerID, titleText) {
 // Takes a value 0-100 and returns the regime category as a string
 function regimeName(value) {
   if (value < 33) return "Mean Reversion";
-  if (value < 66) return "Trend Pullback";
-  return "Breakout Continuation";
+  if (value < 66) return "Pull-back Continuation";
+  return "Break-out Continuation";
 }
 
 function regimeDetails(value) {
