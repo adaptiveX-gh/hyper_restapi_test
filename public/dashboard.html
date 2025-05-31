@@ -881,9 +881,8 @@ obiSSE.onmessage = async (e) => {
     const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
-    const FULL_SCALE_LAR = 5e5;                     // keep constant scale
-
-    const scaledLaR = Math.min(1, rawLaR / P.FULL_SCALE_LAR);
+    const FULL_SCALE_LAR = Math.max(1e5, 6 * depthStats.std()); // adaptive
+    const scaledLaR      = Math.min(1, rawLaR / FULL_SCALE_LAR);
     lastLaR = scaledLaR;          // keep for spectrum composite
     updL(scaledLaR);              // drive the gauge
     setGaugeStatus('statusLaR', scaledLaR);
@@ -913,7 +912,9 @@ obiSSE.onmessage = async (e) => {
       obiSSE._lastTotalBid = totalBid;
       obiSSE._lastTotalAsk = totalAsk;
 
-      const shock = Math.max(-1, Math.min(1, (bidDiff - askDiff)));
+      const shockRaw = (bidDiff - askDiff) /
+                      (P.FULL_SCALE_SLOPE ? P.FULL_SCALE_SLOPE : 1);
+      const shock    = Math.max(-1, Math.min(1, shockRaw));      
       buf.shock.push(shock);
       if (buf.shock.length > P.WINDOW) buf.shock.shift();
 
@@ -947,8 +948,14 @@ obiSSE.onmessage = async (e) => {
 
     // still apply MIN_NOTIONAL to *gauges* but let momentum count all prints
     if (t.notional < P.MIN_NOTIONAL) {
-      momTimes.push(now);              // ② safe to use
-      return;
+    momTimes.push(now);
+    // still refresh the gauge so it decays smoothly
+    const momVal  = momTimes.length > P.MOM_COUNT_THRESH
+        ? Math.min(1, (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
+        : 0;
+    updMom(momVal);
+    setGaugeStatus('statusMom', momVal);
+    return;
     }
     
 
