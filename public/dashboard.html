@@ -397,8 +397,9 @@
         },
         plotOptions:{
           series:{
-            pointPadding:0,                // no white gaps
-            borderWidth:0,
+            pointPadding:0.25,                // no white gaps
+            pointWidth: 12,
+            borderWidth:1,
             color:'#000',                  // the “measure” bar colour
             targetOptions:{                // the thin marker
               width:'200%',                // width relative to bar
@@ -927,12 +928,12 @@ if (!obiSSE._lastDepthTs) {
 
     // AFTER   ─ keep the series, move the single point in place
     if (bullMeter.series[0].points.length) {
-      bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
+      bullMeter.series[0].points[0].update({ x: 0, y: bullVal, target: 75 }, false);
     } else {
       bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
     }
     if (bearMeter.series[0].points.length) {
-      bearMeter.series[0].points[0].update({ y: bearVal, target: 75 }, true);
+      bearMeter.series[0].points[0].update({ x: 0, y: bearVal, target: 75 }, true);
     } else {
       bearMeter.series[0].setData([{ y: bearVal, target: 75 }], true);
     }
