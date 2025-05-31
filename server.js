@@ -1,10 +1,11 @@
 /*───────────────────────────────────────────────────────────────*
  *  Hyperliquid Strategy API – 2025-05-fix-levels                *
  *───────────────────────────────────────────────────────────────*/
-require('dotenv').config();
+import 'dotenv/config';
 import express, { json as _json, static as expressStatic } from 'express';
 import cors from 'cors';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import axios from 'axios';                 // default export
 import { WebSocket } from 'ws';   // or:  import { WebSocket, WebSocketServer } from 'ws';
 import pLimit from 'p-limit';
@@ -12,6 +13,8 @@ import { Transform, PassThrough } from 'stream';
 import { slowStatsCache } from './public/js/core/slowStatsCache.js';
 
 slowStatsCache.start();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
 
 /* ── Constants & WS setup (hoisted) ────────────────────────────── */
 const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
@@ -54,7 +57,7 @@ function startFlowStream(coin) {
     flowBus.write(`heartbeat\n\n`);
   }, 5000);
 
-  if (wss.readyState === OPEN) {
+  if (wss?.readyState === WebSocket.OPEN) {
     wss.send(JSON.stringify({
       method:'subscribe',
       subscription:{ type:'trades',    coin:currentFlowCoin }
@@ -72,8 +75,12 @@ function stopFlowStream() {
   if (!isFlowRunning) return;
   isFlowRunning = false;
   clearInterval(heartbeatInterval);
-  wss.send(JSON.stringify({ method:'unsubscribe', subscription:{ type:'trades', coin:COIN }}));
-  wss.send(JSON.stringify({ method:'unsubscribe', subscription:{ type:'l2Book', coin:COIN, nLevels:DEPTH_LEVELS }}));
+  if (wss?.readyState === WebSocket.OPEN) {
+    wss.send(JSON.stringify({ method:'unsubscribe', subscription:{ type:'trades', coin:COIN }}));
+  }
+  if (wss?.readyState === WebSocket.OPEN) {
+    wss.send(JSON.stringify({ method:'unsubscribe', subscription:{ type:'l2Book', coin:COIN, nLevels:DEPTH_LEVELS }}));
+  }
   console.log('⏹ Flow stream stopped');
 }
 
@@ -105,6 +112,9 @@ const app = express();
 app.use(_json({ limit:'5mb' }));
 app.use(cors());
 app.use(expressStatic(join(__dirname,'public')));
+app.get('/', (req, res) => {
+  res.sendFile(join(__dirname, 'dashboard.html'));
+});
 app.get('/api/__debug', (_,res) => res.json({ pid:process.pid, build:'2025-05-fix-levels' }));
 
 /* ── SDK lazy-init ──────────────────────────────────────────────── */
@@ -1118,8 +1128,13 @@ app.get('/api/24hMetrics', async (req,res)=>{
   }
 });
 
+app.get('/api/slow-stats', (_, res) => res.json(slowStatsCache.current));
+
+const thisFile = resolve(fileURLToPath(import.meta.url));
+
 // -- Start Server ---------------------------------------------------------
-if (require.main === module) {
+if (resolve(process.argv[1] || '') === thisFile) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`🚀 Server listening on http://localhost:${PORT}`));
+  app.listen(PORT, () =>
+    console.log(`🚀  Server listening on http://localhost:${PORT}`));
 }

@@ -586,8 +586,30 @@ function regimeDetails(value) {
         const res = await fetch('/api/slow-stats');
         const { oi, funding, vol24h, ts } = await res.json();
         // maybe show a “last updated” time stamp
-        drawBigCards({ oi, funding8h: funding*8*100, vol24h, ts });
+        updateBigTiles({ oi, funding8h: funding*8*100, vol24h, ts });
     }
+
+    /* ── simple renderer for the big metric tiles ───────────────── */
+    /* ── simple renderer for the big metric tiles ───────────────── */
+    function updateBigTiles ({ oi, funding8h, vol24h, ts }) {
+      const fmt = n =>
+        Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+      const set = (sel, txt) => {
+        const el = document.querySelector(sel);
+        if (el) el.textContent = txt;
+      };
+
+      set('#card-oi',      fmt(oi));
+      set('#card-funding',
+          (funding8h >= 0 ? '+' : '') + fmt(funding8h) + '%');
+      set('#card-vol24h',  '$' + fmt(vol24h));
+
+      /* optional “last updated” stamp — add a <span id="card-upd"> in the HTML */
+      set('#card-upd', new Date(ts).toLocaleTimeString());
+    }
+
+
     pullSlowStats();
     setInterval(pullSlowStats, 30_000);            // every 30 s is plenty
 

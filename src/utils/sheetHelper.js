@@ -1,69 +1,103 @@
 /**
- * sheetHelper.js – helper to pull wallet addresses + stats
- * from columns C (URL), D (Total PnL), E (Winrate), F (Duration)
- * of a public Google Sheet. Optionally filters by min PnL, min Winrate,
- * min Duration.
+ * sheetHelper.js – Google-Sheet helper
+ * ------------------------------------
+ * Pulls trader wallet addresses (and stats) from a *public* Google Sheet.
+ *
+ *  • Wallet URL       – column C (index 2)
+ *  • Total PnL (USD)  – column D (index 3)
+ *  • Win-rate (%)     – column E (index 4)
+ *  • Duration (e.g. "297h 37m") – column F (index 5)
+ *
+ * When you only care about the addresses, call it like:
+ *     const wallets = await fetchTraderAddresses();          // ⇢ [ '0xabc…', '0xdef…', … ]
+ *
+ * To filter:
+ *     const highWin   = await fetchTraderAddresses({ winRateMin: 65 });
+ *     const longHolds = await fetchTraderAddresses({ durationMinMs: 14 * 24*60*60*1000 });
+ *
+ * If you also need the stats, pass `{ withStats: true }`.
  */
 
+import axios from 'axios';
 
-const axios = require('axios');
+/*───────────────────────────────────────────────────────────────*/
+/*  Environment                                                 */
+/*───────────────────────────────────────────────────────────────*/
+const GS_ID  = process.env.GS_ID;            // Google-Sheet ID  (required)
+const GS_GID = process.env.GS_GID || '0';    // Tab “gid”        (default first)
 
-const GS_ID  = process.env.GS_ID;            // required
-const GS_GID = process.env.GS_GID || '0';    // default first sheet tab
-
-/**
- * Parse duration string like "297h 37m" into milliseconds
- */
-export function parseDuration(str) {
-  const hoursMatch = /([0-9]+)h/.exec(str);
-  const minsMatch  = /([0-9]+)m/.exec(str);
-  const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
-  const mins  = minsMatch  ? parseInt(minsMatch[1], 10) : 0;
-  return (hours * 3600 + mins * 60) * 1000;
+/*───────────────────────────────────────────────────────────────*/
+/*  Helpers                                                     */
+/*───────────────────────────────────────────────────────────────*/
+/** Convert "297h 37m" to milliseconds */
+export function parseDuration(str = '') {
+  const h = +(str.match(/([0-9]+)h/)?.[1] || 0);
+  const m = +(str.match(/([0-9]+)m/)?.[1] || 0);
+  return (h * 3600 + m * 60) * 1000;
 }
 
+/*───────────────────────────────────────────────────────────────*/
+/*  Main fetcher                                                */
+/*───────────────────────────────────────────────────────────────*/
 /**
- * Fetch and optionally filter traders from sheet.
- * @param {{pnlMin?: number, winRateMin?: number, durationMinMs?: number}} [filters]
- * @returns {Promise<Array<{address:string,pnl:number,winRate:number,durationMs:number}>>}
+ * @typedef {Object} TraderRow
+ * @property {string} address      0x-wallet
+ * @property {number} pnl          total PnL (USD)
+ * @property {number} winRate      win-rate %
+ * @property {number} durationMs   holding duration in ms
+ */
+
+/**
+ * @param {Object}  [filters]
+ * @param {number}  [filters.pnlMin]        – minimum PnL (USD)
+ * @param {number}  [filters.winRateMin]    – minimum win-rate %
+ * @param {number}  [filters.durationMinMs] – minimum holding time (ms)
+ * @param {boolean} [filters.withStats]     – if true ⇢ return TraderRow[]
+ *
+ * @returns {Promise<string[]|TraderRow[]>}
  */
 export async function fetchTraderAddresses(filters = {}) {
-  if (!GS_ID) throw new Error('Missing GS_ID env var');
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${GS_ID}/gviz/tq?tqx=out:csv&gid=${GS_GID}`;
+  if (!GS_ID) throw new Error('Missing environment variable GS_ID (Google-Sheet ID)');
 
-  const { data: csv } = await axios.get(csvUrl, { timeout: 8000 });
-  const lines = csv.trim().split(/\r?\n/);
-  const rows = lines.slice(1);
+  const csvUrl =
+    `https://docs.google.com/spreadsheets/d/${GS_ID}/gviz/tq?tqx=out:csv&gid=${GS_GID}`;
 
-  const traders = [];
+  /* download the sheet as CSV */
+  const { data: csv } = await axios.get(csvUrl, { timeout: 10_000 });
+  const rows = csv.trim().split(/\r?\n/).slice(1);      // skip header
+
+  const out = [];
   for (const row of rows) {
-    // simple CSV-split on commas (will break if your fields contain commas…)
+    /* naïve CSV-split (fine for simple sheets) */
     const cols = row.split(',');
-    const urlField     = cols[2] || '';
-    const pnlField     = cols[3] || '0';
-    const winRateField = cols[4] || '0';
-    const durField     = cols[5] || '';
 
-    // extract wallet address from the URL column
-    const url   = urlField.replace(/^"|"$/g, '').trim();
-    const match = url.match(/0x[0-9a-fA-F]{40}/);
+    /* Column indexes (0-based)  :  C ⇒ 2,  D ⇒ 3, … */
+    const urlField     = (cols[2] || '').replace(/^"|"$/g, '').trim();
+    const pnlField     = (cols[3] || '0').replace(/"/g, '');
+    const winRateField = (cols[4] || '0').replace(/[^0-9.]/g, '');
+    const durField     = (cols[5] || '');
+
+    /* extract wallet address from the URL */
+    const match = urlField.match(/0x[0-9a-fA-F]{40}/);
     if (!match) continue;
     const address = match[0];
 
-    // parse stats
-    const pnl      = parseFloat(pnlField.replace(/"/g, '')) || 0;
-    const winRate  = parseFloat(winRateField.replace(/[^0-9.]/g, '')) || 0;
+    /* parse numeric stats */
+    const pnl        = +pnlField     || 0;
+    const winRate    = +winRateField || 0;
     const durationMs = parseDuration(durField);
 
-    // apply filters
-    if (filters.pnlMin        != null && pnl       < filters.pnlMin)        continue;
-    if (filters.winRateMin    != null && winRate   < filters.winRateMin)    continue;
-    if (filters.durationMinMs != null && durationMs < filters.durationMinMs) continue;
+    /* apply filters, if any */
+    if (filters.pnlMin        != null && pnl        < filters.pnlMin)         continue;
+    if (filters.winRateMin    != null && winRate    < filters.winRateMin)     continue;
+    if (filters.durationMinMs != null && durationMs < filters.durationMinMs)  continue;
 
-    traders.push({ address, pnl, winRate, durationMs });
+    if (filters.withStats) {
+      out.push({ address, pnl, winRate, durationMs });
+    } else {
+      out.push(address);
+    }
   }
 
-  return traders;
+  return out;
 }
-
-module.exports = { fetchTraderAddresses };
