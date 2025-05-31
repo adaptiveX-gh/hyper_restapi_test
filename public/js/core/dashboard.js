@@ -803,6 +803,7 @@ obiSSE.onmessage = async (e) => {
 
     /* 6-a) Scenario scores ------------------------------------------------- */
     const c = avg(buf.c), w = avg(buf.w), s = avg(buf.s), f = avg(buf.f);
+    
 
     updC(c); setGaugeStatus('statusConfirm',  c);
     updW(w); setGaugeStatus('statusWarn',     w);
