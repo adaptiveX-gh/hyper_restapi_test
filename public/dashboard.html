@@ -325,10 +325,7 @@
     };
 
     // Helper that guarantees a finite number (default = 0)
-    const SAFE = (v, d = 0) => {
-      v = Number(v);
-      return Number.isFinite(v) ? v : d;
-    };
+    const SAFE = v => Number.isFinite(v = +v) ? v : 0;
 
     function pushTicker(msg){
       $('ticker-inner').textContent = msg;
@@ -945,8 +942,8 @@ if (!obiSSE._lastDepthTs) {
         raw[i] = 0; // sanitize inline
       }
     }    
-    const bullVal = NUM(bullComposite, 0);
-    const bearVal = NUM(bearComposite, 0);  
+    const bullVal = SAFE(bullComposite, 0);
+    const bearVal = SAFE(bearComposite, 0);  
     
     console.log('bullVal', bullVal, 'bearVal', bearVal, 'raw', raw);
     console.log("== Composite Inputs ==");
@@ -963,17 +960,9 @@ if (!obiSSE._lastDepthTs) {
       console.error('❌ bearVal is NaN or invalid:', bearVal);
     }
 
-    // AFTER   ─ keep the series, move the single point in place
-    if (bullMeter.series[0].points.length) {
-      bullMeter.series[0].points[0].update({ y: bullVal, target: 75 }, false);
-    } else {
-      bullMeter.series[0].setData([{ y: bullVal, target: 75 }], false);
-    }
-    if (bearMeter.series[0].points.length) {
-      bearMeter.series[0].points[0].update({ y: bearVal, target: 75 }, true);
-    } else {
-      bearMeter.series[0].setData([{ y: bearVal, target: 75 }], true);
-    }
+    const datapoint = y => ({ y: N(y), target: 75 }); // bullet expects an object
+    bullMeter.series[0].setData([datapoint(bullVal)], false);
+    bearMeter.series[0].setData([datapoint(bearVal)],  true);
 
 
     /* 6-e)  donuts & grid ---------------------------------------- */
