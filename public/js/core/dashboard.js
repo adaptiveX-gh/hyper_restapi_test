@@ -666,7 +666,6 @@ function regimeDetails(value) {
 const CFD_WINDOW_MS = 60*60*1000;
 const cfdSeries = { bids:[], asks:[], imb:[], mid:[] };
 
-const obCFD = Highcharts.chart('obCfd', {/* … config stays unchanged … */});
 
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
@@ -1023,34 +1022,32 @@ flowSSE.onmessage = (e) => {
   ], false);
 
 
-  const obCFD = Highcharts.chart('obCfd', {
-    chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
-    title : { text:'Order Book Imbalance CFD', style:{ fontSize:'15px' } },
-    xAxis : { type:'datetime' },
-    yAxis : [{
-        title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
-      },{
-        title:{ text:'Price' }, opposite:true, visible:false
-    }],
-    tooltip : { shared:true, xDateFormat:'%H:%M' },
-    legend  : { enabled:false },
-    series  : [{
-        name : 'Bids (liquidity)',
-        data : [], color:'rgba(77,255,136,0.55)', fillOpacity:0.6
-      },{
-        name : 'Asks (liquidity)',
-        data : [], color:'rgba(255,77,77,0.55)',  fillOpacity:0.6
-      },{
-        name : 'Imbalance (B-A)',
-        type : 'line',
-        data : [], color:'#1e90ff', lineWidth:1.6
-      },{
-        name : 'Mid-price',
-        type : 'line',
-        data : [], color:'#555', dashStyle:'Dash', yAxis:1
-    }],
-    credits : { enabled:false }
-  });
+const obCFD = Highcharts.chart('obCfd', {
+  chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
+  title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
+  xAxis : { type:'datetime' },
+  yAxis : [{
+      title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
+    },{
+      title:{ text:'Price' }, opposite:true, visible:false
+  }],
+  tooltip : { shared:true, xDateFormat:'%H:%M' },
+  legend  : { enabled:false },
+
+  /*  ← ADD THESE FOUR PLACE-HOLDER SERIES  */
+  series  : [
+    { name:'Bids',       type:'area', data:[],
+      color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
+    { name:'Asks',       type:'area', data:[],
+      color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
+    { name:'Imbalance',  type:'line', data:[],
+      color:'#1e90ff',   lineWidth:1.6 },
+    { name:'Mid-price',  type:'line', data:[],
+      color:'#555',      dashStyle:'Dash', yAxis:1 }
+  ],
+
+  credits : { enabled:false }
+});
 
 
   absChart.redraw(false);
