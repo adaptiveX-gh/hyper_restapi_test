@@ -9,6 +9,10 @@
     let price24hAgo = null;     // fetched once per coin switch
     let hlWs = null;          // keep a reference so we can close / restart
 
+    // put near the top of dashboard.js – before updateBigTiles is ever called
+    let LIQ_MEDIAN = NaN;     // <- will be filled once slow-stats arrives
+    let VOL_MEDIAN = NaN;
+
   (function(){
     const P = {
       WINDOW          : 50,
@@ -124,6 +128,17 @@ function stopPriceFeed () {
     hlWs.close(1000, 'manual close');
   }
 }
+
+/* safe -text writer : never crashes even if ID is missing */
+function setTxt(id, txt) {
+  const el = document.getElementById(id);
+  if (!el) {                                     // guard against  null
+    console.warn('[setTxt] missing element:', id);
+    return;
+  }
+  el.textContent = txt;
+}
+
 
         // ─── lightweight CFD updater ──────────────────────────────────────────
     function feedCFD(depthSnap) {
@@ -801,70 +816,91 @@ function initCFDChart () {
 
 
     /* ===== widgets that can be slow-lane ===== */
-    async function pullSlowStats () {
-        const res = await fetch('/api/slow-stats');
-        const { oi, funding, vol24h, ts } = await res.json();
-        // maybe show a “last updated” time stamp
-        updateBigTiles({ oi, funding8h: funding*8*100, vol24h, ts });
-    }
+/* ------------------------------------------------------------------
+ * 30-second poll – open-interest, funding, 24 h volume, liquidity
+ * ------------------------------------------------------------------ */
+async function pullSlowStats () {
+  try {
+    const res  = await fetch('/api/slow-stats');
+    const data = await res.json();
+
+    /* The backend should send these fields – guard just in case       */
+    // 30-day medians (needed for the red/green/grey strength dots)
+    if (Number.isFinite(data.liq30dMedian)) LIQ_MEDIAN = data.liq30dMedian;
+    if (Number.isFinite(data.vol30dMedian)) VOL_MEDIAN = data.vol30dMedian;
+
+    /* A *snapshot* of current depth so the Liquidity dot has context. */
+    // If your endpoint doesn’t include it, compute it locally instead.
+    const liqSnap = Number.isFinite(data.liqSnap) ? data.liqSnap : NaN;
+
+    updateBigTiles({
+      oi         : data.oi,                  // raw open-interest (number)
+      funding8h  : data.funding * 8 * 100,   // pct for the last 8 h leg
+      vol24h     : data.vol24h,              // rolling 24 h volume
+      liqSnap,                              // depth snapshot (can be NaN)
+      ts         : data.ts                  // server timestamp
+    });
+  } catch (err) {
+    console.warn('[slow-stats]', err);
+  }
+}
 
     
     /* ── simple renderer for the big metric tiles ───────────────── */
     /* The caller now provides depthSnap, medians too */
-    function updateBigTiles ({
-      oi,
-      funding8h,            // -- funding in % over 8 h
-      vol24h,
-      totalDepthSnap,       // <— ADD THIS
-      LIQ_MEDIAN,           // <— ADD THIS
-      VOL_MEDIAN,           // <— ADD THIS
-      ts
-    }) {
+/* -------------------------------------------------------------
+ *  Big metric tiles + four status-dots
+ * ------------------------------------------------------------- */
+function updateBigTiles({ oi, funding8h, vol24h, liqSnap = NaN, ts }) {
+  /* ── tiny helpers ───────────────────────────────────────── */
+  const $       = id => document.getElementById(id);
+  const asNum   = v  => Number.isFinite(+v) ? +v : 0;
+  const pctStr  = v  => `${v >= 0 ? '+' : ''}${v.toFixed(4)} %`;
 
-      /* 1️⃣ OI / Funding dot -------------------------------------- */
-      const deltaOi  = oi - (window.__prevOi || oi);
-      window.__prevOi = oi;
+  /* 1️⃣  OI + Funding status-dot -------------------------- */
+  const deltaOi        = asNum(oi) - (window.__prevOi ?? asNum(oi));
+  window.__prevOi      = asNum(oi);
 
-      const funding  = funding8h / 8 / 100;          // back-out hourly funding rate
-      const oiState  = stateOiFunding({ dOi: deltaOi, funding });
+  const oiState        = stateOiFunding({
+    dOi     : deltaOi,
+    funding : asNum(funding8h)
+  });
 
-      paintDot(
-        document.getElementById('dot-oi'),
-        oiState,
-        `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  ` +
-        `Funding ${funding >= 0 ? '+' : ''}${(funding * 100).toFixed(4)} %·h`
-      );
+  paintDot($('#dot-oi'), oiState,
+    `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  `
+  + `Funding ${pctStr(asNum(funding8h))}`);
 
-      /* 2️⃣ Liquidity dot ----------------------------------------- */
-      const pctLiq   = (totalDepthSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
-      const liqState = stateStrength({ pctVsMedian: pctLiq });
+  /* 2️⃣  Liquidity & Volume dots ------------------------- */
+  /*   – only colour-code once we have the 30-day medians   */
+  if (Number.isFinite(LIQ_MEDIAN) && Number.isFinite(liqSnap)) {
+    const pctLiq   = (liqSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
+    paintDot($('#dot-liq'),
+      stateStrength({ pctVsMedian: pctLiq }),
+      `Liquidity ${(pctLiq * 100).toFixed(1)} % vs 30-day median`);
+  } else {
+    paintDot($('#dot-liq'), 'normal', 'Liquidity — median pending');
+  }
 
-      paintDot(
-        document.getElementById('dot-liq'),
-        liqState,
-        `Liquidity ${(pctLiq * 100).toFixed(1)} % vs 30-day median`
-      );
+  if (Number.isFinite(VOL_MEDIAN)) {
+    const pctVol   = (asNum(vol24h) - VOL_MEDIAN) / VOL_MEDIAN;
+    paintDot($('#dot-vol'),
+      stateStrength({ pctVsMedian: pctVol }),
+      `Volume ${(pctVol * 100).toFixed(1)} % vs 30-day median`);
+  } else {
+    paintDot($('#dot-vol'), 'normal', 'Volume — median pending');
+  }
 
-      /* 3️⃣ Volume dot -------------------------------------------- */
-      const pctVol   = (vol24h - VOL_MEDIAN) / VOL_MEDIAN;
-      const volState = stateStrength({ pctVsMedian: pctVol });
+/* 3️⃣  Numeric tiles (compact notation) ---------------- */
+setTxt('card-oi',      formatCompact(asNum(oi)));
+setTxt('card-funding', pctStr(asNum(funding8h)));
+setTxt('card-vol24h',  formatCompact(asNum(vol24h)));
 
-      paintDot(
-        document.getElementById('dot-vol'),
-        volState,
-        `Volume ${(pctVol * 100).toFixed(1)} % vs 30-day median`
-      );
+/* 4️⃣  Last-updated stamp ------------------------------ */
+if (ts) setTxt('card-upd', new Date(asNum(ts)).toLocaleTimeString());
 
-      /* 4️⃣ Compact metric numbers -------------------------------- */
-      document.querySelector('#card-oi')     .textContent = formatCompact(oi);
-      document.querySelector('#card-funding').textContent =
-          `${funding8h >= 0 ? '+' : ''}${funding8h.toFixed(2)} %`;
-      document.querySelector('#card-vol24h') .textContent = formatCompact(vol24h);
 
-      /* 5️⃣ “last updated” stamp ---------------------------------- */
-      const upd = document.querySelector('#card-upd');
-      if (upd) upd.textContent = new Date(ts).toLocaleTimeString();
-    }
+}
+
 
 
     pullSlowStats();
