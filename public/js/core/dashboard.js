@@ -52,6 +52,44 @@
     };
     
     let statsFeed = null;
+    //  ==== 1. create once  ==========================================
+    const CFD_CAP = 3_600;          // keep 1-hour @ 1-sec
+    const cfdSeries = { bids: [], asks: [], imb: [], mid: [] };
+
+    function addPoint(arr, point) {
+      arr.push(point);
+      if (arr.length > CFD_CAP) arr.shift();
+    }
+
+        // ─── lightweight CFD updater ──────────────────────────────────────────
+    function feedCFD(depthSnap) {
+      if (!obCFD || obCFD.series.length < 4) return;   // safety guard
+
+      const ts   = depthSnap.ts;
+      const bidN = depthSnap.bidDepth;
+      const askN = depthSnap.askDepth;
+      const mid  = (depthSnap.topBid + depthSnap.topAsk) / 2;
+
+      // 1️⃣ keep the raw buffers bounded to CFD_CAP points
+      addPoint(cfdSeries.bids, [ts, bidN]);
+      addPoint(cfdSeries.asks, [ts, askN]);
+      addPoint(cfdSeries.imb , [ts, bidN - askN]);
+      addPoint(cfdSeries.mid , [ts, mid]);
+
+      // 2️⃣ push *one* point into each visible Highcharts series
+      const shift = obCFD.series[0].data.length >= CFD_CAP;   // drop oldest?
+      obCFD.series[0].addPoint([ts, bidN],      false, shift);
+      obCFD.series[1].addPoint([ts, askN],      false, shift);
+      obCFD.series[2].addPoint([ts, bidN-askN], false, shift);
+      obCFD.series[3].addPoint([ts, mid],       false, shift);
+
+      // 3️⃣ throttle expensive redraws (here: once per second)
+      if (!feedCFD.lastDraw || ts - feedCFD.lastDraw > 1000) {
+        obCFD.redraw(false);
+        feedCFD.lastDraw = ts;
+      }
+    }
+
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
@@ -557,9 +595,9 @@ function initCFDChart () {
   if (obCFD) return;             // already initialised
 
   obCFD = Highcharts.chart('obCfd', {
-    chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
+    chart : { type:'area', height:320, spacing:[10,10,25,10], zoomType:'x' },
     title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
-    xAxis : { type:'datetime' },
+    xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
     yAxis : [{
         title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
       },{ title:{ text:'Price' }, opposite:true, visible:false }],
@@ -605,7 +643,7 @@ function initCFDChart () {
       price    : row.price ? row.price.toFixed(0) : '—',
       time     : new Date(row.ts || Date.now())
                   .toLocaleTimeString('en-US', { hour12:false }),
-      bias     : Number.isFinite(row.bias) ? row.bias.toFixed(2) : '0.00'
+      bias     : Number(row.bias)
     });
 
     // 2) keep the buffer bounded
@@ -669,68 +707,37 @@ function initCFDChart () {
 
 
 
-    // ─────────────────────────────────────────────────────────────────────
-    // STREAM START / STOP
-    // ─────────────────────────────────────────────────────────────────────
-    let obiSSE, flowSSE, running=false;
-    async function start () {
-        P.startStreams       = start;
-        if (running) return;
-        readParams();
-        running = true;
-        $('stream-btn').textContent = 'Stop Streams';
+// ─────────────────────────────────────────────────────────────────────
+// STREAM START / STOP
+// ─────────────────────────────────────────────────────────────────────
+let obiSSE, flowSSE, running=false;
+async function start () {
+    P.startStreams       = start;
+    if (running) return;
+    readParams();
+    running = true;
+    $('stream-btn').textContent = 'Stop Streams';
 
-        /* tell server to spin up feed */
-        fetch('/startFlow', {
-          method : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body   : JSON.stringify({ coin: $('obi-coin').value })
-        }).catch(console.warn);
+    /* tell server to spin up feed */
+    fetch('/startFlow', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ coin: $('obi-coin').value })
+    }).catch(console.warn);
 
-      // OBI imbalance stream
-      /* ── OBI stream ----------------------------------------------------- */
-      obiSSE = new EventSource(`/api/obImbalanceLive?coin=${$('obi-coin').value}` +
-                              `&depth=${P.DEPTH_PARAM}&period=${P.REFRESH_PERIOD}`);
-
-const CFD_WINDOW_MS = 60*60*1000;
-const cfdSeries = { bids:[], asks:[], imb:[], mid:[] };
-
+  // OBI imbalance stream
+  /* ── OBI stream ----------------------------------------------------- */
+  obiSSE = new EventSource(`/api/obImbalanceLive?coin=${$('obi-coin').value}` +
+                          `&depth=${P.DEPTH_PARAM}&period=${P.REFRESH_PERIOD}`);
 
 
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
+
   worker.postMessage({ type:'depthSnap', payload:d });
+  feedCFD(d); 
   
-    /* (A)  FEED CFD  — one-liner IIFE */
-  (function feedCFD() {
-    if (!obCFD || obCFD.series.length < 4) return;   //  ← guard
-    const ts = d.ts,
-          bidN = d.bidDepth,
-          askN = d.askDepth,
-          mid = (d.topBid + d.topAsk) / 2;
-
-    cfdSeries.bids.push([ts,bidN]);
-    cfdSeries.asks.push([ts,askN]);
-    cfdSeries.imb .push([ts,bidN-askN]);
-    cfdSeries.mid .push([ts,mid]);
-
-    const cut = ts - CFD_WINDOW_MS;
-    Object.values(cfdSeries).forEach(arr=>{
-      while (arr.length && arr[0][0] < cut) arr.shift();
-    });
-
-    const s = obCFD.series;
-    s[0].setData(cfdSeries.bids,false);
-    s[1].setData(cfdSeries.asks,false);
-    s[2].setData(cfdSeries.imb ,false);
-    s[3].setData(cfdSeries.mid ,false);
-    if (!feedCFD.lastDraw || ts - feedCFD.lastDraw > UI_THROTTLE_MS){
-      obCFD.redraw(false);
-      feedCFD.lastDraw = ts;
-    }
-  })();
-
   /* 2. Re‑compute adaptive scalers and overwrite globals */
   const adapt = adaptiveThresholds();
   // globals declared elsewhere with "let" so we can mutate them:
@@ -915,7 +922,7 @@ flowSSE.onmessage = (e) => {
   }
 
   /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
-  const biasVal   = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
+  const biasVal = fastAvg(buf.c.slice(-P.WINDOW)); // rolling bias
   biasChart.pushBias(now, biasVal);
 
   const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();

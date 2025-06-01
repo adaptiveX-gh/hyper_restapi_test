@@ -311,13 +311,32 @@
       </div>
 
       <!-- FLOW GRID -->
-      <div id="bigFlowRow" class="row-flex">
-        <div id="flowGrid"   class="flex-1"></div>   <!-- already exists -->
-        <div id="obCfd"      class="flex-1"></div>   <!-- 👈 NEW -->
+      <!-- FLOW GRID (inside bigFlowRow) -->
+      <div class="obi-block flex-1" style="min-height:320px">
+        <h4 style="margin:0 0 8px;">Recent Big Flow</h4>
+        <div id="flowGrid" style="height:260px;"></div>
       </div>
+      <!-- CFD BLOCK -->
+      <!-- NEW -->
+      <div id="bigCFDRow" class="row-flex">
+        <div class="obi-block flex-1" style="min-height:380px">
+          <h4 style="margin:0 0 8px;">Order-Book Imbalance CFD</h4>
+          <div id="obCfd" style="height:320px; width:100%;"></div>
+        </div>
+      </div>   
     </div>
   </div>
-
+  <script>
+  /* Force Highcharts to use the browser’s local time zone            *
+  * (same zone that new Date(..).toLocaleTimeString() uses).         */
+  Highcharts.setOptions({
+    time : {
+      useUTC : false          // <-- key line
+      // If you ever need to pin to a specific zone:
+      // timezoneOffset : new Date().getTimezoneOffset()   // minutes
+    }
+  });
+  </script>
   <script type="module" src="./js/core/dashboard.js"></script>
 </body>
 </html>
