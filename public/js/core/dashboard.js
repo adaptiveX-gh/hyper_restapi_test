@@ -249,7 +249,8 @@ function setTxt(id, txt) {
     }
 
     function refreshAdaptive () {
-        const depthStd = SAFE(depthStats.std(), 1e6);   // fallback 1 M USD if NaN
+        const ds = depthStats.std();
+        const depthStd = Number.isFinite(ds) ? ds : 1e6;
 
         if (Date.now() - lastAdaptive < 1000) return;
         lastAdaptive = Date.now();
@@ -318,11 +319,12 @@ function ensureWorker () {
 
   // ②  Wire listeners *once*
   worker.addEventListener('message', ({ data }) => {
-    if (data.type === 'cfdForecast') {
-      const { base, up, lo } = data.payload;
-      updateForecastSeries(base, up, lo);
-      return;
-    }
+  if (data.type === 'cfdForecast') {
+    const { base, up, lo } = data.payload;
+    updateForecastSeries(base, up, lo);      // existing call
+    
+    metricsWorker.__lastFc = data.payload;   // (optional debug)
+  }
 
     /* existing adaptive / gauges / anomaly routing  */
     if (data.type === 'adapt')   { /* … */ }
@@ -346,34 +348,7 @@ function ensureWorker () {
  }
  sendConfig();          // once at start
 
-  worker.onmessage = ({ data }) => {
-  if (data.type === 'adapt') {
-    const a = data.payload;
-    P.FALSE_ABS       = a.FALSE_ABS;
-    P.FALSE_NEUTRAL   = a.FALSE_NEUT;
-    P.MOM_COUNT_THRESH= a.MOM_THRESH;
-    P.FULL_SCALE_SLOPE= a.FULL_SCALE_SLOPE;
-  }
-  if (data.type === 'gauges') {
-    const g = data.payload;
-    updC(g.confirm); setGaugeStatus('statusConfirm', g.confirm);
-    updW(g.warn);    setGaugeStatus('statusWarn',    g.warn);
-    updS(g.squeeze); setGaugeStatus('statusSqueeze', g.squeeze);
-    updF(g.fake);    setGaugeStatus('statusFake',    g.fake);
-  }
 
-  if (data.type === 'anomaly') {
-    const p   = data.payload;
-    addAnomalyPoint({
-      ts           : p.ts,
-      side         : p.side,
-      size         : p.size,
-      isAbsorption : p.kind === 'abs'
-    });
-    refreshLine();             // redraw once per batch
-  }
-
-};
 
 
     ['DEPTH_BPS','VOL_WINDOW','FALSE_ABS'].forEach(k=>{
@@ -789,6 +764,7 @@ function initCFDChart () {
     ],
     credits : { enabled:false }
   });
+  window.obCFD = obCFD;
 }
 
 /**
@@ -827,11 +803,13 @@ function updateForecastSeries(base, up, lo) {
   }
 
   /* 2️⃣  Style tweaks that make the forecast obvious */
-  fore?.update({
-    color: 'rgba(30,144,255,0.65)',   // semi-transparent blue
-    dashStyle: 'ShortDot',
-    enableMouseTracking: false
-  }, false);
+fore?.update({
+  color     : '#ff1493',    // strong magenta
+  dashStyle : 'Dash',
+  lineWidth : 3,
+  zIndex    : 5,
+  enableMouseTracking : false
+}, false);
 
   const cutOff = base[0][0];                    // first forecast ts
   const xAx    = obCFD.xAxis[0];
@@ -846,19 +824,46 @@ function updateForecastSeries(base, up, lo) {
     zIndex: 5
   });
 
+const horizon  = base[base.length - 1][0];   // *last* forecast point
+
+ensureViewport(horizon);
+
   /* Fade live line to the right of the cut-off */
   live?.update({
-    zones: [{
-      value: cutOff,              // left side: keep solid colour
+    zoneAxis : 'x',                  // 👈 tell Highcharts to zone on the x-axis
+    zones    : [{
+      value: cutOff,
       color: '#1e90ff'
     }, {
-      /* right side: fade  */
       color: 'rgba(30,144,255,0.25)'
     }]
   }, false);
 
   /* 3️⃣  One inexpensive repaint */
   obCFD.redraw(false);
+}
+
+/**
+ * Ensure the x-axis always shows the entire forecast horizon.
+ * Called once after every forecast refresh.
+ * @param {number} fcEndTs – timestamp of the *last* forecast point
+ */
+function ensureViewport (fcEndTs) {
+  const xAx = obCFD.xAxis[0];
+  const { min, max } = xAx.getExtremes();
+
+  // 1) protect against the very first call (when min == max)
+  if (min === undefined || max === undefined || min === max) {
+    xAx.setExtremes(fcEndTs - 60_000, fcEndTs, false, false); // 1-min window
+    return;
+  }
+
+  // 2) only pan if we are not already showing >10 min
+  const width = max - min;
+  if (fcEndTs > max && width < 10 * 60 * 1e3)
+    xAx.setExtremes(fcEndTs - width, fcEndTs, false, false);
+
+  /* if the forecast end lies outside the current window → pan right */
 }
 
 
