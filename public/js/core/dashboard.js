@@ -68,6 +68,26 @@
     let LIQ_THIN  = 0;
     let LIQ_THICK = 0;
 
+    /* ─── Re-usable JSON fetch with one quick retry ───────────────── */
+    async function fetchJSON(url, opts = {}, retry = true) {
+      const resp = await fetch(url, opts);
+      if (resp.ok) return resp.json();
+
+      /* first failure – maybe transient; wait 100 ms and retry once  */
+      if (retry) {
+        await new Promise(r => setTimeout(r, 100));
+        return fetchJSON(url, opts, false);          // second try, no more retries
+      }
+      /* still not OK → propagate an Error the caller can catch       */
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    
+    /* helper – call whenever you need the current yard-stick           */
+    function bigPrintThreshold () {
+      // rolling 90-th percentile ≈ "normal big print"
+      const p90 = sizeStats.pct(0.9) || 20_000;
+      return 3 * p90;                          // “3× normal”
+    }
 
     function refreshAdaptive () {
         const depthStd = SAFE(depthStats.std(), 1e6);   // fallback 1 M USD if NaN
@@ -151,6 +171,18 @@
     updS(g.squeeze); setGaugeStatus('statusSqueeze', g.squeeze);
     updF(g.fake);    setGaugeStatus('statusFake',    g.fake);
   }
+
+  if (data.type === 'anomaly') {
+    const p   = data.payload;
+    addAnomalyPoint({
+      ts           : p.ts,
+      side         : p.side,
+      size         : p.size,
+      isAbsorption : p.kind === 'abs'
+    });
+    refreshLine();             // redraw once per batch
+  }
+
 };
 
 
@@ -549,36 +581,77 @@ function regimeDetails(value) {
     // BOOK BIAS LINE
     // ─────────────────────────────────────────────────────────────────────
     let biasLine;
-    function ensureLine(){
-      if(biasLine) return;
-      biasLine = Highcharts.chart('biasLine',{
-        chart:{type:'line',backgroundColor:'transparent',height:260},
-        title:{text:'Book Bias Over Time'},
-        xAxis:{type:'datetime',tickInterval:300000},
-        yAxis:{
-          min:-1,max:1,
+    function ensureLine () {
+      if (biasLine) return;
+
+      biasLine = Highcharts.chart('biasLine', {
+        chart  : { type:'line', backgroundColor:'transparent', height:260 },
+        title  : { text:'Book Bias Over Time' },
+        xAxis  : { type:'datetime', tickInterval: 300000 },
+        yAxis  : {
+          min:-1, max:1,
           plotBands:[
-            {from:0.6,to:1,  color:'rgba(77,255,136,.1)'},
-            {from:-1,to:-0.6,color:'rgba(255,77,77,.1)'}
+            { from: 0.6, to: 1.0,  color:'rgba(77,255,136,.10)' },
+            { from:-1.0, to:-0.6, color:'rgba(255,77,77,.10)'  }
           ]
         },
-        legend:{enabled:false},
-        series:[{data:[],color:'#41967c'}],
-        credits:{enabled:false}
+        legend : { enabled:false },
+        series : [{ id:'bias', data:[], color:'#41967c', type:'line' }],
+        credits: { enabled:false }
       });
-    }
-    function refreshLine(){
-      ensureLine();
-      biasLine.series[0].setData(buf.bias,false);
-      biasLine.redraw();
+
+      /* ─── 2. Add the scatter series *separately* ──────────────── */
+      biasLine.addSeries({
+        id   : 'events',
+        type : 'scatter',
+        name : 'Anomalies',
+        data : [],
+        yAxis: 0,                   // pin to the existing −1…+1 axis
+        marker : {
+          symbol     : 'circle',
+          radius     : 6,
+          lineWidth  : 1,
+          lineColor  : '#000',
+          fillOpacity: 0.9
+        },
+        tooltip : {
+          pointFormat:
+            '<span style="color:{point.color}">\u25CF</span> ' +
+            '<b>{point.anm}</b><br/>' +
+            '{point.side}, {point.size:$,.0f} notional<br/>' +
+            '{point.time:%H:%M:%S}'
+        },
+        enableMouseTracking : true,
+        zIndex : 5               // keep it above the green line
+      }, false);                  // ← false = don’t redraw yet
     }
 
-        /* ===== widgets that NEED <250 ms ===== */
-    onCtx(({ openInterest, funding, markPx }) => {
-        updateGauge('openIntGauge', openInterest);   // existing gauge-update fns
-        updateGauge('fundingGauge', funding * 8 * 100); // hourly → 8 h %
-        updateTicker(markPx);
-    });
+    function refreshLine () {
+      ensureLine();
+      biasLine.get('bias').setData(buf.bias, false);
+      biasLine.redraw(false);
+    }
+
+    function addAnomalyPoint ({ ts, y, side, size, isAbsorption }) {
+      ensureLine();                               // make sure chart exists
+
+      const bull = side === 'buy';
+
+      biasLine.get('events').addPoint({
+        x        : ts,
+        y,
+        anm      : isAbsorption ? 'Big ABS' : 'Big EXH',
+        side     : bull ? 'Bullish' : 'Bearish',
+        size,
+        marker   : {
+          symbol    : isAbsorption ? 'triangle' : 'square',
+          fillColor : bull ? '#4dff88' : '#ff4d4d',
+          lineColor : '#000',
+          radius    : 7
+        },
+        time : ts                                 // used in tooltip formatter
+      }, false);                                  // queue redraw
+    }
 
     let vol1m = 0, vol8h = 0, buckets = [];
     onCandle(c => {
@@ -754,9 +827,10 @@ obiSSE.onmessage = async (e) => {
 
   /* 6.  Multi‑Level Liquidity Shock (uses dynamic P.FULL_SCALE_SLOPE) */
   try {
-    const deepResp2 = await fetch(`/books/${symbol}?depth=${depthParam * 5}`);
-    if (!deepResp2.ok) throw new Error(`HTTP ${deepResp2.status}`);
-    const deepBk2 = await deepResp2.json();
+
+    const deepBk2 = await fetchJSON(
+      `/books/${symbol}?depth=${depthParam * 5}`
+    );
     const totalBid = deepBk2.bids.reduce((s, [px, sz]) => s + px * sz, 0);
     const totalAsk = deepBk2.asks.reduce((s, [px, sz]) => s + px * sz, 0);
 
@@ -794,157 +868,187 @@ obiSSE.onmessage = async (e) => {
   const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
 
 
-  // FLOW stream
-  flowSSE = new EventSource(`/api/flowStream?coin=${$('obi-coin').value}`);
-  flowSSE.onmessage = (e) => {
-    if (e.data.trim().endsWith('heartbeat')) return;
-    let t; try { t = JSON.parse(e.data); } catch { return; }
-    worker.postMessage({ type:'trade', payload:{
-      side:t.side, notional:t.notional, kind:t.type   // plus any fields you need
-  }});
-    
-    const now = Date.now();            // ① get timestamp up-front
+  /* ---------------------------------------------------------------
+ * FLOW stream – aggressive trades / absorptions / exhaustions
+ * --------------------------------------------------------------- */
+flowSSE = new EventSource(
+  `/api/flowStream?coin=${$('obi-coin').value}`
+);
 
-    // still apply MIN_NOTIONAL to *gauges* but let momentum count all prints
-    if (t.notional < P.MIN_NOTIONAL) {
-    momTimes.push(now);
-    // still refresh the gauge so it decays smoothly
-    const momVal  = momTimes.length > P.MOM_COUNT_THRESH
-        ? Math.min(1, (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
-        : 0;
+flowSSE.onmessage = (e) => {
+  /* ─── 0.  Parse & filter ───────────────────────────────────── */
+  if (e.data.trim().endsWith('heartbeat')) return;
+
+  let t;
+  try { t = JSON.parse(e.data); } catch { return; }
+
+  /* ─── 1.  Forward to the Web-Worker  (cheap, non-blocking) ─── */
+  worker.postMessage({
+    type    : 'trade',
+    payload : { side: t.side, notional: t.notional, kind: t.type }
+  });
+
+  const now      = Date.now();
+  const isAbs    = t.type === 'absorption';
+  const isExh    = t.type === 'exhaustion';
+
+  /* ─── 2.  Momentum-ignition counter *before* early-exit ────── */
+  momTimes.push(now);
+  while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS)
+    momTimes.shift();
+
+  /* ─── 3.  Early-exit for very small prints (UI still wants MOM) */
+  if (t.notional < P.MIN_NOTIONAL) {
+    const momVal = momTimes.length > P.MOM_COUNT_THRESH
+      ? Math.min(1,
+          (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
+      : 0;
     updMom(momVal);
     setGaugeStatus('statusMom', momVal);
     return;
-    }
-    
+  }
 
-    /* 3. Rolling buffers & scenario flags --------------------------------- */
-    if (t.type === 'absorption') {
-      pushBuf(buf.c, t.side === 'buy' ? 1 : -1);
-      lastNeutral = now;
+  /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
+  const bigThreshold = bigPrintThreshold();       // helper defined earlier
+  const tooLarge     =
+        (isAbs || isExh) && t.notional >= 3 * bigThreshold;
 
-      const fake =
+  /*  Compute bias *now* – we will use it several times           */
+  const biasVal = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
+
+  if (tooLarge) {
+    addAnomalyPoint({
+      ts           : t.ts || now,
+      y            : biasVal,
+      side         : t.side,            // 'buy' | 'sell'
+      size         : t.notional,
+      isAbsorption : isAbs
+    });
+  }
+
+  /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
+
+  /* 5-a) Absorptions ------------------------------------------ */
+  if (isAbs) {
+    pushBuf(buf.c, t.side === 'buy' ? 1 : -1);
+
+    /* Fake-out flag – large absorption outside neutral window */
+    const fake =
         t.notional >= P.FALSE_ABS &&
         now - lastNeutral >= P.FALSE_NEUTRAL
           ? (t.side === 'sell' ? 1 : -1)
           : 0;
-      pushBuf(buf.f, fake, 15);     // Fake-out
+    pushBuf(buf.f, fake, 15);
 
-       // ── count confirmations (big absorptions that AREN'T fake) ──
-       if (t.notional >= P.FALSE_ABS && fake === 0) {
-           cfCount.confirm++;
-       }
+    if (t.notional >= P.FALSE_ABS && fake === 0)
+      cfCount.confirm++;
 
-      if (t.notional >= P.FALSE_ABS) lastHeavy = true;
+    lastHeavy = t.notional >= P.FALSE_ABS;
+    lastNeutral = now;
+  }
+
+  /* 5-b) Exhaustions ------------------------------------------ */
+  if (isExh) {
+    lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
+
+    const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
+    pushBuf(buf.w, warn, 15);
+    lastHeavy = false;                     // reset
+
+    /* Squeeze – flow flips within 5 s                             */
+    let sq = 0;
+    const age = (now - lastExtreme.ts) / 1000;
+    if (age <= S_STALE && lastExtreme.side) {
+      if ( lastExtreme.side ===  1 && t.side === 'sell') sq = -1;
+      if ( lastExtreme.side === -1 && t.side === 'buy')  sq =  1;
     }
+    pushBuf(buf.s, sq, 15);
+  }
 
-    if (t.type === 'exhaustion') {
-      lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
+  /* ─── 6.  Momentum gauge (now that big prints counted) ─────── */
+  const momVal = momTimes.length > P.MOM_COUNT_THRESH
+    ? Math.min(1,
+        (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
+    : 0;
+  updMom(momVal);
+  setGaugeStatus('statusMom', momVal);
 
-      const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
-      pushBuf(buf.w, warn, 15);     // Early-Warn over last 15 ticks   (~15-25 s)
-      lastHeavy = false;
+  /* ─── 7.  Donut counters & ticker messages  ────────────────── */
+  if (isAbs) absCount[t.side]++;
 
-      let sq = 0;
-      const age = (now - lastExtreme.ts) / 1000;
-      if (age <= S_STALE && lastExtreme.side) {
-        if ( lastExtreme.side ===  1 && t.side === 'sell') sq = -1;
-        if ( lastExtreme.side === -1 && t.side === 'buy')  sq =  1;
-      }
-      pushBuf(buf.s, sq  , 15);     // Squeeze
-    }
+  if (isAbs && t.iceberg)
+    pushTicker(`⛏️ Iceberg @ ${t.price.toFixed(0)} `
+             + `($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
 
-    /* 4. Momentum-ignition counter ---------------------------------------- */
-    momTimes.push(now);
-    while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS) momTimes.shift();
-    const momVal = momTimes.length > P.MOM_COUNT_THRESH
-        ? Math.min(1, (momTimes.length - P.MOM_COUNT_THRESH) / P.MOM_COUNT_THRESH)
-        : 0;
-    updMom(momVal);
-    setGaugeStatus('statusMom', momVal);
+  /* ─── 8.  Throttle expensive UI updates to ~4 Hz ───────────── */
+  if (now - (flowSSE.lastUpd || 0) < 300) return;
+  flowSSE.lastUpd = now;
 
-    /* 5. Donut counters & alert ticker ------------------------------------ */
-    if (t.type === 'absorption') absCount[t.side]++;
-    if (t.type === 'absorption' && t.iceberg)
-      pushTicker(`⛏️ Iceberg @ ${t.price.toFixed(0)} ($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
+  /* ─── 9.  Scenario gauge scores  ───────────────────────────── */
+  const c = fastAvg(buf.c),
+        w = fastAvg(buf.w),
+        s = fastAvg(buf.s),
+        f = fastAvg(buf.f);
 
-    /* 6. Throttle to ~4 Hz ------------------------------------------------- */
-    if (now - (flowSSE.lastUpd || 0) < 300) return;
-    flowSSE.lastUpd = now;
+  updC(c); setGaugeStatus('statusConfirm',  c);
+  updW(w); setGaugeStatus('statusWarn',     w);
+  updS(s); setGaugeStatus('statusSqueeze',  s);
+  updF(f); setGaugeStatus('statusFake',     f);
 
-    /* 6-a) Scenario scores ------------------------------------------------- */
+  /* ─── 10.  Bias-line point & line refresh  ─────────────────── */
+  pushBuf(buf.bias, [now, biasVal]);
+  setHtml('biasRoll',     biasVal.toFixed(2));
+  setHtml('biasRollTxt',  biasVal > 0 ? 'Bullish'
+                        : biasVal < 0 ? 'Bearish' : 'Flat');
+  refreshLine();                             // includes anomaly redraw
 
-    const c = fastAvg(buf.c)
-    
-    const w = fastAvg(buf.w),  
-    s = fastAvg(buf.s),  
-    f = fastAvg(buf.f);
-    
-    
-    
+  /* ─── 11.  Bull / Bear composite meters  ───────────────────── */
+  const raw = [
+    SAFE(c), SAFE(w), SAFE(s), SAFE(f),
+    SAFE(lastLaR), SAFE(fastAvg(buf.r)),
+    SAFE(fastAvg(buf.shock)), SAFE(momVal)
+  ];
+  const W      = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6];
+  const sumW   = W.reduce((a,b)=>a+b,0);
+  const amplify= 1.5;
 
-    updC(c); setGaugeStatus('statusConfirm',  c);
-    updW(w); setGaugeStatus('statusWarn',     w);
-    updS(s); setGaugeStatus('statusSqueeze',  s);
-    updF(f); setGaugeStatus('statusFake',     f);
+  const bullVal = pct(amplify *
+        raw.reduce((s,v,i)=>s + Math.max(0,  v)*W[i], 0) / sumW * 100);
+  const bearVal = pct(amplify *
+        raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100);
 
-    /* 6-b) Line-chart point                                                */
-    const biasVal = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
-    pushBuf(buf.bias, [now, biasVal]);
-    setHtml('biasRoll', biasVal.toFixed(2));
-    setHtml('biasRollTxt', biasVal > 0 ? 'Bullish' : biasVal < 0 ? 'Bearish' : 'Flat');
-    refreshLine();
+  bullGauge.series[0].points[0].update({
+    y: bullVal,
+    color: Highcharts.color('#4dff88').brighten(-bullVal/150).get()
+  }, false);
+  bearGauge.series[0].points[0].update({
+    y: bearVal,
+    color: Highcharts.color('#ff4d4d').brighten(-bearVal/150).get()
+  }, true);
 
-    /* 6-c) Bull / bear composites ----------------------------------------- */
-    const raw = [
-      SAFE(c), SAFE(w), SAFE(s), SAFE(f),
-      SAFE(lastLaR), SAFE(fastAvg(buf.r)),
-      SAFE(fastAvg(buf.shock)), SAFE(momVal)
-    ];
+  const bullRegime = regimeName(Math.round(bullVal));
+  const bearRegime = regimeName(Math.round(bearVal));
+  $('bullRegime').textContent = `Strategy: ${bullRegime}`;
+  $('bearRegime').textContent = `Strategy: ${bearRegime}`;
+  $('bullRegime').title = regimeDetails(bullVal).desc;
+  $('bearRegime').title = regimeDetails(bearVal).desc;
 
-    // after computing bullVal / bearVal
-    const W = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6];   // same order as `raw`
-    const sumW = W.reduce((a,b)=>a+b,0);
-    const amplify = 1.5;
-    const bullVal = pct( amplify *
-          raw.reduce((s,v,i)=>s + Math.max(0,  v)*W[i], 0) / sumW * 100 );
-    const bearVal = pct( amplify *
-          raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100 );
+  /* ─── 12.  Donut charts & grid  ────────────────────────────── */
+  absChart.series[0].setData([
+    { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
+    { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
+  ], false);
 
-    /* 6-d) Update the two progress bars ----------------------------------- */
-    const tint = (base, pct) =>
-        Highcharts.color(base).brighten(-pct/150).get();
+  cfChart.series[0].setData([
+    { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
+    { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
+  ], false);
 
-    /* ---- Update the bars first ---- */
-    bullGauge.series[0].points[0].update(
-      { y: bullVal, color: tint('#4dff88', bullVal) }, false);
-    bearGauge.series[0].points[0].update(
-      { y: bearVal, color: tint('#ff4d4d', bearVal) },  true);
-
-    /* ---- THEN update the captions so the same rounded value is used ---- */
-    const bullRegime = regimeName(Math.round(bullVal));
-    const bearRegime = regimeName(Math.round(bearVal));
-
-    $('bullRegime').textContent = `Strategy: ${bullRegime}`;
-    $('bearRegime').textContent = `Strategy: ${bearRegime}`;
-
-    // Optionally, display descriptions
-    $('bullRegime').title = regimeDetails(bullVal).desc;
-    $('bearRegime').title = regimeDetails(bearVal).desc;
-
-    /* 6-e)  Donuts & grid -------------------------------------------------- */
-    absChart.series[0].setData([
-      { name:'Buy',  y: absCount.buy,  color:'#4dff88' },
-      { name:'Sell', y: absCount.sell, color:'#ff4d4d' }
-    ], true);
-
-    cfChart.series[0].setData([
-      { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
-      { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
-    ], true);
-
-  addFlow(t);
+  addFlow(t);          // maintains the grid
+  absChart.redraw(false);
+  cfChart.redraw(false);
 };
+
 }
 
 function stop () {
