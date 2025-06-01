@@ -188,7 +188,25 @@ function stopPriceFeed () {
       throw new Error(`HTTP ${resp.status}`);
     }
 
-    
+        /* ───  tiny OBI colour helper  ───────────────────────────────────── */
+    const OBI_EPS = 0.07;   // grey buffer around “balanced”
+    function colourObi(ratio){
+      const elNum = document.getElementById('obiRatio');
+      const elTxt = document.getElementById('obiRatioTxt');
+      if (!elNum || !elTxt) return;
+
+      // clear previous state
+      elNum.classList.remove('obi-bull','obi-bear','obi-flat');
+      elTxt.classList.remove('obi-bull','obi-bear','obi-flat');
+
+      const diff = ratio - 1;          // >0 ⇒ bid-heavy, <0 ⇒ ask-heavy
+      let cls = 'obi-flat';
+      if (diff >  OBI_EPS) cls = 'obi-bull';
+      if (diff < -OBI_EPS) cls = 'obi-bear';
+
+      elNum.classList.add(cls);
+      elTxt.classList.add(cls);
+    }
     /* helper – call whenever you need the current yard-stick           */
     function bigPrintThreshold () {
       // rolling 90-th percentile ≈ "normal big print"
@@ -860,7 +878,13 @@ obiSSE.onmessage = async (e) => {
 
   /* 3.  Update KPIs – OBI ratio, liquidity */
   const r = d.ratio;
-  setHtml('obiRatio', r.toFixed(2));
+  setHtml(
+    'obiRatioTxt',
+    r > 1 + OBI_EPS ? 'Bid-Heavy'
+        : r < 1 - OBI_EPS ? 'Ask-Heavy'
+        : 'Balanced'
+  );
+
   const cls = classifyObi(r);
   const obiEl = $('obiRatio');
   if (obiEl) {
@@ -873,6 +897,7 @@ obiSSE.onmessage = async (e) => {
   depthStats.push(totalDepthSnap);
 
   setHtml('liqVal', fmtUsd(totalDepthSnap));
+
   
   /* ── NEW: 3-state classification ─────────────────────── */
   let liqState = 'Normal', colour = 'yellow';
