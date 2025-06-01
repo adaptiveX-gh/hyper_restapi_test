@@ -95,6 +95,16 @@
       }
     }
 
+    const mid = (d.topBid + d.topAsk) / 2;
+    setHtml('priceLive', '$' + mid.toLocaleString(undefined,{maximumFractionDigits:2}));
+
+    if (window.__priceBuf24h && window.__priceBuf24h.length) {
+      const px24hAgo = window.__priceBuf24h[0][1];
+      const pct = mid / px24hAgo - 1;
+      const el  = document.getElementById('price24h');
+      el.textContent = (pct >= 0 ? '+' : '') + (pct*100).toFixed(2) + '%';
+      el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
+    }
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
@@ -131,58 +141,41 @@
       throw new Error(`HTTP ${resp.status}`);
     }
 
-/* ── Hyperliquid “prevDayPx” fetcher (resilient) ───────────── */
-async function refreshPrice24h(symbol = 'BTC') {
-  const sym = symbol.toUpperCase().replace(/-PERP$/, '');
+/* ── Fetch both markPx *and* prevDayPx (single cheap call) ───────── */
+async function refreshPriceContext(symbol = 'BTC') {
+  const coinId = symbol.toUpperCase().replace(/-PERP$/, '') === 'BTC' ? 0
+                : symbol.toUpperCase().replace(/-PERP$/, '') === 'ETH' ? 1
+                : null;       // extend mapping if you add more coins
+  if (coinId === null) { price24hAgo = null; return null; }
 
   try {
-    const data = await fetchJSON('https://api.hyperliquid.xyz/info', {
+    const j = await fetchJSON('https://api.hyperliquid.xyz/info', {
       method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ type:'metaAndAssetCtxs' })
+      headers: { 'Content-Type':'application/json' },
+      body   : JSON.stringify({ type:'assetCtxs', coin: coinId })
     });
 
-    /* ─── harvest possible asset arrays, whatever the shape ─── */
-    let universe = null, assets = null;
+    /* assetCtxs returns an array with *one* ctx */
+    const ctx = Array.isArray(j) ? j[0] : j;
+    if (!ctx) throw new Error('empty ctx');
 
-    if (Array.isArray(data)) {              // [meta, assetCtxs]
-      universe = data[0]?.universe || null;
-      assets   = data[1] || null;
-    } else if (Array.isArray(data?.universe)) {
-      universe = data.universe;
-      assets   = data.assetCtxs || data.assets || null;
-    } else if (Array.isArray(data?.assetCtxs)) {
-      assets   = data.assetCtxs;
-    } else if (Array.isArray(data?.assets)) {
-      assets   = data.assets;               // SDK mirror shape
+    const livePx     = +ctx.markPx  || +ctx.midPx || +ctx.oraclePx || null;
+    price24hAgo      = +ctx.prevDayPx || null;
+
+    /* Immediate UI update so user sees price even before WS opens */
+    if (livePx) {
+      setHtml('priceLive',
+        '$' + livePx.toLocaleString(undefined,{ maximumFractionDigits:2 }));
+      if (price24hAgo) {
+        const pct = livePx / price24hAgo - 1;
+        const el  = document.getElementById('price24h');
+        el.textContent = fmtDeltaPct(pct);
+        el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
+      }
     }
-
-    /* helper to normalise any id we inspect */
-    const norm = s => (s || '')
-        .toString()
-        .toUpperCase()
-        .replace(/-PERP$/, '');
-
-    /* ① try the neat universe ↔ assetCtxs 1-to-1 map */
-    let ctx = null;
-    if (universe && assets && universe.length === assets.length) {
-      const idx = universe.findIndex(u => norm(u.name ?? u.symbol ?? u) === sym);
-      if (idx !== -1) ctx = assets[idx];
-    }
-
-    /* ② fallback: brute-force all assetCtx objects */
-    if (!ctx && assets) {
-      ctx = assets.find(a =>
-        norm(a.coin ?? a.ticker ?? a.name ?? a.symbol) === sym);
-    }
-
-    /* nothing found → abort gracefully */
-    if (!ctx) throw new Error('assetCtx not located for ' + sym);
-
-    price24hAgo = +ctx.prevDayPx || null;
 
   } catch (err) {
-    console.warn('[refreshPrice24h]', err.message);
+    console.warn('[priceCtx]', err.message);
     price24hAgo = null;
   }
 }
@@ -726,12 +719,29 @@ function initCFDChart () {
 
     let vol1m = 0, vol8h = 0, buckets = [];
     onCandle(c => {
-        vol1m = +c.v;
-        buckets.push(vol1m);
-        if (buckets.length > 480) buckets.shift();   // keep 8 h of 1 m candles
-        vol8h = buckets.reduce((s, v) => s + v, 0);
-        updateGauge('volGauge', vol8h);
+      /* existing rolling-volume logic */
+      vol1m = +c.v;
+      buckets.push(vol1m);
+      if (buckets.length > 480) buckets.shift();   // 8 h of 1-min candles
+      vol8h = buckets.reduce((s, v) => s + v, 0);
+
+      /* NEW 24-h price buffer */
+      {
+        const now      = Date.now();
+        const closePx  = +c.c;                 // 1-min candle close
+        window.__priceBuf24h = window.__priceBuf24h || [];
+        window.__priceBuf24h.push([now, closePx]);
+
+        /* drop anything older than 24 h */
+        while (window.__priceBuf24h.length &&
+              now - window.__priceBuf24h[0][0] > 86_400_000)
+          window.__priceBuf24h.shift();
+      }
+
+      updateGauge('volGauge', vol8h);
     });
+
+    
 
 /* ─── Live price tile + ±24 h chip ───────────────────────────── */
 onCtx(({ markPx, midPx, oraclePx }) => {
@@ -1171,9 +1181,11 @@ $('update-conn-btn').onclick = ()=>{
 };
 /* when user changes the coin picker */
 $('obi-coin').addEventListener('change', async e => {
-  const sym = e.target.value.replace(/-PERP$/, '');
-  await refreshPrice24h(sym);
+  const sym = e.target.value;
+  await refreshPriceContext(sym);                // 🔴 NEW
 });
+
+
 $('toggle-advanced').onclick = function(){
   const adv = $('advanced-settings'),
         open= adv.style.display!=='none';
@@ -1187,10 +1199,11 @@ $('liqTxt').title = () =>
   `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const firstSym = $('obi-coin').value.replace(/-PERP$/, '');
-  await refreshPrice24h(firstSym);     // ⬅ preload yesterday’s price
+  const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
+  await refreshPriceContext(firstSym);           // 🔴 NEW
   initCFDChart();
   start();
 });
+
 
 })();
