@@ -305,7 +305,7 @@ function setTxt(id, txt) {
 
   // ----  NEW: spawn worker  -----------------------------------
  let  worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
-
+ window.metricsWorker = worker;   // ← expose for debugging
 /* -----------------------------------------------------------
  * (Re)-initialise the metrics Web-Worker
  * ----------------------------------------------------------- */
@@ -314,6 +314,7 @@ function ensureWorker () {
 
   // ①  (re)Create
   worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+  window.metricsWorker = worker;   // ← expose for debugging
 
   // ②  Wire listeners *once*
   worker.addEventListener('message', ({ data }) => {
