@@ -511,75 +511,61 @@ function regimeDetails(value) {
       credits:{enabled:false}
     });
 
-    // ─────────────────────────────────────────────────────────────────────
-    // GRID
-    // ─────────────────────────────────────────────────────────────────────
-    let flowData=[];
-    function renderFlowGrid(){
+    /* ────────────────────────────────────────────────
+    * GRID – recent big flow events
+    * ────────────────────────────────────────────────*/
+    const MAX_FLOW_ROWS = 300;      // keep the table snappy
+    let   flowData      = [];
+
+    /* 1) tiny renderer – build column vectors & feed Grid.js */
+    function renderFlowGrid () {
       const cols = {};
-      ['side','notional','type','price','time','bias'].forEach(k=>{
-        cols[k] = flowData.map(r=>r[k]);
+      ['side','notional','type','price','time','bias'].forEach(k => {
+        cols[k] = flowData.map(r => r[k]);
       });
-    Grid.grid('flowGrid',{
-      dataTable : { columns: cols },
 
-    /* makes all numeric columns right-aligned unless
-       a column overrides it with its own className      */
-    columnDefaults : {
-      cells : { className:'hcg-right' },
-      header: { className:'hcg-center' }   /* centre header text */
-    },      
-
-      /* Default: right-align numbers, no arrows */
-      columnDefaults : {
-        cells : { className:'hcg-right' }
-      },
-
-      columns : [
-        { id:'side',
-          header:{ format:'Side' },
-          cells : { className:'hcg-center bold' }          /* BID / ASK */
+      Grid.grid('flowGrid', {
+        dataTable : { columns: cols },
+        columnDefaults : {
+          cells  : { className:'hcg-right' },
+          header : { className:'hcg-center' }
         },
-        { id:'notional',
-          header:{ format:'Notional' },
-          cells : { format:'${value:,.0f}' }
-        },
-        { id:'type',  header:{ format:'Type'  } },
-        { id:'price', header:{ format:'Price' } },
-        { id:'time',  header:{ format:'Time'  } },
-
-        /* ─── Bias column with info tooltip & colour coding ─── */
-        { id:'bias',
-          header : {
-            /* native browser tooltip via title attribute */
-            format : 'Bias<span class="info-icon" title="Rolling net absorption score (–1 = ask-dominated, +1 = bid-dominated) at the instant this flow hit the tape.">ℹ️</span>'
-          },
-          cells  : {
-            className : '{#if (gt value 0)}bullish-color{else if (lt value 0)}bearish-color{/if}',
-            format    : '{value:.2f}'
-          },
-          width : 65                      /* keeps the column compact */
-        }
-      ],
-      height : 300,
-      paging : { enabled:true, pageLength:10 },
-      sorting: true
-    });
-
+        columns : [
+          { id:'side',     header:{ format:'Side'  },
+            cells:{ className:'hcg-center bold' } },
+          { id:'notional', header:{ format:'Notional' },
+            cells:{ format:'${value:,.0f}' } },
+          { id:'type',  header:{ format:'Type'  } },
+          { id:'price', header:{ format:'Price' } },
+          { id:'time',  header:{ format:'Time'  } },
+          { id:'bias',
+            header : { format:'Bias&nbsp;<span title="Rolling net absorption (−1…+1)">ℹ️</span>' },
+            cells  : {
+              className : '{#if (gt value 0)}bullish-color{else if (lt value 0)}bearish-color{/if}',
+              format    : '{value:.2f}'
+            },
+            width : 65 }
+        ],
+        height  : 300,
+        paging  : { enabled:true, pageLength:10 },
+        sorting : true
+      });
     }
-    function addFlow(row){
-    flowData.unshift({
-      side     : row.side === 'buy' ? 'BID' : 'ASK',
-      notional : row.notional,
-      type     : row.type,
-      price    : row.price ? row.price.toFixed(0) : '—',
-      time     : new Date(row.ts || Date.now()).toLocaleTimeString('en-US',{hour12:false}),
-      bias     : row.bias                       // ← use supplied value
-    });
-      if(flowData.length>1000) flowData.pop();
+
+    /* 2) push *one* new row and refresh table */
+    function addFlow (t, biasVal) {
+      flowData.unshift({
+        side    : t.side === 'buy' ? 'BID' : 'ASK',
+        notional: t.notional,
+        type    : t.type,
+        price   : t.price ? t.price.toFixed(0) : '—',
+        time    : new Date(t.ts || Date.now())
+                    .toLocaleTimeString('en-US', { hour12:false }),
+        bias    : Number.isFinite(biasVal) ? +biasVal.toFixed(2) : 0
+      });
+      if (flowData.length > MAX_FLOW_ROWS) flowData.pop();
       renderFlowGrid();
     }
-    renderFlowGrid();
 
     const biasChart = new BookBiasLine('#biasLine');
 
@@ -849,10 +835,10 @@ flowSSE.onmessage = (e) => {
   }
 
   /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
-  const biasVal  = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));     // ①
-  const tooLarge = (isAbs || isExh) && t.notional >= bigPrintThreshold(); // ②
+  const biasVal   = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
   biasChart.pushBias(now, biasVal);
 
+  const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();
   if (tooLarge) {
     biasChart.addAnomalyPoint({
       ts   : t.ts || now,
@@ -861,9 +847,6 @@ flowSSE.onmessage = (e) => {
       kind : isAbs ? 'abs' : 'exh'
     });
   }
-
- 
-
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
 
   /* 5-a) Absorptions ------------------------------------------ */
@@ -989,7 +972,6 @@ flowSSE.onmessage = (e) => {
     { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
   ], false);
 
-  addFlow(t);          // maintains the grid
   absChart.redraw(false);
   cfChart.redraw(false);
 };
