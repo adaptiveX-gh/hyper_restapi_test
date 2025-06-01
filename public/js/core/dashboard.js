@@ -1,6 +1,6 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
-    import { BookBiasLine } from './js/bookBiasLine.js';
+    import { BookBiasLine } from '../lib/bookBiasLine.js';
 
  
   (function(){
