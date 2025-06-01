@@ -580,7 +580,7 @@ function regimeDetails(value) {
     });
 
     // 2) keep the buffer bounded
-    if (flowData.length > 1_000) flowData.pop();
+    if (flowData.length > MAX_FLOW_ROWS) flowData.pop();
 
     // 3) redraw the grid
     renderFlowGrid();
@@ -1022,9 +1022,6 @@ flowSSE.onmessage = (e) => {
     { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
   ], false);
 
-  /*────────── Order-Book CFD  ───────────────────────────────────*/
-  const CFD_WINDOW_MS = 60 * 60 * 1000;   // keep last 60 minutes
-  const cfdSeries = { bids: [], asks: [], imb: [], mid: [] };
 
   const obCFD = Highcharts.chart('obCfd', {
     chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
