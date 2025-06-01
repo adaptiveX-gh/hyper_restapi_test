@@ -849,6 +849,8 @@ flowSSE.onmessage = (e) => {
   }
 
   /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
+  const biasVal  = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));     // ①
+  const tooLarge = (isAbs || isExh) && t.notional >= bigPrintThreshold(); // ②
   biasChart.pushBias(now, biasVal);
 
   if (tooLarge) {
@@ -860,20 +862,7 @@ flowSSE.onmessage = (e) => {
     });
   }
 
-  const tooLarge =
-       (isAbs || isExh) && t.notional >= bigPrintThreshold();
-  /*  Compute bias *now* – we will use it several times           */
-  const biasVal = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
-
- if (tooLarge) {
-   addAnomalyPoint({
-     ts           : t.ts || now,
-     y            : biasVal,          // FIX #3 – pass current bias
-     side         : t.side,           // 'buy' | 'sell'
-     size         : t.notional,
-     isAbsorption : isAbs             // boolean flag
-   });
- }
+ 
 
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
 
@@ -1034,6 +1023,8 @@ $('liqTxt').title = () =>
   `Normal between\n` +
   `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
-
+document.addEventListener('DOMContentLoaded', () => {
+  start();                      // <— kicks off both SSE streams
+});
 
 })();
