@@ -587,7 +587,7 @@ function regimeDetails(value) {
     /* 2️⃣  wire the worker anomaly channel ---------------------- */
     worker.onmessage = ({ data }) => {
       if (data.type === 'anomaly') {
-        biasChart.addAnomaly(data.payload);
+        biasChart.addAnomalyPoint(data.payload);
       }
     };
 
@@ -938,7 +938,7 @@ flowSSE.onmessage = (e) => {
   setHtml('biasRoll',     biasVal.toFixed(2));
   setHtml('biasRollTxt',  biasVal > 0 ? 'Bullish'
                         : biasVal < 0 ? 'Bearish' : 'Flat');
-  refreshLine();                             // includes anomaly redraw
+  
 
   /* ─── 11.  Bull / Bear composite meters  ───────────────────── */
   const raw = [
