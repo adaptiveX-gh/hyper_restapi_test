@@ -4,6 +4,7 @@
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
+    let hlWs = null;          // keep a reference so we can close / restart
 
   (function(){
     const P = {
@@ -65,6 +66,61 @@
     function fmtDeltaPct(x) {
       return (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
     }
+
+function startPriceFeed(coin = 'BTC') {
+  const COIN = coin.toUpperCase().replace(/-PERP$/, '');   // "BTC-PERP" → "BTC"
+
+  // close a previous socket if one is still open
+  if (hlWs && hlWs.readyState === WebSocket.OPEN) {
+    hlWs.close(1000, 'switch coin');
+  }
+
+  hlWs = new WebSocket('wss://api.hyperliquid.xyz/ws');
+
+  hlWs.onopen = () => {
+    const subMsg = {
+      method: 'subscribe',
+      subscription: { type: 'activeAssetCtx', coin: COIN }
+    };
+    hlWs.send(JSON.stringify(subMsg));
+  };
+
+  hlWs.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.channel !== 'activeAssetCtx') return;   // ignore other feeds
+
+    /* ❶ pick the current price (oracle preferred, else mark) */
+    const ctx = msg.data.ctx;
+    const px  = Number(ctx.oraclePx || ctx.markPx);
+    if (!px) return;
+
+    /* ❷ live price */
+    setHtml('priceLive', '$' + px.toLocaleString(undefined, {
+      maximumFractionDigits: 2
+    }));
+
+    /* ❸ 24-h change (use prevDayPx from the same ctx) */
+    const prev = Number(ctx.prevDayPx);
+    if (prev) price24hAgo = prev;         // keep a copy for later if you need it
+
+    if (price24hAgo) {
+      const pct   = px / price24hAgo - 1;
+      const el    = document.getElementById('price24h');
+      el.textContent = (pct >= 0 ? '+' : '') + (pct * 100).toFixed(2) + '%';
+      el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
+    }
+  };
+
+  hlWs.onerror   = (e) => console.warn('[HL-WS]', e);
+  hlWs.onclose   = () => console.log('[HL-WS] closed');
+}
+
+/* call `stopPriceFeed()` before unloading / switching coins */
+function stopPriceFeed () {
+  if (hlWs && hlWs.readyState === WebSocket.OPEN) {
+    hlWs.close(1000, 'manual close');
+  }
+}
 
         // ─── lightweight CFD updater ──────────────────────────────────────────
     function feedCFD(depthSnap) {
@@ -1139,7 +1195,11 @@ $('update-conn-btn').onclick = ()=>{
   }
 };
 
-
+$('obi-coin').addEventListener('change', async (e) => {
+  const sym = e.target.value;             // "ETH-PERP", …
+  stopPriceFeed();                        // close old socket
+  startPriceFeed(sym);                    // open a new one
+});
 
 $('toggle-advanced').onclick = function(){
   const adv = $('advanced-settings'),
@@ -1157,6 +1217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
   initCFDChart();
   start();
+  startPriceFeed('BTC');          // 👉 starts the live price stream
 });
 
 
