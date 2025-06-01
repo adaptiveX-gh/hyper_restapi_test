@@ -101,9 +101,17 @@ function retry(fn, { max = 6, delay = 300 } = {}) {
 
 function patchSide(sideArr, px, sz) {
   const idx = sideArr.findIndex(([p]) => p === px);
-  if (sz === 0)       sideArr.splice(idx,1);
-  else if (idx === -1) sideArr.push([px,sz]);
-  else                 sideArr[idx][1] = sz;
+
+  // When a price level disappears, it may not exist in our local book yet.
+  // In that case `findIndex` returns -1 and splicing would remove the last
+  // element by accident. Only splice if the level actually exists.
+  if (idx === -1) {
+    if (sz > 0) sideArr.push([px, sz]);
+  } else if (sz === 0) {
+    sideArr.splice(idx, 1);
+  } else {
+    sideArr[idx][1] = sz;
+  }
 }
 
 
