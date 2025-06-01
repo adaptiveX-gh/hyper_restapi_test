@@ -32,8 +32,8 @@ export function stateStrength ({ pctVsMedian }) {
 /* ------------------------------------------------------- */
 /* 3.  Utility – paint one dot + tooltip                   */
 /* ------------------------------------------------------- */
-export function paintDot (el, state, tooltip) {
-  if (!el) return;
-  el.style.backgroundColor = COLOURS[state] || COLOURS.normal;
-  el.title = tooltip || '';                       // native browser tooltip
+export function paintDot(el, state, tooltip = '') {
+  if (!el) return;                       // --- guard → no more TypeError
+  el.className = 'status-dot ' + state;  // add / replace colour class
+  el.title     = tooltip;
 }

@@ -212,35 +212,49 @@
     </div>
       <!-- BIG INDICATORS -->
       <div class="obi-indicator-row">
+
+        <!-- Liquidity ------------------------------------------------>
         <div class="big-indicator-card">
           <span class="big-label">Liquidity</span>
           <span class="big-value" id="liqVal">--</span>
           <div class="big-status">
             <span id="dot-liq"  class="status-dot"></span>
+            <span id="liqTxt">Waiting</span>
           </div>
         </div>
+
+        <!-- Open-Interest + Funding (share the same colour state) ---->
         <div class="big-indicator-card">
           <span class="big-label">Open Interest</span>
           <span class="big-value" id="card-oi">--</span>
           <div class="big-status">
-            <span id="dot-oi"   class="status-dot"></span>
+            <span id="dot-oi" class="status-dot"></span>
+            <span id="oiTxt">Waiting</span>
           </div>
         </div>
+
         <div class="big-indicator-card">
           <span class="big-label">Funding Rate</span>
           <span class="big-value" id="card-funding">--</span>
           <div class="big-status">
-            <span class="status-dot red" id="fundDot"></span>
+            <span id="dot-fund" class="status-dot"></span>
+            <span id="fundTxt">Waiting</span>
           </div>
         </div>
+
+        <!-- 24-h Volume --------------------------------------------->
         <div class="big-indicator-card">
           <span class="big-label">Volume</span>
           <span class="big-value" id="card-vol24h">--</span>
           <div class="big-status">
-            <span id="dot-vol"  class="status-dot"></span>
+            <!-- JS expects id="dot-vol" -->
+            <span id="dot-vol" class="status-dot"></span>
+            <span id="volTxt">Waiting</span>
           </div>
         </div>
+
       </div>
+
       
       <!-- Bull + Bear side-by-side ------------------------------------- -->
       <div class="obi-spectrum-row">

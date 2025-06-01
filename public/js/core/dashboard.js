@@ -1288,6 +1288,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCFDChart();
   start();
   startPriceFeed('BTC');          // 👉 starts the live price stream
+  try {
+    const res = await fetch('/api/slow-stats');
+    const data = await res.json();       // { oi, funding, vol24h, ts }
+    updateBigTiles(data);                // <— use the object you just got
+  } catch (err) {
+    console.warn('[slow-stats]', err);
+  }  
 });
 
 
