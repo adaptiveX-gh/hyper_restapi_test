@@ -2,7 +2,8 @@
     import { onCtx, onCandle } from './perpDataFeed.js';
     import { BookBiasLine } from '../lib/bookBiasLine.js';
 
- 
+    let obCFD = null;          // ← visible to every function in the module
+
   (function(){
     const P = {
       WINDOW          : 50,
@@ -552,7 +553,35 @@ function regimeDetails(value) {
       });
     }
 
-      /* 2) push *one* new row and refresh table */
+function initCFDChart () {
+  if (obCFD) return;             // already initialised
+
+  obCFD = Highcharts.chart('obCfd', {
+    chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
+    title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
+    xAxis : { type:'datetime' },
+    yAxis : [{
+        title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
+      },{ title:{ text:'Price' }, opposite:true, visible:false }],
+    tooltip : { shared:true, xDateFormat:'%H:%M' },
+    legend  : { enabled:false },
+
+    /* empty placeholders – ensures 4 series exist from the start */
+    series  : [
+      { name:'Bids',      type:'area', data:[],
+        color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
+      { name:'Asks',      type:'area', data:[],
+        color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
+      { name:'Imbalance', type:'line', data:[],
+        color:'#1e90ff',  lineWidth:1.6 },
+      { name:'Mid-price', type:'line', data:[],
+        color:'#555',     dashStyle:'Dash', yAxis:1 }
+    ],
+    credits : { enabled:false }
+  });
+}
+
+
   /* ──────────────────────────────────────────────────────────────
     Push one trade row into the rolling grid
     ----------------------------------------------------------------
@@ -666,7 +695,7 @@ function regimeDetails(value) {
 const CFD_WINDOW_MS = 60*60*1000;
 const cfdSeries = { bids:[], asks:[], imb:[], mid:[] };
 
-let obCFD;          // ← visible to every function in the module
+
 
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
@@ -1023,35 +1052,6 @@ flowSSE.onmessage = (e) => {
     { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
   ], false);
 
-
-const obCFD = Highcharts.chart('obCfd', {
-  chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
-  title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
-  xAxis : { type:'datetime' },
-  yAxis : [{
-      title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
-    },{
-      title:{ text:'Price' }, opposite:true, visible:false
-  }],
-  tooltip : { shared:true, xDateFormat:'%H:%M' },
-  legend  : { enabled:false },
-
-  /*  ← ADD THESE FOUR PLACE-HOLDER SERIES  */
-  series  : [
-    { name:'Bids',       type:'area', data:[],
-      color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
-    { name:'Asks',       type:'area', data:[],
-      color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
-    { name:'Imbalance',  type:'line', data:[],
-      color:'#1e90ff',   lineWidth:1.6 },
-    { name:'Mid-price',  type:'line', data:[],
-      color:'#555',      dashStyle:'Dash', yAxis:1 }
-  ],
-
-  credits : { enabled:false }
-});
-
-
   absChart.redraw(false);
   cfChart.redraw(false);
 };
@@ -1093,6 +1093,7 @@ $('liqTxt').title = () =>
   `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
 document.addEventListener('DOMContentLoaded', () => {
+  initCFDChart();                // <— create the CFD chart
   start();                      // <— kicks off both SSE streams
 });
 
