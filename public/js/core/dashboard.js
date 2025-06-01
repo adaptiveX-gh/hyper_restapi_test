@@ -59,6 +59,9 @@
         for (let i=start;i<a.length;i++){ s += a[i]; n++; }
         return n ? s/n : 0;
     };
+
+    const makeUpd = (g, clamp = (x) => x) =>
+      (v) => g.series[0].points[0].update(clamp(v));    
     
     let statsFeed = null;
     //  ==== 1. create once  ==========================================
@@ -75,13 +78,10 @@
     }
 
 function startPriceFeed(coin = 'BTC') {
-  const COIN = coin.toUpperCase().replace(/-PERP$/, '');   // "BTC-PERP" → "BTC"
+  const COIN = coin.toUpperCase().replace(/-PERP$/, '');
 
-  // close a previous socket if one is still open
-  if (hlWs && hlWs.readyState === WebSocket.OPEN) {
-    hlWs.close(1000, 'switch coin');
-  }
-
+  // 🔒 socket discipline: guarantee a clean slate before re-connecting
+  stopPriceFeed();
   hlWs = new WebSocket('wss://api.hyperliquid.xyz/ws');
 
   hlWs.onopen = () => {
@@ -124,9 +124,25 @@ function startPriceFeed(coin = 'BTC') {
 
 /* call `stopPriceFeed()` before unloading / switching coins */
 function stopPriceFeed () {
-  if (hlWs && hlWs.readyState === WebSocket.OPEN) {
-    hlWs.close(1000, 'manual close');
+  if (!hlWs) return;                        // nothing to do
+
+  switch (hlWs.readyState) {
+    case WebSocket.OPEN:                    // ⇢ live
+    case WebSocket.CONNECTING:              // ⇢ still hand-shaking
+      hlWs.close(1000, 'manual close');     // polite normal-closure
+      break;
+
+    case WebSocket.CLOSING:                 // ⇢ handshake already under way
+      /* no-op — let the browser finish the close sequence */
+      break;
+
+    case WebSocket.CLOSED:
+    default:
+      /* already closed / never opened — ignore */
+      break;
   }
+
+  hlWs = null;                              // GC-friendly
 }
 
 /* safe -text writer : never crashes even if ID is missing */
@@ -148,6 +164,7 @@ function setTxt(id, txt) {
       const bidN = depthSnap.bidDepth;
       const askN = depthSnap.askDepth;
       const mid  = (depthSnap.topBid + depthSnap.topAsk) / 2;
+      worker.postMessage({ type:'cfdPoint', ts, val: bidN - askN });
 
       // 1️⃣ keep the raw buffers bounded to CFD_CAP points
       addPoint(cfdSeries.bids, [ts, bidN]);
@@ -250,10 +267,11 @@ function setTxt(id, txt) {
         P.MOM_COUNT_THRESH = Math.max(5, sizeStats.pct(0.90));
         P.FULL_SCALE_SLOPE = Math.max(1e5, 2 * depthStats.std());
         /* ── NEW: compute depth thresholds for Thin / Thick ── */
-        const medDepth = SAFE(depthStats.median(), 5e7);   // fallback 50 M
-        LIQ_THIN  = medDepth - 0.5 * depthStd;             // below ⇒ “Thin”
-        LIQ_THICK = medDepth + 1.0 * depthStd;             // above ⇒ “Thick”
 
+      const m   = depthStats.median();
+      const medDepth = Number.isFinite(m) ? m : 50_000_000;
+      LIQ_THIN  = medDepth - 0.5 * depthStd;
+      LIQ_THICK = medDepth + 1.0 * depthStd;
   }
 
     function adaptiveThresholds () {
@@ -286,7 +304,36 @@ function setTxt(id, txt) {
     }
 
   // ----  NEW: spawn worker  -----------------------------------
- const worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+ let  worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+
+/* -----------------------------------------------------------
+ * (Re)-initialise the metrics Web-Worker
+ * ----------------------------------------------------------- */
+function ensureWorker () {
+  if (worker && !worker.terminated) return;      // still alive – nothing to do
+
+  // ①  (re)Create
+  worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+
+  // ②  Wire listeners *once*
+  worker.addEventListener('message', ({ data }) => {
+    if (data.type === 'cfdForecast') {
+      const { base, up, lo } = data.payload;
+      updateForecastSeries(base, up, lo);
+      return;
+    }
+
+    /* existing adaptive / gauges / anomaly routing  */
+    if (data.type === 'adapt')   { /* … */ }
+    if (data.type === 'gauges')  { /* … */ }
+    if (data.type === 'anomaly') { /* … */ }
+  });
+
+  // ③  Push the full tunables object in **one** clean post
+  sendConfig();         // <-- your existing helper stays unchanged
+}
+
+
 
  // proxy: push tunables every time they change
  function sendConfig () {
@@ -582,6 +629,11 @@ function regimeDetails(value) {
           updS= v=>upd(gS,v),
           updF= v=>upd(gF,v);
 
+    
+    const updR     = makeUpd(gR);                                 // no clamp
+    const updShock = makeUpd(gShock, v => Math.max(-1, Math.min(1, v)));
+    const updMom   = makeUpd(gMom,   v => Math.max(-1, Math.min(1, v)));
+
 
 
     // ──────────────────────────────────────────────────
@@ -593,26 +645,15 @@ function regimeDetails(value) {
 
     const updL = v => gL.series[0].points[0].update(Math.max(0, v));
   
-    // helper to update Resilience
-    function updR(v){ 
-      gR.series[0].points[0].update(v); 
-    }    
-    function updShock(v){ 
-     gShock.series[0].points[0].update(Math.max(-1, Math.min(1, v))); 
-    }
-
-    function updMom(v) {
-      // clamp to [−1,1], though we’ll only use positives here
-      gMom.series[0].points[0].update(Math.max(-1, Math.min(1, v)));
-    }    
+  
 
     function setGaugeStatus(id,val){
       let st='flat';
-      if(val> 0.1) st='bull';
-      if(val< -0.1)st='bear';
-      const e=$(id);
-      e.textContent = st.charAt(0).toUpperCase()+st.slice(1);
-      e.className   ='obi-gauge-status '+st;
+      if (val >  0.1) st = 'bull';
+      if (val < -0.1) st = 'bear';
+      const e = $(id);
+      e.textContent = st.charAt(0).toUpperCase() + st.slice(1);
+      e.className  = `obi-gauge-status ${st}`;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -651,43 +692,58 @@ function regimeDetails(value) {
     /* ────────────────────────────────────────────────
     * GRID – recent big flow events
     * ────────────────────────────────────────────────*/
-    const MAX_FLOW_ROWS = 300;      // keep the table snappy
-    let   flowData      = [];
+
 
     /* 1) tiny renderer – build column vectors & feed Grid.js */
-    function renderFlowGrid () {
-      const cols = {};
-      ['side','notional','type','price','time','bias'].forEach(k => {
-        cols[k] = flowData.map(r => r[k]);
-      });
+    /* easy re-usable renderer so Grid-Lite gets fresh data every call  */
 
-      Grid.grid('flowGrid', {
-        dataTable : { columns: cols },
-        columnDefaults : {
-          cells  : { className:'hcg-right' },
-          header : { className:'hcg-center' }
+
+
+  const MAX_FLOW_ROWS = 300;
+  let   flowData      = [];
+
+  function _renderFlowGridSync () {
+  const cols = {};
+  
+  ['side','notional','type','price','time','bias'].forEach(k=>{
+    cols[k] = flowData.map(r=>r[k]);
+  });
+  Grid.grid('flowGrid',{
+    dataTable:{ columns:cols },
+    columnDefaults:{
+      header:{ className:'hcg-center' },
+      cells :{ className:'hcg-right' }
+    },
+    columns:[
+      { id:'side', header:{format:'Side'},
+        cells:{ className:'hcg-center bold' } },
+      { id:'notional', header:{format:'Notional'},
+        cells:{ format:'${value:,.0f}' } },
+      { id:'type',  header:{format:'Type'} },
+      { id:'price', header:{format:'Price'} },
+      { id:'time',  header:{format:'Time'} },
+      { id:'bias',
+        header:{ format:'Bias&nbsp;<span title="Rolling net absorption (−1…+1)">ℹ️</span>' },
+        cells :{
+          className:'{#if (gt value 0)}bullish-color{else if (lt value 0)}bearish-color{/if}',
+          format:'{value:.2f}'
         },
-        columns : [
-          { id:'side',     header:{ format:'Side'  },
-            cells:{ className:'hcg-center bold' } },
-          { id:'notional', header:{ format:'Notional' },
-            cells:{ format:'${value:,.0f}' } },
-          { id:'type',  header:{ format:'Type'  } },
-          { id:'price', header:{ format:'Price' } },
-          { id:'time',  header:{ format:'Time'  } },
-          { id:'bias',
-            header : { format:'Bias&nbsp;<span title="Rolling net absorption (−1…+1)">ℹ️</span>' },
-            cells  : {
-              className : '{#if (gt value 0)}bullish-color{else if (lt value 0)}bearish-color{/if}',
-              format    : '{value:.2f}'
-            },
-            width : 65 }
-        ],
-        height  : 300,
-        paging  : { enabled:true, pageLength:10 },
-        sorting : true
-      });
-    }
+        width:65 }
+    ],
+    height :260,
+    paging :{ enabled:true, pageLength:10 },
+    sorting:true
+  });
+}
+  let gridQueued = false;
+  function renderFlowGrid () {
+    if (gridQueued) return;          // already scheduled
+    gridQueued = true;
+    requestAnimationFrame(() => {
+      _renderFlowGridSync();
+      gridQueued = false;
+    });
+  }
 
 function initCFDChart () {
   if (obCFD) return;             // already initialised
@@ -711,12 +767,60 @@ function initCFDChart () {
       { name:'Imbalance', type:'line', data:[],
         color:'#1e90ff',  lineWidth:1.6 },
       { name:'Mid-price', type:'line', data:[],
-        color:'#555',     dashStyle:'Dash', yAxis:1 }
+        color:'#555',     dashStyle:'Dash', yAxis:1 },
+
+   /* NEW: forecast centre line (4) */
+      { id:'imb-fore', name:'Forecast',
+        type:'line', data:[], dashStyle:'Dash',
+        color:'#1e90ff', lineWidth:1.5, enableMouseTracking:false },
+
+      /* NEW: upper band (5) */
+      { id:'imb-up', type:'line', data:[], dashStyle:'Dot',
+        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
+
+      /* NEW: lower band (6) */
+      { id:'imb-lo', type:'line', data:[], dashStyle:'Dot',
+        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
+        
+    { id:'imb-conf', type:'arearange', data:[], zIndex:0,
+      color:'#1e90ff', fillOpacity:.08, lineWidth:0,
+      enableMouseTracking:false }        
     ],
     credits : { enabled:false }
   });
 }
 
+/**
+ * Update the three forecast lines **and** the confidence band
+ * without creating new series every tick.
+ *
+ * @param {Array<[number, number]>} base  – centre-line forecast  [ts, y]
+ * @param {Array<[number, number]>} up    – upper bound           [ts, y]
+ * @param {Array<[number, number]>} lo    – lower bound           [ts, y]
+ */
+function updateForecastSeries(base, up, lo) {
+  if (!obCFD) return;                     // chart not ready yet
+
+  /* grab existing series by id (all are created once in initCFDChart) */
+  const fore  = obCFD.get('imb-fore');    // dashed centre line
+  const upper = obCFD.get('imb-up');      // dotted upper band
+  const lower = obCFD.get('imb-lo');      // dotted lower band
+  const band  = obCFD.get('imb-conf');    // translucent arearange band
+
+  /* 1️⃣  update the three individual lines                        */
+  fore  && fore.setData(base,  false);    // no immediate redraw
+  upper && upper.setData(up,    false);
+  lower && lower.setData(lo,    false);
+
+  /* 2️⃣  rebuild the arearange once, re-using the same series      */
+  if (band) {
+    const bandData = up.map((u, i) => [u[0], lo[i][1], u[1]]);
+    band.setData(bandData, false);
+  }
+
+  /* 3️⃣  single inexpensive redraw                                */
+  obCFD.redraw(false);
+}
 
   /* ──────────────────────────────────────────────────────────────
     Push one trade row into the rolling grid
@@ -749,6 +853,9 @@ function initCFDChart () {
 
     // 3) redraw the grid
     renderFlowGrid();
+
+  // OPTIONAL – keep the “Book Bias over Time” chart in sync with every big trade
+  if (Number.isFinite(row.bias)) biasChart.pushBias(row.ts || Date.now(), row.bias);    
   }
 
     const biasChart = new BookBiasLine('#biasLine');
@@ -917,6 +1024,7 @@ async function start () {
     P.startStreams       = start;
     if (running) return;
     readParams();
+    ensureWorker();
     running = true;
     $('stream-btn').textContent = 'Stop Streams';
 
@@ -1031,10 +1139,20 @@ setHtml('obiRatioTxt', txt);
     const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
+    /* ------------------------------------------------------------
+     * Robust yard-stick for the LaR gauge:
+     * • hard floor  =  50 k
+     * • volatility  =  3 × σ(depth)  (keeps pace with recent noise)
+     * • liquidity   =  60 % of median book depth *
+     *   (* falls back to 50 M when the median isn’t ready yet)
+     * ---------------------------------------------------------- */
+    const medDepth   = depthStats.median();
+    const medSafe    = Number.isFinite(medDepth) ? medDepth : 50_000_000; // 50 M
+
     const FULL_SCALE_LAR = Math.max(
-        50_000,                    // absolute floor
-        3 * depthStats.std(),      // softer scale
-        SAFE(depthStats.median(),5e7) * 0.6   // 60 % of median depth
+      50_000,                 // absolute floor
+      3 * depthStats.std(),   // volatility term
+      medSafe * 0.60          // 60 % of (robust) median depth
     );
     const scaledLaR      = Math.min(1, rawLaR / FULL_SCALE_LAR);
     lastLaR = scaledLaR;          // keep for spectrum composite
@@ -1222,6 +1340,8 @@ flowSSE.onmessage = (e) => {
   updW(w); setGaugeStatus('statusWarn',     w);
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
+
+  
 
   /* ─── 10.  Bias-line point & line refresh  ─────────────────── */
   pushBuf(buf.bias, [now, biasVal]);

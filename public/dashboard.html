@@ -135,8 +135,18 @@
   display:inline-block; margin-left:4px; vertical-align:middle;
 }
 
+
+/* 1️⃣  Give every gauge container a definite box               */
+.obi-gauge            { width:auto; height:120px; margin:0 auto; }
+
+/* 2️⃣  Let the gauge column shrink nicely on small screens     */
+.obi-gauge-col        { flex:1 1 170px; /* min-width 170px */ }
+
+/* 3️⃣  Keep large charts inside their white card               */
+.obi-block            { position:relative; overflow:hidden; }
 /* add to dashboard.css (or wherever the gauges are themed) */
-.gauge-wrap{ position:relative; width:160px; }   /* whatever width you use */
+.gauge-wrap{ position:relative; width:auto; }   /* whatever width you use */
+
 .obi-gauge-status{
   position:absolute;
   left:0;                 /* full-width, centred text */
@@ -154,7 +164,22 @@
 .obi-gauge-status.bear{  color:#ff5252; }
 .obi-gauge-status.flat{  color:#999;    }
 
- 
+/* small header helper so all blocks look alike */
+.obi-block-title{
+  margin:0 0 8px;
+  font-weight:600;
+  font-size:15px;
+  color:#1f2d3d;
+}
+
+/* Grid-Lite tweaks (keeps it on-brand) */
+#flowGrid table      { background:none!important; }
+#flowGrid thead th   { background:#fff!important; font-weight:600; }
+#flowGrid tbody td   { padding:6px 8px; }
+#flowGrid tbody tr:hover td { background:#f3f5f9!important; }
+.bullish-color{ color:#18b76e; font-weight:600; }
+.bearish-color{ color:#ff4d4d; font-weight:600; }
+
   </style>
 </head>
 <body>
@@ -202,207 +227,209 @@
       <button id="stream-btn" class="btn">Start Streams</button>
     </div>
 
-    <!-- MAIN CONTENT -->
-    <div class="obi-maincontent">
+<!-- MAIN CONTENT ===================================================== -->
+<div class="obi-maincontent">
 
-    <!-- TOP KPIs -->
-    <div class="obi-headline-bar">
+  <!-- ─── TOP KPIs ──────────────────────────────────────────────── -->
+  <div class="obi-headline-bar">
 
-      <!-- ► NEW  live price  -->
-      <div class="obi-kpi">
-        <span class="obi-kpi-label">Price</span>
-        <span class="obi-kpi-value" id="priceLive">--</span>
-        <span class="obi-kpi-detail" id="price24h">--</span>
+    <!-- Live price -->
+    <div class="obi-kpi">
+      <span class="obi-kpi-label">Price</span>
+      <span class="obi-kpi-value"  id="priceLive">--</span>
+      <span class="obi-kpi-detail" id="price24h">--</span>
+    </div>
+
+    <!-- Live OBI ratio -->
+    <div class="obi-kpi">
+      <span class="obi-kpi-label">Live OBI Ratio</span>
+      <span class="obi-kpi-value"  id="obiRatio">--</span>
+      <span class="obi-kpi-detail" id="obiRatioTxt">Waiting</span>
+    </div>
+
+    <!-- Rolling bias -->
+    <div class="obi-kpi">
+      <span class="obi-kpi-label">Rolling Bias</span>
+      <span class="obi-kpi-value"  id="biasRoll">--</span>
+      <span class="obi-kpi-detail" id="biasRollTxt"></span>
+    </div>
+
+  </div> <!-- /.obi-headline-bar -->
+
+  <!-- ─── BIG INDICATORS (Liquidity / OI / Funding / Vol) ─────────── -->
+  <div class="obi-indicator-row">
+
+    <!-- Liquidity -->
+    <div class="big-indicator-card">
+      <span class="big-label">Liquidity</span>
+      <span class="big-value" id="liqVal">--</span>
+      <div class="big-status">
+        <span id="dot-liq" class="status-dot"></span>
+        <span id="liqTxt">Waiting</span>
       </div>
+    </div>
 
-      <!-- ► Live OBI ratio – unchanged except colour will be handled in Req 2 -->
-      <div class="obi-kpi">
-        <span class="obi-kpi-label">Live OBI Ratio</span>
-        <span class="obi-kpi-value" id="obiRatio">--</span>
-        <span class="obi-kpi-detail" id="obiRatioTxt">Waiting</span>
+    <!-- Open-interest -->
+    <div class="big-indicator-card">
+      <span class="big-label">Open Interest</span>
+      <span class="big-value" id="card-oi">--</span>
+      <div class="big-status">
+        <span id="dot-oi" class="status-dot"></span>
+        <span id="oiTxt">Waiting</span>
       </div>
+    </div>
 
-      <!-- ► Rolling Bias (kept) -->
-      <div class="obi-kpi">
-        <span class="obi-kpi-label">Rolling Bias</span>
-        <span class="obi-kpi-value" id="biasRoll">--</span>
-        <span class="obi-kpi-detail" id="biasRollTxt"></span>
+    <!-- Funding -->
+    <div class="big-indicator-card">
+      <span class="big-label">Funding Rate</span>
+      <span class="big-value" id="card-funding">--</span>
+      <div class="big-status">
+        <span id="dot-fund" class="status-dot"></span>
+        <span id="fundTxt">Waiting</span>
       </div>
-
     </div>
 
-      <!-- BIG INDICATORS ================================================= -->
-<div class="obi-indicator-row">
-
-  <!-- Liquidity ---------------------------------------------------- -->
-  <div class="big-indicator-card">
-    <span class="big-label">Liquidity</span>
-    <span class="big-value" id="liqVal">--</span>
-    <div class="big-status">
-      <span id="dot-liq" class="status-dot"></span>
-      <span id="liqTxt">Waiting</span>
-    </div>
-  </div>
-
-  <!-- Open Interest ------------------------------------------------ -->
-  <div class="big-indicator-card">
-    <span class="big-label">Open Interest</span>
-    <span class="big-value" id="card-oi">--</span>
-    <div class="big-status">
-      <span id="dot-oi" class="status-dot"></span>
-      <span id="oiTxt">Waiting</span>
-    </div>
-  </div>
-
-  <!-- Funding Rate ------------------------------------------------- -->
-  <div class="big-indicator-card">
-    <span class="big-label">Funding Rate</span>
-    <span class="big-value" id="card-funding">--</span>
-    <div class="big-status">
-      <span id="dot-fund" class="status-dot"></span>
-      <span id="fundTxt">Waiting</span>
-    </div>
-  </div>
-
-  <!-- 24 h Volume -------------------------------------------------- -->
-  <div class="big-indicator-card">
-    <span class="big-label">Volume</span>
-    <span class="big-value" id="card-vol24h">--</span>
-    <div class="big-status">
-      <span id="dot-vol" class="status-dot"></span>   <!--  ← must be dot-vol  -->
-      <span id="volTxt">Waiting</span>
-    </div>
-  </div>
-
-</div>
-
-<span id="card-upd" class="last-upd" style="font-size:11px;color:#555"></span>
-
-
-      <!-- Bull + Bear side-by-side ------------------------------------- -->
-      <div class="obi-spectrum-row">
-        <div class="spectrum-meter">
-          <div id="bullMeter"></div>
-          <div id="bullRegime" class="spectrum-regime-overlay"></div>
-        </div>
-        <div class="spectrum-meter">
-          <div id="bearMeter"></div>
-          <div id="bearRegime" class="spectrum-regime-overlay"></div>
-        </div>
+    <!-- 24-h volume -->
+    <div class="big-indicator-card">
+      <span class="big-label">Volume</span>
+      <span class="big-value" id="card-vol24h">--</span>
+      <div class="big-status">
+        <span id="dot-vol" class="status-dot"></span>
+        <span id="volTxt">Waiting</span>
       </div>
-
-<!-- ─── SOLID-GAUGES ──────────────────────────────────────────────── -->
-<div class="obi-gauges-row">
-
-  <!-- Confirmation ------------------------------------------------- -->
-  <div class="obi-gauge-col">
-    <div class="gauge-wrap">
-      <div id="gConfirm" class="obi-gauge"></div>
-      <span id="statusConfirm" class="obi-gauge-status flat">Flat</span>
     </div>
-    <div class="obi-gauge-label">Confirmation</div>
+
+  </div> <!-- /.obi-indicator-row -->
+
+  <!-- last-updated stamp -->
+  <span id="card-upd" class="last-upd"
+        style="font-size:11px;color:#555"></span>
+
+  <!-- ─── Bull / Bear spectrum meters ────────────────────────────── -->
+  <div class="obi-spectrum-row">
+    <div class="spectrum-meter">
+      <div id="bullMeter"></div>
+      <div id="bullRegime" class="spectrum-regime-overlay"></div>
+    </div>
+    <div class="spectrum-meter">
+      <div id="bearMeter"></div>
+      <div id="bearRegime" class="spectrum-regime-overlay"></div>
+    </div>
   </div>
 
-  <!-- Early-Warn ---------------------------------------------------- -->
-  <div class="obi-gauge-col">
-    <div class="gauge-wrap">
-      <div id="gWarn" class="obi-gauge"></div>
-      <span id="statusWarn" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Early-Warn</div>
-  </div>
+  <!-- ─── SOLID GAUGES (Confirmation …) ──────────────────────────── -->
+  <div class="obi-gauges-row">
 
-  <!-- Squeeze ------------------------------------------------------- -->
-  <div class="obi-gauge-col">
-    <div class="gauge-wrap">
-      <div id="gSqueeze" class="obi-gauge"></div>
-      <span id="statusSqueeze" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Squeeze</div>
-  </div>
-
-  <!-- Fake-out ------------------------------------------------------ -->
-  <div class="obi-gauge-col">
-    <div class="gauge-wrap">
-      <div id="gFake" class="obi-gauge"></div>
-      <span id="statusFake" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Fake-out</div>
-  </div>
-
-  <!-- LaR (hidden by default) -------------------------------------- -->
-  <div class="obi-gauge-col hidden">
-    <div class="gauge-wrap">
-      <div id="gLaR" class="obi-gauge"></div>
-      <span id="statusLaR" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">LaR&nbsp;(5&nbsp;min)</div>
-  </div>
-
-  <!-- Resilience (hidden) ------------------------------------------ -->
-  <div class="obi-gauge-col hidden">
-    <div class="gauge-wrap">
-      <div id="gRes" class="obi-gauge"></div>
-      <span id="statusRes" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Resilience</div>
-  </div>
-
-  <!-- Multi-Level Shock (hidden) ------------------------------------ -->
-  <div class="obi-gauge-col hidden">
-    <div class="gauge-wrap">
-      <div id="gShock" class="obi-gauge"></div>
-      <span id="statusShock" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Multi-Lvl&nbsp;Shock</div>
-  </div>
-
-  <!-- Momentum-Ignition (hidden) ------------------------------------ -->
-  <div class="obi-gauge-col hidden">
-    <div class="gauge-wrap">
-      <div id="gMom" class="obi-gauge"></div>
-      <span id="statusMom" class="obi-gauge-status flat">Flat</span>
-    </div>
-    <div class="obi-gauge-label">Momentum-Ignition</div>
-  </div>
-
-</div>
-<!-- ───────────────────────────────────────────────────────────────── -->
-
-
+    <!-- Confirmation -->
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gConfirm" class="obi-gauge"></div>
+        <span id="statusConfirm" class="obi-gauge-status flat">Flat</span>
       </div>
-      <!-- BOOK BIAS + DONUTS -->
-      <div class="obi-row">
-        <div class="obi-block" style="flex:2">
-          <h4 style="margin:0 0 8px;">Book Bias Over Time</h4>
-          <div id="biasLine" style="height:260px;"></div>
-        </div>
-        <div class="obi-block">
-          <h4 style="margin:0 0 8px;">Absorption by Side</h4>
-          <div id="absBySide" style="height:260px;"></div>
-        </div>
-        <div class="obi-block">
-          <h4 style="margin:0 0 8px;">Flow Confirm vs Fake-Out</h4>
-          <div id="confirmFake" style="height:260px;"></div>
-        </div>
-      </div>
+      <div class="obi-gauge-label">Confirmation</div>
+    </div>
 
-      <!-- FLOW GRID -->
-      <!-- FLOW GRID (inside bigFlowRow) -->
-      <div class="obi-block flex-1" style="min-height:320px">
-        <h4 style="margin:0 0 8px;">Recent Big Flow</h4>
-        <div id="flowGrid" style="height:260px;"></div>
+    <!-- Early-Warn -->
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gWarn" class="obi-gauge"></div>
+        <span id="statusWarn" class="obi-gauge-status flat">Flat</span>
       </div>
-      <!-- CFD BLOCK -->
-      <!-- NEW -->
-      <div id="bigCFDRow" class="row-flex">
-        <div class="obi-block flex-1" style="min-height:380px">
-          <h4 style="margin:0 0 8px;">Order-Book Imbalance CFD</h4>
-          <div id="obCfd" style="height:320px; width:100%;"></div>
-        </div>
-      </div>   
+      <div class="obi-gauge-label">Early-Warn</div>
+    </div>
+
+    <!-- Squeeze -->
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gSqueeze" class="obi-gauge"></div>
+        <span id="statusSqueeze" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">Squeeze</div>
+    </div>
+
+    <!-- Fake-out -->
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gFake" class="obi-gauge"></div>
+        <span id="statusFake" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">Fake-out</div>
+    </div>
+
+    <!-- Hidden gauges (un-hide by removing .hidden) -->
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gLaR" class="obi-gauge"></div>
+        <span id="statusLaR" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">LaR&nbsp;(5&nbsp;min)</div>
+    </div>
+
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gRes" class="obi-gauge"></div>
+        <span id="statusRes" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">Resilience</div>
+    </div>
+
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gShock" class="obi-gauge"></div>
+        <span id="statusShock" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">Multi-Lvl&nbsp;Shock</div>
+    </div>
+
+    <div class="obi-gauge-col">
+      <div class="gauge-wrap">
+        <div id="gMom" class="obi-gauge"></div>
+        <span id="statusMom" class="obi-gauge-status flat">Flat</span>
+      </div>
+      <div class="obi-gauge-label">Momentum-Ignition</div>
+    </div>
+
+  </div> <!-- /.obi-gauges-row -->
+
+    <!-- ─── Order-book CFD chart ───────────────────────────────────── -->
+  <div id="bigCFDRow" class="row-flex">
+    <div class="obi-block flex-1" style="min-height:380px">
+      <h4 style="margin:0 0 8px;">Order-Book Imbalance CFD</h4>
+      <div id="obCfd" style="height:320px;width:100%;"></div>
     </div>
   </div>
+
+  <!-- ─── Book-bias line + donut charts ──────────────────────────── -->
+  <div class="obi-row">
+
+    <!-- Bias-line ---------------------------------------------------- -->
+    <div class="obi-block" style="flex:2; min-height:260px">
+      <h4 class="obi-block-title">Book Bias Over Time</h4>
+      <div id="biasLine" style="height:260px"></div>
+    </div>
+
+    <div class="obi-block">
+      <h4 style="margin:0 0 8px;">Absorption by Side</h4>
+      <div id="absBySide" style="height:260px;"></div>
+    </div>
+
+    <div class="obi-block">
+      <h4 style="margin:0 0 8px;">Flow Confirm vs Fake-Out</h4>
+      <div id="confirmFake" style="height:260px;"></div>
+    </div>
+
+  </div> <!-- /.obi-row -->
+
+  <!-- ─── Recent Big-flow grid ───────────────────────────────────── -->
+  <div class="obi-block flex-1" style="min-height:320px">
+    <h4 style="margin:0 0 8px;">Recent Big Flow</h4>
+    <div id="flowGrid" style="height:260px;"></div>
+  </div>
+
+
+
+</div> <!-- /MAIN CONTENT -->
+
   <script>
   /* Force Highcharts to use the browser’s local time zone            *
   * (same zone that new Date(..).toLocaleTimeString() uses).         */

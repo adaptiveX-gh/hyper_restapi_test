@@ -134,3 +134,66 @@ self.onmessage = ({ data }) => {
     /* 4. Default – ignore unknown message types ...........................*/
   }
 };
+
+/* inside metricsWorker.js – runs off-thread */
+let BUF = [];                 // [{ts, val}]
+const MAX = 900;              // 15-min @ 1-Hz
+const HORIZON = 120 * 1000;   // project 2 min
+
+self.onmessage = ({data}) => {
+  if (data.type === 'cfdPoint') {
+    BUF.push({ ts: data.ts, val: data.val });
+    if (BUF.length > MAX) BUF.shift();
+    forecastAndPost();
+  }
+};
+
+function forecastAndPost () {
+  if (BUF.length < 30) return;    // need a bit of history
+
+  // --- 1) ordinary least squares on the last 90 s ------------
+  const span = 90;                               // seconds
+  const slice = BUF.slice(-span);
+  const n = slice.length;
+  const t0 = slice[0].ts;
+
+  let Sx = 0, Sy = 0, Sxx = 0, Sxy = 0;
+  slice.forEach((p,i) => {
+    const x = (p.ts - t0) / 1000;   // seconds since t0
+    const y = p.val;
+    Sx  += x;  Sy  += y;
+    Sxx += x*x; Sxy += x*y;
+  });
+  const denom = n*Sxx - Sx*Sx;
+  if (!denom) return;
+
+  const a = (n*Sxy - Sx*Sy)/denom;   // slope
+  const b = (Sy - a*Sx)/n;           // intercept
+
+  // crude RMSE for ±σ bands
+  let mse = 0;
+  slice.forEach(p=>{
+    const x = (p.ts - t0)/1000;
+    const yHat = a*x + b;
+    mse += (p.val - yHat)**2;
+  });
+  const sigma = Math.sqrt(mse/n);
+
+  // --- 2) build forecast points --------------------------------
+  const step = 1000;                 // 1 s spacing
+  const pts = [];
+  for (let dt = step; dt <= HORIZON; dt += step) {
+    const x = (dt)/1000;
+    const y = a*x + b;
+    pts.push([ t0 + dt, y ]);
+  }
+
+  const upper = pts.map(([t,y]) => [t, y + sigma]);
+  const lower = pts.map(([t,y]) => [t, y - sigma]);
+
+  // --- 3) send back to main thread -----------------------------
+  self.postMessage({
+    type : 'cfdForecast',
+    payload : { base: pts, up: upper, lo: lower }
+  });
+}
