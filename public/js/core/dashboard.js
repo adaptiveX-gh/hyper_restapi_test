@@ -552,20 +552,39 @@ function regimeDetails(value) {
       });
     }
 
-    /* 2) push *one* new row and refresh table */
-    function addFlow (t, biasVal) {
-      flowData.unshift({
-        side    : t.side === 'buy' ? 'BID' : 'ASK',
-        notional: t.notional,
-        type    : t.type,
-        price   : t.price ? t.price.toFixed(0) : '—',
-        time    : new Date(t.ts || Date.now())
-                    .toLocaleTimeString('en-US', { hour12:false }),
-        bias    : Number.isFinite(biasVal) ? +biasVal.toFixed(2) : 0
-      });
-      if (flowData.length > MAX_FLOW_ROWS) flowData.pop();
-      renderFlowGrid();
+      /* 2) push *one* new row and refresh table */
+  /* ──────────────────────────────────────────────────────────────
+    Push one trade row into the rolling grid
+    ----------------------------------------------------------------
+    Expects ONE object shaped like:
+    {
+      side: 'buy' | 'sell',
+      notional: 123456,
+      type: 'absorption' | 'exhaustion' | ...,
+      price: 104250,
+      ts:    1701954632500,           // ms
+      bias:  -0.17                    // ← rolling net-absorption
     }
+    ────────────────────────────────────────────────────────────── */
+  function addFlow (row) {
+
+    // 1) canonicalise & push to the front
+    flowData.unshift({
+      side     : row.side === 'buy' ? 'BID' : 'ASK',
+      notional : row.notional,
+      type     : row.type,
+      price    : row.price ? row.price.toFixed(0) : '—',
+      time     : new Date(row.ts || Date.now())
+                  .toLocaleTimeString('en-US', { hour12:false }),
+      bias     : Number.isFinite(row.bias) ? row.bias.toFixed(2) : '0.00'
+    });
+
+    // 2) keep the buffer bounded
+    if (flowData.length > 1_000) flowData.pop();
+
+    // 3) redraw the grid
+    renderFlowGrid();
+  }
 
     const biasChart = new BookBiasLine('#biasLine');
 
@@ -644,12 +663,43 @@ function regimeDetails(value) {
       obiSSE = new EventSource(`/api/obImbalanceLive?coin=${$('obi-coin').value}` +
                               `&depth=${P.DEPTH_PARAM}&period=${P.REFRESH_PERIOD}`);
 
+const CFD_WINDOW_MS = 60*60*1000;
+const cfdSeries = { bids:[], asks:[], imb:[], mid:[] };
 
+const obCFD = Highcharts.chart('obCfd', {/* … config stays unchanged … */});
 
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
   worker.postMessage({ type:'depthSnap', payload:d });
+  
+    /* (A)  FEED CFD  — one-liner IIFE */
+  (function feedCFD() {
+    const ts = d.ts,
+          bidN = d.bidDepth,
+          askN = d.askDepth,
+          mid = (d.topBid + d.topAsk) / 2;
+
+    cfdSeries.bids.push([ts,bidN]);
+    cfdSeries.asks.push([ts,askN]);
+    cfdSeries.imb .push([ts,bidN-askN]);
+    cfdSeries.mid .push([ts,mid]);
+
+    const cut = ts - CFD_WINDOW_MS;
+    Object.values(cfdSeries).forEach(arr=>{
+      while (arr.length && arr[0][0] < cut) arr.shift();
+    });
+
+    const s = obCFD.series;
+    s[0].setData(cfdSeries.bids,false);
+    s[1].setData(cfdSeries.asks,false);
+    s[2].setData(cfdSeries.imb ,false);
+    s[3].setData(cfdSeries.mid ,false);
+    if (!feedCFD.lastDraw || ts - feedCFD.lastDraw > UI_THROTTLE_MS){
+      obCFD.redraw(false);
+      feedCFD.lastDraw = ts;
+    }
+  })();
 
   /* 2. Re‑compute adaptive scalers and overwrite globals */
   const adapt = adaptiveThresholds();
@@ -971,6 +1021,40 @@ flowSSE.onmessage = (e) => {
     { name:'Confirm',  y: cfCount.confirm, color:'#3399FF' },
     { name:'Fake-Out', y: cfCount.fake,    color:'#FF9933' }
   ], false);
+
+  /*────────── Order-Book CFD  ───────────────────────────────────*/
+  const CFD_WINDOW_MS = 60 * 60 * 1000;   // keep last 60 minutes
+  const cfdSeries = { bids: [], asks: [], imb: [], mid: [] };
+
+  const obCFD = Highcharts.chart('obCfd', {
+    chart : { type:'area', height:220, spacing:[10,10,25,10], zoomType:'x' },
+    title : { text:'Order Book Imbalance CFD', style:{ fontSize:'15px' } },
+    xAxis : { type:'datetime' },
+    yAxis : [{
+        title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
+      },{
+        title:{ text:'Price' }, opposite:true, visible:false
+    }],
+    tooltip : { shared:true, xDateFormat:'%H:%M' },
+    legend  : { enabled:false },
+    series  : [{
+        name : 'Bids (liquidity)',
+        data : [], color:'rgba(77,255,136,0.55)', fillOpacity:0.6
+      },{
+        name : 'Asks (liquidity)',
+        data : [], color:'rgba(255,77,77,0.55)',  fillOpacity:0.6
+      },{
+        name : 'Imbalance (B-A)',
+        type : 'line',
+        data : [], color:'#1e90ff', lineWidth:1.6
+      },{
+        name : 'Mid-price',
+        type : 'line',
+        data : [], color:'#555', dashStyle:'Dash', yAxis:1
+    }],
+    credits : { enabled:false }
+  });
+
 
   absChart.redraw(false);
   cfChart.redraw(false);

@@ -121,7 +121,8 @@
       line-height:0;
     }
     .info-icon:hover{ color:#000; }
-
+    .row-flex { display:flex; gap:16px; width:100%; }
+    .flex-1   { flex:1 1 0;  }        /* equal halves */
  
   </style>
 </head>
@@ -310,9 +311,9 @@
       </div>
 
       <!-- FLOW GRID -->
-      <div class="obi-block">
-        <h4 style="margin:0 0 8px;">Recent Big Flow Events</h4>
-        <div id="flowGrid"></div>
+      <div id="bigFlowRow" class="row-flex">
+        <div id="flowGrid"   class="flex-1"></div>   <!-- already exists -->
+        <div id="obCfd"      class="flex-1"></div>   <!-- 👈 NEW -->
       </div>
     </div>
   </div>
