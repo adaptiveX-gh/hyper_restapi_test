@@ -905,13 +905,11 @@ function ensureViewport (fcEndTs) {
 
     const biasChart = new BookBiasLine('#biasLine');
 
-
-    /* 2️⃣  wire the worker anomaly channel ---------------------- */
-    worker.onmessage = ({ data }) => {
+    worker.addEventListener('message', ({ data }) => {
       if (data.type === 'anomaly') {
         biasChart.addAnomalyPoint(data.payload);
       }
-    };
+    });
 
     let vol1m = 0, vol8h = 0, buckets = [];
     onCandle(c => {
