@@ -9,56 +9,65 @@
         const biasChart = new BookBiasLine('#biasLine');
 
         // 1️⃣  feed regular bias values
-        biasChart.pushBias(Date.now(), +0.12);    // ts(ms), value(-1…+1)
+        biasChart.pushBias(Date.now(), +0.12);        // ts(ms), value(-1…+1)
 
         // 2️⃣  add “huge print” events
-        biasChart.addAnomaly({
-          ts      : Date.now(),
-          side    : 'buy',          // or 'sell'
-          size    : 850_000,        // raw notional for tooltip
-          kind    : 'abs'           // 'abs' | 'exh'
+        biasChart.addAnomalyPoint({
+          ts   : Date.now(),
+          side : 'buy',               // or 'sell'
+          size : 850_000,             // raw notional for tooltip
+          kind : 'abs'                // 'abs' | 'exh'
         });
 
-        // 3️⃣  whenever you bulk-replace the bias window (optional)
+        // 3️⃣  replace the full series (rare)
         biasChart.resetBiasSeries(myArrayOf [ts, value] );
-  \*───────────────────────────────────────────────────────────────*/
+\*───────────────────────────────────────────────────────────────*/
 
 export class BookBiasLine {
-  #container;
+  /****************************************************************
+   *  PRIVATE FIELDS
+   ****************************************************************/
+  #containerSelector;
   #chart          = null;
   #biasSeriesId   = 'bias';
   #eventSeriesId  = 'events';
 
+  /* ── redraw throttle (max ≈12 fps) ────────────────────────── */
+  #lastDraw       = 0;
+  static #REDRAW_COOLDOWN_MS = 80;
+
+  /****************************************************************
+   *  C T O R
+   ****************************************************************/
   constructor (containerSelector = '#biasLine') {
-    this.#container = containerSelector;
+    this.#containerSelector = containerSelector;
     this.#initChart();
   }
 
-  /*─────────────────────────────────────────────────────────────*/
-  /*  Public API                                                */
-  /*─────────────────────────────────────────────────────────────*/
+  /****************************************************************
+   *  P U B L I C   A P I
+   ****************************************************************/
 
-  /** Push *one* new [ts,value] pair (does its own redraw throttle) */
+  /** Append one [timestamp, value] pair */
   pushBias (ts, value) {
     if (!Number.isFinite(value)) return;
-    const s = this.#chart.get(this.#biasSeriesId);
-    s.addPoint([ ts, value ], false, false);
+    this.#chart.get(this.#biasSeriesId)
+               .addPoint([ts, value], false, false);
     this.#maybeRedraw();
   }
 
-  /** Replace the whole bias line (call VERY sparingly)            */
-  resetBiasSeries (arrayOfTuples /* [[ts,val], …] */) {
-    this.#chart.get(this.#biasSeriesId).setData(arrayOfTuples, false);
+  /** Replace the whole bias line (only use when you *must*) */
+  resetBiasSeries (arr /* [[ts,val], …] */) {
+    this.#chart.get(this.#biasSeriesId).setData(arr, false);
     this.#chart.redraw(false);
   }
 
-  /** Drop an anomaly icon                                        */
-  addAnomaly ({ ts, side, size, kind /* 'abs' | 'exh' */ }) {
-    const bullish   = side === 'buy';
-    const isAbs     = kind === 'abs';
-    const series    = this.#chart.get(this.#eventSeriesId);
+  /** Drop an anomaly icon */
+  addAnomalyPoint ({ ts, side, size, kind /* 'abs' | 'exh' */ }) {
+    const bullish = side === 'buy';
+    const isAbs   = kind === 'abs';
 
-    series.addPoint({
+    this.#chart.get(this.#eventSeriesId).addPoint({
       x       : ts,
       y       : this.#currentBiasValue(),
       anm     : isAbs ? 'Big ABS' : 'Big EXH',
@@ -75,66 +84,93 @@ export class BookBiasLine {
     this.#maybeRedraw();
   }
 
-  /*─────────────────────────────────────────────────────────────*/
-  /*  Internals                                                  */
-  /*─────────────────────────────────────────────────────────────*/
+  /****************************************************************
+   *  I N T E R N A L S
+   ****************************************************************/
 
+  /* ---- Highcharts bootstrap (once) --------------------------- */
   #initChart () {
-    /* one-off Highcharts instantiation */
-    this.#chart = Highcharts.chart(this.#container.replace(/^[#\.]/,''), {
-      chart  : { type:'line', backgroundColor:'transparent', height:260 },
-      title  : { text:'Book Bias Over Time' },
-      xAxis  : { type:'datetime', tickInterval: 5 * 60 * 1000 },
-      yAxis  : {
-        min:-1, max:1,
-        plotBands:[
-          { from: 0.6,  to: 1,   color:'rgba(77,255,136,.10)' },
-          { from:-1,    to:-0.6,color:'rgba(255,77,77,.10)'  }
-        ],
-        title: { text:null }
-      },
-      legend : { enabled:false },
-      series : [{
-        id   : this.#biasSeriesId,
-        name : 'Bias',
-        data : [],
-        color: '#41967c',
-        type : 'line',
-        tooltip: { valueDecimals: 2 }
-      },{
-        id   : this.#eventSeriesId,
-        name : 'Anomalies',
-        type : 'scatter',
-        data : [],
-        yAxis: 0,
-        tooltip : {
-          pointFormatter () {
-            return `<span style="color:${this.color}">●</span> <b>${this.anm}</b><br>`+
-                   `${this.sideStr}, ${Highcharts.numberFormat(this.size,0)} notional<br>`+
-                   `${Highcharts.dateFormat('%H:%M:%S', this.x)}`;
-          }
+    this.#chart = Highcharts.chart(
+      this.#containerSelector.replace(/^[#\.]/, ''),   // id only
+      {
+        chart : {
+          type           : 'line',
+          backgroundColor: 'transparent',
+          height         : 260
         },
-        marker : { symbol:'circle', radius:6, lineWidth:1, lineColor:'#000' },
-        zIndex : 5
-      }],
-      credits : { enabled:false }
-    });
+        title : { text:'Book Bias Over Time' },
+
+        xAxis : {
+          type        : 'datetime',
+          tickInterval: 5 * 60 * 1000          // 5 min
+        },
+
+        yAxis : {
+          min : -1,
+          max :  1,
+          title: { text:null },
+          plotBands : [
+            { from:  0.6, to:  1.0, color:'rgba( 77,255,136,.10)' },
+            { from: -1.0, to: -0.6, color:'rgba(255, 77, 77,.10)' }
+          ]
+        },
+
+        legend  : { enabled:false },
+        credits : { enabled:false },
+
+        series : [
+          /* ① smooth bias line */
+          {
+            id   : this.#biasSeriesId,
+            name : 'Bias',
+            data : [],
+            color: '#41967c',
+            tooltip: { valueDecimals: 2 }
+          },
+
+          /* ② separate scatter for anomalies */
+          {
+            id   : this.#eventSeriesId,
+            name : 'Anomalies',
+            type : 'scatter',
+            data : [],
+            yAxis: 0,
+            marker : {
+              symbol   : 'circle',
+              radius   : 6,
+              lineWidth: 1,
+              lineColor: '#000'
+            },
+            tooltip : {
+              pointFormatter () {
+                return `<span style="color:${this.color}">●</span> ` +
+                       `<b>${this.anm}</b><br>` +
+                       `${this.sideStr}, ${Highcharts.numberFormat(this.size,0)} notional<br>` +
+                       `${Highcharts.dateFormat('%H:%M:%S', this.x)}`;
+              }
+            },
+            zIndex : 5
+          }
+        ]
+      }
+    );
   }
 
-  /** last y-value of bias series, or 0 if empty */
+  /** Most recent y-value of the bias series (0 if empty) */
   #currentBiasValue () {
     const s = this.#chart.get(this.#biasSeriesId);
-    const last = s.yData.length ? s.yData[s.yData.length - 1] : 0;
-    return last || 0;
+    return s.yData.length ? s.yData[s.yData.length - 1] : 0;
   }
 
-  /* simple redraw throttle (max 12 fps) */
-  #lastDraw = 0;
+  /** Throttled redraw helper */
   #maybeRedraw () {
     const now = performance.now();
-    if (now - this.#lastDraw > 80) {
+    if (now - this.#lastDraw > BookBiasLine.#REDRAW_COOLDOWN_MS) {
       this.#chart.redraw(false);
       this.#lastDraw = now;
     }
   }
 }
+
+/* ── Named export only (no helper functions) ─────────────────── */
+export default BookBiasLine;

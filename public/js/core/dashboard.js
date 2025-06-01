@@ -583,10 +583,6 @@ function regimeDetails(value) {
 
     const biasChart = new BookBiasLine('#biasLine');
 
-    /* 1️⃣  feed bias points ------------------------------------ */
-    function updateBias(nowTs, biasVal){
-      biasChart.pushBias(nowTs, biasVal);
-    }
 
     /* 2️⃣  wire the worker anomaly channel ---------------------- */
     worker.onmessage = ({ data }) => {
@@ -834,6 +830,8 @@ flowSSE.onmessage = (e) => {
   const isAbs    = t.type === 'absorption';
   const isExh    = t.type === 'exhaustion';
 
+
+
   /* ─── 2.  Momentum-ignition counter *before* early-exit ────── */
   momTimes.push(now);
   while (momTimes.length && now - momTimes[0] > MOM_WINDOW_MS)
@@ -851,7 +849,17 @@ flowSSE.onmessage = (e) => {
   }
 
   /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
-  
+  biasChart.pushBias(now, biasVal);
+
+  if (tooLarge) {
+    biasChart.addAnomalyPoint({
+      ts   : t.ts || now,
+      side : t.side,
+      size : t.notional,
+      kind : isAbs ? 'abs' : 'exh'
+    });
+  }
+
   const tooLarge =
        (isAbs || isExh) && t.notional >= bigPrintThreshold();
   /*  Compute bias *now* – we will use it several times           */
@@ -1026,10 +1034,6 @@ $('liqTxt').title = () =>
   `Normal between\n` +
   `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
-// AUTO-START
-ensureLine();
-start();
 
- 
 
 })();
