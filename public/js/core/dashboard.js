@@ -1,5 +1,6 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
+    import { BookBiasLine } from './js/bookBiasLine.js';
 
  
   (function(){
@@ -67,6 +68,10 @@
     // Adaptive liquidity thresholds – will be filled in refreshAdaptive()
     let LIQ_THIN  = 0;
     let LIQ_THICK = 0;
+
+    const momTimes = [];
+    const MOM_WINDOW_MS = 2000;       // look back over 2 seconds     
+    const UI_THROTTLE_MS  = 300;                // 4 Hz redraw cap
 
     /* ─── Re-usable JSON fetch with one quick retry ───────────────── */
     async function fetchJSON(url, opts = {}, retry = true) {
@@ -440,8 +445,7 @@ function regimeDetails(value) {
           updS= v=>upd(gS,v),
           updF= v=>upd(gF,v);
 
-    const momTimes = [];
-    const MOM_WINDOW_MS = 2000;       // look back over 2 seconds     
+
 
     // ──────────────────────────────────────────────────
     // 3) New LaR gauge
@@ -577,81 +581,19 @@ function regimeDetails(value) {
     }
     renderFlowGrid();
 
-    // ─────────────────────────────────────────────────────────────────────
-    // BOOK BIAS LINE
-    // ─────────────────────────────────────────────────────────────────────
-    let biasLine;
-    function ensureLine () {
-      if (biasLine) return;
+    const biasChart = new BookBiasLine('#biasLine');
 
-      biasLine = Highcharts.chart('biasLine', {
-        chart  : { type:'line', backgroundColor:'transparent', height:260 },
-        title  : { text:'Book Bias Over Time' },
-        xAxis  : { type:'datetime', tickInterval: 300000 },
-        yAxis  : {
-          min:-1, max:1,
-          plotBands:[
-            { from: 0.6, to: 1.0,  color:'rgba(77,255,136,.10)' },
-            { from:-1.0, to:-0.6, color:'rgba(255,77,77,.10)'  }
-          ]
-        },
-        legend : { enabled:false },
-        series : [{ id:'bias', data:[], color:'#41967c', type:'line' }],
-        credits: { enabled:false }
-      });
-
-      /* ─── 2. Add the scatter series *separately* ──────────────── */
-      biasLine.addSeries({
-        id   : 'events',
-        type : 'scatter',
-        name : 'Anomalies',
-        data : [],
-        yAxis: 0,                   // pin to the existing −1…+1 axis
-        marker : {
-          symbol     : 'circle',
-          radius     : 6,
-          lineWidth  : 1,
-          lineColor  : '#000',
-          fillOpacity: 0.9
-        },
-        tooltip : {
-          pointFormat:
-            '<span style="color:{point.color}">\u25CF</span> ' +
-            '<b>{point.anm}</b><br/>' +
-            '{point.side}, {point.size:$,.0f} notional<br/>' +
-            '{point.time:%H:%M:%S}'
-        },
-        enableMouseTracking : true,
-        zIndex : 5               // keep it above the green line
-      }, false);                  // ← false = don’t redraw yet
+    /* 1️⃣  feed bias points ------------------------------------ */
+    function updateBias(nowTs, biasVal){
+      biasChart.pushBias(nowTs, biasVal);
     }
 
-    function refreshLine () {
-      ensureLine();
-      biasLine.get('bias').setData(buf.bias, false);
-      biasLine.redraw(false);
-    }
-
-    function addAnomalyPoint ({ ts, y, side, size, isAbsorption }) {
-      ensureLine();                               // make sure chart exists
-
-      const bull = side === 'buy';
-
-      biasLine.get('events').addPoint({
-        x        : ts,
-        y,
-        anm      : isAbsorption ? 'Big ABS' : 'Big EXH',
-        side     : bull ? 'Bullish' : 'Bearish',
-        size,
-        marker   : {
-          symbol    : isAbsorption ? 'triangle' : 'square',
-          fillColor : bull ? '#4dff88' : '#ff4d4d',
-          lineColor : '#000',
-          radius    : 7
-        },
-        time : ts                                 // used in tooltip formatter
-      }, false);                                  // queue redraw
-    }
+    /* 2️⃣  wire the worker anomaly channel ---------------------- */
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'anomaly') {
+        biasChart.addAnomaly(data.payload);
+      }
+    };
 
     let vol1m = 0, vol8h = 0, buckets = [];
     onCandle(c => {
@@ -868,7 +810,7 @@ obiSSE.onmessage = async (e) => {
   const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
 
 
-  /* ---------------------------------------------------------------
+ /* ---------------------------------------------------------------
  * FLOW stream – aggressive trades / absorptions / exhaustions
  * --------------------------------------------------------------- */
 flowSSE = new EventSource(
@@ -909,22 +851,21 @@ flowSSE.onmessage = (e) => {
   }
 
   /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
-  const bigThreshold = bigPrintThreshold();       // helper defined earlier
-  const tooLarge     =
-        (isAbs || isExh) && t.notional >= 3 * bigThreshold;
-
+  
+  const tooLarge =
+       (isAbs || isExh) && t.notional >= bigPrintThreshold();
   /*  Compute bias *now* – we will use it several times           */
   const biasVal = fastAvg(buf.c.concat(buf.w).slice(-P.WINDOW));
 
-  if (tooLarge) {
-    addAnomalyPoint({
-      ts           : t.ts || now,
-      y            : biasVal,
-      side         : t.side,            // 'buy' | 'sell'
-      size         : t.notional,
-      isAbsorption : isAbs
-    });
-  }
+ if (tooLarge) {
+   addAnomalyPoint({
+     ts           : t.ts || now,
+     y            : biasVal,          // FIX #3 – pass current bias
+     side         : t.side,           // 'buy' | 'sell'
+     size         : t.notional,
+     isAbsorption : isAbs             // boolean flag
+   });
+ }
 
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
 
@@ -981,7 +922,7 @@ flowSSE.onmessage = (e) => {
              + `($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
 
   /* ─── 8.  Throttle expensive UI updates to ~4 Hz ───────────── */
-  if (now - (flowSSE.lastUpd || 0) < 300) return;
+  if (now - (flowSSE.lastUpd || 0) < UI_THROTTLE_MS) return;
   flowSSE.lastUpd = now;
 
   /* ─── 9.  Scenario gauge scores  ───────────────────────────── */
