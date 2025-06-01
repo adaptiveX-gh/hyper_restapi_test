@@ -567,7 +567,7 @@ function regimeDetails(value) {
     });
 
     }
-    function addFlow(t){
+    function addFlow(row){
     flowData.unshift({
       side     : row.side === 'buy' ? 'BID' : 'ASK',
       notional : row.notional,
