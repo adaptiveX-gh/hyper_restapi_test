@@ -674,6 +674,7 @@ obiSSE.onmessage = async (e) => {
   
     /* (A)  FEED CFD  — one-liner IIFE */
   (function feedCFD() {
+    if (!obCFD || obCFD.series.length < 4) return;   //  ← guard
     const ts = d.ts,
           bidN = d.bidDepth,
           askN = d.askDepth,
