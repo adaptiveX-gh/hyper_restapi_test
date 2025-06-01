@@ -2,6 +2,8 @@
     import { onCtx, onCandle } from './perpDataFeed.js';
     import { BookBiasLine } from '../lib/bookBiasLine.js';
     import { classifyObi } from "./utils.js";
+    import { formatCompact } from '../lib/formatCompact.js';
+    import { stateOiFunding, stateStrength, paintDot } from './lib/statusDots.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -806,9 +808,30 @@ function initCFDChart () {
         updateBigTiles({ oi, funding8h: funding*8*100, vol24h, ts });
     }
 
-    /* ── simple renderer for the big metric tiles ───────────────── */
+    
     /* ── simple renderer for the big metric tiles ───────────────── */
     function updateBigTiles ({ oi, funding8h, vol24h, ts }) {
+
+      const deltaOi = oi - (window.__prevOi || oi);   // crude ∆OI since last poll
+      window.__prevOi = oi;
+
+      const oiState = stateOiFunding({ dOi: deltaOi, funding });
+      paintDot(document.getElementById('dot-oi'), oiState,
+              `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  ` +
+              `Funding ${funding >= 0 ? '+' : ''}${(funding*100).toFixed(4)} %`);
+
+      const pctLiq = (totalDepthSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
+      const liqState = stateStrength({ pctVsMedian: pctLiq });
+
+      paintDot(document.getElementById('dot-liq'), liqState,
+              `Liquidity ${ (pctLiq*100).toFixed(1) } % vs 30-day median`);              
+
+      const pctVol = (vol24h - VOL_MEDIAN) / VOL_MEDIAN;
+      const volState = stateStrength({ pctVsMedian: pctVol });
+
+      paintDot(document.getElementById('dot-vol'), volState,
+              `Volume ${ (pctVol*100).toFixed(1) } % vs 30-day median`);
+
       const fmt = n =>
         Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
@@ -817,10 +840,10 @@ function initCFDChart () {
         if (el) el.textContent = txt;
       };
 
-      set('#card-oi',      fmt(oi));
+      set('#card-oi',      formatCompact(oi));          // $-prefix inside helper
       set('#card-funding',
           (funding8h >= 0 ? '+' : '') + fmt(funding8h) + '%');
-      set('#card-vol24h',  '$' + fmt(vol24h));
+      set('#card-vol24h',  formatCompact(vol24h));
 
       /* optional “last updated” stamp — add a <span id="card-upd"> in the HTML */
       set('#card-upd', new Date(ts).toLocaleTimeString());
@@ -894,7 +917,7 @@ setHtml('obiRatioTxt', txt);
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
   depthStats.push(totalDepthSnap);
 
-  setHtml('liqVal', fmtUsd(totalDepthSnap));
+  setHtml('liqVal', formatCompact(totalDepthSnap));
 
   
   /* ── NEW: 3-state classification ─────────────────────── */

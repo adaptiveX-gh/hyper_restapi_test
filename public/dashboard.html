@@ -128,6 +128,12 @@
   .obi-bull { color:#28c76f; transition:color .15s ease-in; }
   .obi-bear { color:#ff5252; transition:color .15s ease-in; }
   .obi-flat { color:#2b4456; transition:color .15s ease-in; }  /* your default */
+
+  /* tiny 8 px circle */
+.status-dot {
+  width:8px; height:8px; border-radius:50%;
+  display:inline-block; margin-left:4px; vertical-align:middle;
+}
  
   </style>
 </head>
@@ -210,16 +216,14 @@
           <span class="big-label">Liquidity</span>
           <span class="big-value" id="liqVal">--</span>
           <div class="big-status">
-            <span class="status-dot yellow" id="liqDot"></span>
-            <span id="liqTxt">Waiting</span>
+            <span id="dot-liq"  class="status-dot"></span>
           </div>
         </div>
         <div class="big-indicator-card">
           <span class="big-label">Open Interest</span>
           <span class="big-value" id="card-oi">--</span>
           <div class="big-status">
-            <span class="status-dot yellow" id="oiDot"></span>
-            <span id="oiTxt">Waiting</span>
+            <span id="dot-oi"   class="status-dot"></span>
           </div>
         </div>
         <div class="big-indicator-card">
@@ -227,15 +231,13 @@
           <span class="big-value" id="card-funding">--</span>
           <div class="big-status">
             <span class="status-dot red" id="fundDot"></span>
-            <span id="fundTxt">Waiting</span>
           </div>
         </div>
         <div class="big-indicator-card">
-          <span class="big-label">Spot Vol</span>
+          <span class="big-label">Volume</span>
           <span class="big-value" id="card-vol24h">--</span>
           <div class="big-status">
-            <span class="status-dot green" id="svDot"></span>
-            <span id="svTxt">Waiting</span>
+            <span id="dot-vol"  class="status-dot"></span>
           </div>
         </div>
       </div>
