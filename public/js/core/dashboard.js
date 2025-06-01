@@ -791,36 +791,75 @@ function initCFDChart () {
 }
 
 /**
- * Update the three forecast lines **and** the confidence band
- * without creating new series every tick.
+/**
+ * Replace the data of the three forecast lines and the confidence band
+ * *without* creating new series every tick, then visually separate
+ * live vs-forecast.
  *
- * @param {Array<[number, number]>} base  – centre-line forecast  [ts, y]
- * @param {Array<[number, number]>} up    – upper bound           [ts, y]
- * @param {Array<[number, number]>} lo    – lower bound           [ts, y]
+ * @param {Array<[number, number]>} base – centre-line forecast
+ * @param {Array<[number, number]>} up   – upper bound
+ * @param {Array<[number, number]>} lo   – lower bound
  */
 function updateForecastSeries(base, up, lo) {
-  if (!obCFD) return;                     // chart not ready yet
+  if (!obCFD) return;                      // chart not ready yet
+  if (!base?.length) {                     // nothing to draw – clean up & exit
+    obCFD.xAxis[0].removePlotLine('fcStart');
+    obCFD.redraw(false);
+    return;
+  }
 
-  /* grab existing series by id (all are created once in initCFDChart) */
-  const fore  = obCFD.get('imb-fore');    // dashed centre line
-  const upper = obCFD.get('imb-up');      // dotted upper band
-  const lower = obCFD.get('imb-lo');      // dotted lower band
-  const band  = obCFD.get('imb-conf');    // translucent arearange band
+  /* ── Existing series (created once in initCFDChart) ───────────── */
+  const fore  = obCFD.get('imb-fore');   // dashed centre line
+  const upper = obCFD.get('imb-up');     // dotted upper band
+  const lower = obCFD.get('imb-lo');     // dotted lower band
+  const band  = obCFD.get('imb-conf');   // translucent arearange
+  const live  = obCFD.series[2];         // solid live imbalance line
 
-  /* 1️⃣  update the three individual lines                        */
-  fore  && fore.setData(base,  false);    // no immediate redraw
-  upper && upper.setData(up,    false);
-  lower && lower.setData(lo,    false);
+  /* 1️⃣  Replace data (no immediate redraw) */
+  fore?.setData(base,  false);
+  upper?.setData(up,   false);
+  lower?.setData(lo,   false);
 
-  /* 2️⃣  rebuild the arearange once, re-using the same series      */
   if (band) {
     const bandData = up.map((u, i) => [u[0], lo[i][1], u[1]]);
     band.setData(bandData, false);
   }
 
-  /* 3️⃣  single inexpensive redraw                                */
+  /* 2️⃣  Style tweaks that make the forecast obvious */
+  fore?.update({
+    color: 'rgba(30,144,255,0.65)',   // semi-transparent blue
+    dashStyle: 'ShortDot',
+    enableMouseTracking: false
+  }, false);
+
+  const cutOff = base[0][0];                    // first forecast ts
+  const xAx    = obCFD.xAxis[0];
+
+  xAx.removePlotLine('fcStart');
+  xAx.addPlotLine({
+    id   : 'fcStart',
+    value: cutOff,
+    width: 2,
+    color: '#666',
+    dashStyle: 'Dash',
+    zIndex: 5
+  });
+
+  /* Fade live line to the right of the cut-off */
+  live?.update({
+    zones: [{
+      value: cutOff,              // left side: keep solid colour
+      color: '#1e90ff'
+    }, {
+      /* right side: fade  */
+      color: 'rgba(30,144,255,0.25)'
+    }]
+  }, false);
+
+  /* 3️⃣  One inexpensive repaint */
   obCFD.redraw(false);
 }
+
 
   /* ──────────────────────────────────────────────────────────────
     Push one trade row into the rolling grid
