@@ -666,6 +666,7 @@ function regimeDetails(value) {
 const CFD_WINDOW_MS = 60*60*1000;
 const cfdSeries = { bids:[], asks:[], imb:[], mid:[] };
 
+let obCFD;          // ← visible to every function in the module
 
 obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
