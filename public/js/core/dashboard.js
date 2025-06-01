@@ -568,14 +568,14 @@ function regimeDetails(value) {
 
     }
     function addFlow(t){
-      flowData.unshift({
-        side:     t.side==='buy'?'BID':'ASK',
-        notional: t.notional,
-        type:     t.type,
-        price:    t.price.toFixed(0),
-        time:     new Date(t.ts).toLocaleTimeString('en-US',{hour12:false}),
-        bias:     fastAvg(buf.c)
-      });
+    flowData.unshift({
+      side     : row.side === 'buy' ? 'BID' : 'ASK',
+      notional : row.notional,
+      type     : row.type,
+      price    : row.price ? row.price.toFixed(0) : '—',
+      time     : new Date(row.ts || Date.now()).toLocaleTimeString('en-US',{hour12:false}),
+      bias     : row.bias                       // ← use supplied value
+    });
       if(flowData.length>1000) flowData.pop();
       renderFlowGrid();
     }
@@ -919,6 +919,13 @@ flowSSE.onmessage = (e) => {
              + `($${(t.visibleDepth/1e3).toFixed(1)}k visible)`);
 
   /* ─── 8.  Throttle expensive UI updates to ~4 Hz ───────────── */
+  /* ─── 8-a.  ALWAYS push the row to the rolling grid first ──── */
+  addFlow({                          // new call
+    ...t,                            // side / notional / type / price / ts
+    bias: biasVal                    // ✔ correct rolling bias
+  });
+
+  /* ─── 8-b.  Now decide whether to do the heavy chart refresh ─ */
   if (now - (flowSSE.lastUpd || 0) < UI_THROTTLE_MS) return;
   flowSSE.lastUpd = now;
 
