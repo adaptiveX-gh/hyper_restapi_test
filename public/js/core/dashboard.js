@@ -131,27 +131,61 @@
       throw new Error(`HTTP ${resp.status}`);
     }
 
-    async function refreshPrice24h(symbol = 'BTC') {
-      try {
-        // hyperliquid “metaAndAssetCtxs” gives both markPx and 24 h old px
-        const j = await fetchJSON('https://api.hyperliquid.xyz/info', {
-          method : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body   : JSON.stringify({ type:'metaAndAssetCtxs' })
-        });
-        // assetCtxs list is always index-matched to universe
-        const universe = Array.isArray(j) ? j[0].universe : j.universe;
-        const assetCtx = Array.isArray(j) ? j[1]          : j.assetCtxs;
+/* ── Hyperliquid “prevDayPx” fetcher (resilient) ───────────── */
+async function refreshPrice24h(symbol = 'BTC') {
+  const sym = symbol.toUpperCase().replace(/-PERP$/, '');
 
-        const idx = universe
-          .map(u => (typeof u === 'string' ? u : u.symbol).toUpperCase())
-          .indexOf(symbol.toUpperCase());
-        if (idx !== -1) price24hAgo = +assetCtx[idx].prevDayPx;
-      } catch (err) {
-        console.warn('[price24h] fetch failed:', err.message);
-        price24hAgo = null;
-      }
-    }    
+  try {
+    const data = await fetchJSON('https://api.hyperliquid.xyz/info', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ type:'metaAndAssetCtxs' })
+    });
+
+    /* ─── harvest possible asset arrays, whatever the shape ─── */
+    let universe = null, assets = null;
+
+    if (Array.isArray(data)) {              // [meta, assetCtxs]
+      universe = data[0]?.universe || null;
+      assets   = data[1] || null;
+    } else if (Array.isArray(data?.universe)) {
+      universe = data.universe;
+      assets   = data.assetCtxs || data.assets || null;
+    } else if (Array.isArray(data?.assetCtxs)) {
+      assets   = data.assetCtxs;
+    } else if (Array.isArray(data?.assets)) {
+      assets   = data.assets;               // SDK mirror shape
+    }
+
+    /* helper to normalise any id we inspect */
+    const norm = s => (s || '')
+        .toString()
+        .toUpperCase()
+        .replace(/-PERP$/, '');
+
+    /* ① try the neat universe ↔ assetCtxs 1-to-1 map */
+    let ctx = null;
+    if (universe && assets && universe.length === assets.length) {
+      const idx = universe.findIndex(u => norm(u.name ?? u.symbol ?? u) === sym);
+      if (idx !== -1) ctx = assets[idx];
+    }
+
+    /* ② fallback: brute-force all assetCtx objects */
+    if (!ctx && assets) {
+      ctx = assets.find(a =>
+        norm(a.coin ?? a.ticker ?? a.name ?? a.symbol) === sym);
+    }
+
+    /* nothing found → abort gracefully */
+    if (!ctx) throw new Error('assetCtx not located for ' + sym);
+
+    price24hAgo = +ctx.prevDayPx || null;
+
+  } catch (err) {
+    console.warn('[refreshPrice24h]', err.message);
+    price24hAgo = null;
+  }
+}
     
     /* helper – call whenever you need the current yard-stick           */
     function bigPrintThreshold () {
