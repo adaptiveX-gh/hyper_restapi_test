@@ -876,22 +876,20 @@ obiSSE.onmessage = async (e) => {
   const symbol     = $('obi-coin').value.replace(/-PERP$/, '');
   const depthParam = P.DEPTH_PARAM;
 
-  /* 3.  Update KPIs – OBI ratio, liquidity */
-  const r = d.ratio;
-  setHtml(
-    'obiRatioTxt',
-    r > 1 + OBI_EPS ? 'Bid-Heavy'
-        : r < 1 - OBI_EPS ? 'Ask-Heavy'
-        : 'Balanced'
-  );
+/* 3.  Update KPIs – OBI ratio, liquidity */
+const r = Number(d.ratio);
+if (!Number.isFinite(r)) return;          // guard against NaN
 
-  const cls = classifyObi(r);
-  const obiEl = $('obiRatio');
-  if (obiEl) {
-    obiEl.classList.remove('obi-bull','obi-bear','obi-flat');
-    obiEl.classList.add(`obi-${cls}`);
-  }
-  setHtml('obiRatioTxt', r >= 1.4 ? 'Bid‑Heavy' : r <= 0.6 ? 'Ask‑Heavy' : 'Balanced');
+setHtml('obiRatio', r.toFixed(2));        // 🔴  put the number back
+
+// caption & colour
+const cls  = classifyObi(r);              // returns 'bull' | 'bear' | 'flat'
+const txt  = r > 1 + OBI_EPS ? 'Bid-Heavy'
+           : r < 1 - OBI_EPS ? 'Ask-Heavy' : 'Balanced';
+
+colourObi(r);                             // same helper as before
+setHtml('obiRatioTxt', txt);
+
 
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
   depthStats.push(totalDepthSnap);
