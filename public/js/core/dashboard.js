@@ -1,6 +1,7 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
     import { BookBiasLine } from '../lib/bookBiasLine.js';
+    import { classifyObi } from "./utils.js";
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -860,6 +861,12 @@ obiSSE.onmessage = async (e) => {
   /* 3.  Update KPIs – OBI ratio, liquidity */
   const r = d.ratio;
   setHtml('obiRatio', r.toFixed(2));
+  const cls = classifyObi(r);
+  const obiEl = $('obiRatio');
+  if (obiEl) {
+    obiEl.classList.remove('obi-bull','obi-bear','obi-flat');
+    obiEl.classList.add(`obi-${cls}`);
+  }
   setHtml('obiRatioTxt', r >= 1.4 ? 'Bid‑Heavy' : r <= 0.6 ? 'Ask‑Heavy' : 'Balanced');
 
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
