@@ -95,16 +95,6 @@
       }
     }
 
-    const mid = (d.topBid + d.topAsk) / 2;
-    setHtml('priceLive', '$' + mid.toLocaleString(undefined,{maximumFractionDigits:2}));
-
-    if (window.__priceBuf24h && window.__priceBuf24h.length) {
-      const px24hAgo = window.__priceBuf24h[0][1];
-      const pct = mid / px24hAgo - 1;
-      const el  = document.getElementById('price24h');
-      el.textContent = (pct >= 0 ? '+' : '') + (pct*100).toFixed(2) + '%';
-      el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
-    }
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
@@ -141,44 +131,6 @@
       throw new Error(`HTTP ${resp.status}`);
     }
 
-/* ── Fetch both markPx *and* prevDayPx (single cheap call) ───────── */
-async function refreshPriceContext(symbol = 'BTC') {
-  const coinId = symbol.toUpperCase().replace(/-PERP$/, '') === 'BTC' ? 0
-                : symbol.toUpperCase().replace(/-PERP$/, '') === 'ETH' ? 1
-                : null;       // extend mapping if you add more coins
-  if (coinId === null) { price24hAgo = null; return null; }
-
-  try {
-    const j = await fetchJSON('https://api.hyperliquid.xyz/info', {
-      method : 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body   : JSON.stringify({ type:'assetCtxs', coin: coinId })
-    });
-
-    /* assetCtxs returns an array with *one* ctx */
-    const ctx = Array.isArray(j) ? j[0] : j;
-    if (!ctx) throw new Error('empty ctx');
-
-    const livePx     = +ctx.markPx  || +ctx.midPx || +ctx.oraclePx || null;
-    price24hAgo      = +ctx.prevDayPx || null;
-
-    /* Immediate UI update so user sees price even before WS opens */
-    if (livePx) {
-      setHtml('priceLive',
-        '$' + livePx.toLocaleString(undefined,{ maximumFractionDigits:2 }));
-      if (price24hAgo) {
-        const pct = livePx / price24hAgo - 1;
-        const el  = document.getElementById('price24h');
-        el.textContent = fmtDeltaPct(pct);
-        el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
-      }
-    }
-
-  } catch (err) {
-    console.warn('[priceCtx]', err.message);
-    price24hAgo = null;
-  }
-}
     
     /* helper – call whenever you need the current yard-stick           */
     function bigPrintThreshold () {
@@ -741,29 +693,36 @@ function initCFDChart () {
       updateGauge('volGauge', vol8h);
     });
 
-    
+    /* ─── Live price tile + ± 24 h chip ───────────────────────────── */
+    onCtx(({ markPx, midPx, oraclePx }) => {
+      /* 1️⃣  take whichever field arrives first */
+      const px = Number(markPx ?? midPx ?? oraclePx);
+      if (!Number.isFinite(px)) return;                 // still syncing
 
-/* ─── Live price tile + ±24 h chip ───────────────────────────── */
-onCtx(({ markPx, midPx, oraclePx }) => {
+      /* 2️⃣  live price */
+      setHtml('priceLive',
+              '$' + px.toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
-  /* 1️⃣  pick whichever price field arrives first */
-  const px = Number(markPx || midPx || oraclePx);
-  if (!px) return;                                 // still syncing
+      /* 3️⃣  ±Δ% vs. 24-h-ago close                                *
+      *     (use in-memory 1-min candle buffer; fall back to       *
+      *      price24hAgo only if you kept that global around)      */
+      let pct = null;
 
-  /* 2️⃣  live price */
-  setHtml(
-    'priceLive',
-    '$' + px.toLocaleString(undefined, { maximumFractionDigits: 2 })
-  );
+      if (window.__priceBuf24h?.length) {
+        const px24hAgo = window.__priceBuf24h[0][1];          // oldest entry
+        if (Number.isFinite(px24hAgo)) pct = px / px24hAgo - 1;
+      } else if (Number.isFinite(price24hAgo)) {
+        pct = px / price24hAgo - 1;
+      }
 
-  /* 3️⃣  ±Δ% vs. prev-day price (if we have it) */
-  if (price24hAgo) {
-    const pct = px / price24hAgo - 1;
-    const el  = document.getElementById('price24h');
-    el.textContent = fmtDeltaPct(pct);
-    el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
-  }
-});
+      if (pct !== null) {
+        const el = document.getElementById('price24h');
+        el.textContent = (pct >= 0 ? '+' : '') + (pct * 100).toFixed(2) + '%';
+        el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';     // green ↑, red ↓
+      }
+    });
+
+
     /* ===== widgets that can be slow-lane ===== */
     async function pullSlowStats () {
         const res = await fetch('/api/slow-stats');
@@ -1179,11 +1138,7 @@ $('update-conn-btn').onclick = ()=>{
     setTimeout(start, 400); // wait 400ms before restarting
   }
 };
-/* when user changes the coin picker */
-$('obi-coin').addEventListener('change', async e => {
-  const sym = e.target.value;
-  await refreshPriceContext(sym);                // 🔴 NEW
-});
+
 
 
 $('toggle-advanced').onclick = function(){
@@ -1200,7 +1155,6 @@ $('liqTxt').title = () =>
 
 document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
-  await refreshPriceContext(firstSym);           // 🔴 NEW
   initCFDChart();
   start();
 });
