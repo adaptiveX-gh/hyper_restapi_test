@@ -33,13 +33,25 @@ sock.addEventListener('message', ev => {
   const sub  = msg.subscription?.type;
 
   if (sub === 'activeAssetCtx') {
-    const { openInterest, funding, markPx } = msg.data.ctx;
-    listeners.ctx.forEach(fn => fn({ openInterest:+openInterest,
-                                     funding:+funding,
-                                     markPx:+markPx,
-                                     ts:Date.now() }));
+    /* tolerate both ctx wrappers and flat payloads */
+    const ctx = msg.data?.ctx ?? msg.data ?? {};
+
+    const openInterest = ctx.openInterest ?? ctx.oi;
+    const funding      = ctx.funding;
+    const markPx       = ctx.markPx ?? ctx.markPrice;
+    const midPx        = ctx.midPx  ?? ctx.midPrice;
+    const oraclePx     = ctx.oraclePx ?? ctx.oraclePrice;
+
+    listeners.ctx.forEach(fn => fn({
+      openInterest : Number(openInterest),
+      funding      : Number(funding),
+      markPx       : Number(markPx),
+      midPx        : Number(midPx),
+      oraclePx     : Number(oraclePx),
+      ts           : Date.now()
+    }));
   } else if (sub === 'candle') {
-    const last = msg.data.at(-1);          // last candle in the batch
-    listeners.candle.forEach(fn => fn(last));
+    const last = Array.isArray(msg.data) ? msg.data.at(-1) : msg.data;
+    if (last) listeners.candle.forEach(fn => fn(last));
   }
 });
