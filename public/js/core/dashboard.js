@@ -733,21 +733,27 @@ function initCFDChart () {
         updateGauge('volGauge', vol8h);
     });
 
-    /* live mark-price updater + 24 h Δ chip */
-    onCtx(({ markPx }) => {
-      // ① live price
-      setHtml('priceLive',
-              '$' + markPx.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+/* ─── Live price tile + ±24 h chip ───────────────────────────── */
+onCtx(({ markPx, midPx, oraclePx }) => {
 
-      // ② ±Δ% versus yesterday
-      if (price24hAgo) {
-        const pct = markPx / price24hAgo - 1;
-        const el  = document.getElementById('price24h');
-        el.textContent = fmtDeltaPct(pct);
-        el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';   // green ↑ / red ↓
-      }
-    });    
+  /* 1️⃣  pick whichever price field arrives first */
+  const px = Number(markPx || midPx || oraclePx);
+  if (!px) return;                                 // still syncing
 
+  /* 2️⃣  live price */
+  setHtml(
+    'priceLive',
+    '$' + px.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  );
+
+  /* 3️⃣  ±Δ% vs. prev-day price (if we have it) */
+  if (price24hAgo) {
+    const pct = px / price24hAgo - 1;
+    const el  = document.getElementById('price24h');
+    el.textContent = fmtDeltaPct(pct);
+    el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';
+  }
+});
     /* ===== widgets that can be slow-lane ===== */
     async function pullSlowStats () {
         const res = await fetch('/api/slow-stats');
