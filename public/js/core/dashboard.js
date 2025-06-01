@@ -3,7 +3,7 @@
     import { BookBiasLine } from '../lib/bookBiasLine.js';
     import { classifyObi } from "./utils.js";
     import { formatCompact } from '../lib/formatCompact.js';
-    import { stateOiFunding, stateStrength, paintDot } from './lib/statusDots.js';
+    import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -810,43 +810,60 @@ function initCFDChart () {
 
     
     /* ── simple renderer for the big metric tiles ───────────────── */
-    function updateBigTiles ({ oi, funding8h, vol24h, ts }) {
+    /* The caller now provides depthSnap, medians too */
+    function updateBigTiles ({
+      oi,
+      funding8h,            // -- funding in % over 8 h
+      vol24h,
+      totalDepthSnap,       // <— ADD THIS
+      LIQ_MEDIAN,           // <— ADD THIS
+      VOL_MEDIAN,           // <— ADD THIS
+      ts
+    }) {
 
-      const deltaOi = oi - (window.__prevOi || oi);   // crude ∆OI since last poll
+      /* 1️⃣ OI / Funding dot -------------------------------------- */
+      const deltaOi  = oi - (window.__prevOi || oi);
       window.__prevOi = oi;
 
-      const oiState = stateOiFunding({ dOi: deltaOi, funding });
-      paintDot(document.getElementById('dot-oi'), oiState,
-              `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  ` +
-              `Funding ${funding >= 0 ? '+' : ''}${(funding*100).toFixed(4)} %`);
+      const funding  = funding8h / 8 / 100;          // back-out hourly funding rate
+      const oiState  = stateOiFunding({ dOi: deltaOi, funding });
 
-      const pctLiq = (totalDepthSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
+      paintDot(
+        document.getElementById('dot-oi'),
+        oiState,
+        `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  ` +
+        `Funding ${funding >= 0 ? '+' : ''}${(funding * 100).toFixed(4)} %·h`
+      );
+
+      /* 2️⃣ Liquidity dot ----------------------------------------- */
+      const pctLiq   = (totalDepthSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
       const liqState = stateStrength({ pctVsMedian: pctLiq });
 
-      paintDot(document.getElementById('dot-liq'), liqState,
-              `Liquidity ${ (pctLiq*100).toFixed(1) } % vs 30-day median`);              
+      paintDot(
+        document.getElementById('dot-liq'),
+        liqState,
+        `Liquidity ${(pctLiq * 100).toFixed(1)} % vs 30-day median`
+      );
 
-      const pctVol = (vol24h - VOL_MEDIAN) / VOL_MEDIAN;
+      /* 3️⃣ Volume dot -------------------------------------------- */
+      const pctVol   = (vol24h - VOL_MEDIAN) / VOL_MEDIAN;
       const volState = stateStrength({ pctVsMedian: pctVol });
 
-      paintDot(document.getElementById('dot-vol'), volState,
-              `Volume ${ (pctVol*100).toFixed(1) } % vs 30-day median`);
+      paintDot(
+        document.getElementById('dot-vol'),
+        volState,
+        `Volume ${(pctVol * 100).toFixed(1)} % vs 30-day median`
+      );
 
-      const fmt = n =>
-        Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      /* 4️⃣ Compact metric numbers -------------------------------- */
+      document.querySelector('#card-oi')     .textContent = formatCompact(oi);
+      document.querySelector('#card-funding').textContent =
+          `${funding8h >= 0 ? '+' : ''}${funding8h.toFixed(2)} %`;
+      document.querySelector('#card-vol24h') .textContent = formatCompact(vol24h);
 
-      const set = (sel, txt) => {
-        const el = document.querySelector(sel);
-        if (el) el.textContent = txt;
-      };
-
-      set('#card-oi',      formatCompact(oi));          // $-prefix inside helper
-      set('#card-funding',
-          (funding8h >= 0 ? '+' : '') + fmt(funding8h) + '%');
-      set('#card-vol24h',  formatCompact(vol24h));
-
-      /* optional “last updated” stamp — add a <span id="card-upd"> in the HTML */
-      set('#card-upd', new Date(ts).toLocaleTimeString());
+      /* 5️⃣ “last updated” stamp ---------------------------------- */
+      const upd = document.querySelector('#card-upd');
+      if (upd) upd.textContent = new Date(ts).toLocaleTimeString();
     }
 
 
