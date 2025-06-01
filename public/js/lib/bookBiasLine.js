@@ -158,8 +158,12 @@ export class BookBiasLine {
 
   /** Most recent y-value of the bias series (0 if empty) */
   #currentBiasValue () {
+    /* guard against “no data yet” ──────── */
     const s = this.#chart.get(this.#biasSeriesId);
-    return s.yData.length ? s.yData[s.yData.length - 1] : 0;
+    if (!s || !Array.isArray(s.yData) || !s.yData.length) return 0;
+
+    const last = s.yData[s.yData.length - 1];
+    return Number.isFinite(last) ? last : 0;
   }
 
   /** Throttled redraw helper */
