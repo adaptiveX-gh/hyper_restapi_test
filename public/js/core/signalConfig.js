@@ -91,5 +91,18 @@ export default {
     implementationTip: 'OB-CFD \u0394<0 & price \u0394>0 for \u22653 ticks',
     tooltip: 'Order book diverges bearishly',
     meta: { side: 'bear', category: 'reversal' }
+  },
+
+  buy_the_dip_earlywarn: {
+    id: 'buy_the_dip_earlywarn',
+    label: 'Buy-the-Dip Footprint',
+    zone: 0.40,
+    color: '#1abc9c',
+    shape: 'circle',
+    normalize: { max: 1 },
+    tooltip: 'Early-Warn > 0 *after* pull-back',
+    meta: { side: 'bull', category: 'continuation' },
+    implementationTip: 'trigger once earlyWarn flips >0 after dip',
+    valueEffort: { value: 4, effort: 3 }
   }
 };

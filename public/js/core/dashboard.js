@@ -428,7 +428,10 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastWarnGauge = 0,
         lastMomGauge = 0,
         lastSparkUp = 0,
-        lastSparkDown = 0;
+        lastSparkDown = 0,
+        lastBuyDip = 0;
+
+    const BUY_DIP_DEDUP_MS = 30_000;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -477,7 +480,14 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
       const mean = logs.reduce((a,b)=>a+b,0)/logs.length;
       const variance = logs.reduce((a,b)=>a+(b-mean)**2,0)/(logs.length-1);
       return Math.sqrt(variance);
-    }    
+    }
+
+    function calcShortTrend(buf) {
+      if (buf.length < 2) return 0;
+      const first = buf[0].px;
+      const last  = buf[buf.length - 1].px;
+      return first ? (last - first) / first : 0;
+    }
 
     /*************************************************************************
 * 1.  Shared helper – guarantees a finite number and clamps to 0-100
@@ -1551,6 +1561,15 @@ flowSSE.onmessage = (e) => {
       side: 'ask',
       meta: { type: 'Ask exhaustion', value: w }
     });
+    const trend = calcShortTrend(priceProbeBuf);
+    if (trend < -0.001 && now - lastBuyDip > BUY_DIP_DEDUP_MS) {
+      radar.addBuyTheDipEarlyWarn({
+        strength: w,
+        ts: now,
+        meta: { PxTrend: trend * 100 }
+      });
+      lastBuyDip = now;
+    }
   }
   if (w < 0 && lastWarnGauge >= 0) {
     radar.addEarlyWarn({
