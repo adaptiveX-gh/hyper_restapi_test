@@ -52,4 +52,16 @@ describe('SignalRadar', () => {
     expect(point.removed).toBe(true);
     expect(radar.chart.series[0].data).not.toContain(point);
   });
+
+  test('bubble can start at custom recency', () => {
+    const radar = new SignalRadar('rad');
+    radar.addProbe({ stateScore: 0, strength: 0.4, ts: Date.now(), startY: 10 });
+    const point = radar.chart.series[0].data[0];
+    expect(point.y).toBe(10);
+
+    jest.advanceTimersByTime(5000);
+    jest.setSystemTime(5000);
+
+    expect(point.y).toBeCloseTo(15, 0);
+  });
 });
