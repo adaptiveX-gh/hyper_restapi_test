@@ -1,7 +1,10 @@
+import config from './signalConfig.js';
+
 export class SignalRadar {
-  constructor(containerId) {
+  constructor(containerId, cfg = config) {
     this.points = [];
     this.selectedSign = null;
+    this.config = cfg;
     const bands = [
       { from: -1.05, to: -0.6,  label:{ text:'Compression'          , style:{color:'#345'} } },
       { from: -0.6, to: -0.2,  label:{ text:'Range / Chop'          , style:{color:'#345'} } },
@@ -77,16 +80,21 @@ export class SignalRadar {
   }
 
   addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0, colorValue=null }) {
-    const val = colorValue ?? stateScore;
+    const cfg  = this.config.probe || {};
+    const val  = colorValue ?? stateScore;
     const sign = Math.sign(val);
+    const colour = sign >= 0
+      ? (cfg.color?.bull || '#17c964')
+      : (cfg.color?.bear || '#ff4d4d');
+    const scale = cfg.normalization?.scale ?? 35;
     const point = {
       x: stateScore,
       y: startY,
-      z: Math.sqrt(Math.abs(strength)) * 35,
+      z: Math.sqrt(Math.abs(strength)) * scale,
       colorValue: val,
-      color: sign >= 0 ? '#17c964' : '#ff4d4d',
-      marker: { symbol: 'circle' },
-      tag: 'Probe',
+      color: colour,
+      marker: { symbol: cfg.shape || 'circle' },
+      tag: cfg.label || 'Probe',
       xRaw: ts,
       strength,
       meta
@@ -114,16 +122,18 @@ export class SignalRadar {
     startY = 0
   }) {
     const bullish = side === 'ask';
+    const cfg = bullish ? this.config.askExhaustion : this.config.bidExhaustion || {};
     const val = bullish ? 1 : -1;
-    const sign = val;
+    const colour = cfg.color || (bullish ? '#17c964' : '#ff4d4d');
+    const scale = cfg.normalization?.scale ?? 120;
     const point = {
       x: stateScore,
       y: startY,
-      z: Math.sqrt(Math.abs(strength)) * 120,
+      z: Math.sqrt(Math.abs(strength)) * scale,
       colorValue: val,
-      color: sign >= 0 ? '#17c964' : '#ff4d4d',
-      marker: { symbol: 'circle' },
-      tag: bullish ? 'Ask exhaustion' : 'Bid exhaustion',
+      color: colour,
+      marker: { symbol: cfg.shape || 'circle' },
+      tag: cfg.label || (bullish ? 'Ask exhaustion' : 'Bid exhaustion'),
       xRaw: ts,
       strength: Math.abs(strength),
       meta: { value: strength, ...meta }
