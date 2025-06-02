@@ -6,10 +6,16 @@ import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
 import { BiasTimer } from '../lib/biasTimer.js';
+import { SignalRadar } from './signalRadar.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
-    let hlWs = null;          // keep a reference so we can close / restart
+let hlWs = null;          // keep a reference so we can close / restart
+
+  // signal radar & buffers
+  let radar;
+  const depthBufProbe = [];
+  const priceProbeBuf = [];
 
     // put near the top of dashboard.js – before updateBigTiles is ever called
     let LIQ_MEDIAN = NaN;     // <- will be filled once slow-stats arrives
@@ -1033,6 +1039,10 @@ function ensureViewport (fcEndTs) {
       const px = Number(markPx ?? midPx ?? oraclePx);
       if (!Number.isFinite(px)) return;                 // still syncing
 
+      priceProbeBuf.push({ ts: Date.now(), px });
+      while (priceProbeBuf.length && Date.now() - priceProbeBuf[0].ts > 30000)
+        priceProbeBuf.shift();
+
       /* 2️⃣  live price */
       setHtml('priceLive',
               '$' + px.toLocaleString(undefined, { maximumFractionDigits: 2 }));
@@ -1180,6 +1190,10 @@ obiSSE.onmessage = async (e) => {
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
 
+  depthBufProbe.push({ ts: d.ts, val: d.bidDepth });
+  while (depthBufProbe.length && d.ts - depthBufProbe[0].ts > 30000)
+    depthBufProbe.shift();
+
   worker.postMessage({ type:'depthSnap', payload:d });
   feedCFD(d); 
   
@@ -1208,6 +1222,25 @@ const txt  = r > 1 + OBI_EPS ? 'Bid-Heavy'
 
 colourObi(r);                             // same helper as before
 setHtml('obiRatioTxt', txt);
+
+  const oldDepth = depthBufProbe.length ? depthBufProbe[0].val : null;
+  const depthMean = depthBufProbe.reduce((a,b)=>a+b.val,0)/depthBufProbe.length || 0;
+  const depthStd = Math.sqrt(depthBufProbe.reduce((s,b)=>s+(b.val-depthMean)**2,0)/(depthBufProbe.length||1));
+  const oldPrice = priceProbeBuf.length ? priceProbeBuf[0].px : null;
+  const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px : null;
+  if (oldDepth && oldPrice && priceNow && depthStd) {
+    const dDepth = d.bidDepth - oldDepth;
+    const pxTrend = (priceNow - oldPrice) / oldPrice;
+    const strength = Math.min(1, Math.abs(dDepth)/(3*depthStd));
+    if (dDepth > depthStd && pxTrend < -0.001 && r > 1.07 && strength >= 0.25) {
+      radar.addProbe({
+        stateScore: window.stateScore || 0,
+        strength,
+        ts: d.ts,
+        meta: { '\u0394Depth': dDepth, PxTrend: pxTrend*100, OBI_R: r }
+      });
+    }
+  }
 
 
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
@@ -1521,6 +1554,8 @@ flowSSE.onmessage = (e) => {
     color: Highcharts.color('#ff4d4d').brighten(-bearVal/150).get()
   }, true);
 
+  window.stateScore = (bullVal - bearVal) / 100;
+
   const bullRegime = regimeName(Math.round(bullVal));
   const bearRegime = regimeName(Math.round(bearVal));
   $('bullRegime').textContent = `Strategy: ${bullRegime}`;
@@ -1588,6 +1623,7 @@ $('liqTxt').title = () =>
 
 document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
+  radar = new SignalRadar('signalRadar');
   initCFDChart();
   start();
   biasTimer.start();

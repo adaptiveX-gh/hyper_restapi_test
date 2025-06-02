@@ -180,6 +180,17 @@
 .bullish-color{ color:#18b76e; font-weight:600; }
 .bearish-color{ color:#ff4d4d; font-weight:600; }
 
+    /* --- Bubble Radar layout --- */
+    #signalRadar {
+      flex: 1 0 100%;
+      margin-bottom: 6px;
+    }
+    .state-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
   </style>
 </head>
 <body>
@@ -306,8 +317,9 @@
   <span id="card-upd" class="last-upd"
         style="font-size:11px;color:#555"></span>
 
-  <!-- ─── Bull / Bear spectrum meters ────────────────────────────── -->
-  <div class="obi-spectrum-row">
+  <!-- ─── Bull / Bear spectrum meters + Signal Radar ─────────────── -->
+  <div class="obi-spectrum-row state-block">
+    <div id="signalRadar"></div>
     <div class="spectrum-meter">
       <div id="bullMeter"></div>
       <div id="bullRegime" class="spectrum-regime-overlay"></div>
