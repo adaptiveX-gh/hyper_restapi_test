@@ -146,6 +146,7 @@ let BUF = [];                 // [{ts, val}]
 const MAX = 900;              // 15-min @ 1-Hz
 const HORIZON = 120 * 1000;   // project 2 min
 
+
  self.addEventListener('message', ({ data }) => {
    if (data.type !== 'cfdPoint') return;
 

@@ -187,7 +187,7 @@ function setTxt(id, txt) {
         feedCFD.lastDraw = ts;
       }
     }
-
+    window.feedCFD = feedCFD;          // ← temporary debug hook
 
     // ──────────────────────────────────────────────────
     // 1) State & buffers
@@ -316,13 +316,45 @@ function ensureWorker () {
   if (worker && !worker.terminated) return;      // still alive – nothing to do
 
   // ①  (re)Create
-  worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+  worker = new Worker('./js/worker/metricsWorker.js', { type: 'module' });
   window.metricsWorker = worker;   // ← expose for debugging
+
+  // ----- DIAGNOSTIC PATCH: CFD Forecast Debugger -----
+console.log('[CFD Forecast] Update called');
+console.log('[CFD Forecast] obCFD:', obCFD);
+if (!obCFD) {
+  console.error('[CFD Forecast] obCFD is not initialized!');
+} else {
+  let sids = obCFD.series.map(s => s.id);
+  console.log('[CFD Forecast] Series IDs:', sids);
+  ['imb-fore', 'imb-up', 'imb-lo', 'imb-conf'].forEach(id => {
+    let s = obCFD.get(id);
+    if (!s) {
+      console.error(`[CFD Forecast] Series "${id}" is missing!`);
+    } else {
+      console.log(`[CFD Forecast] Series "${id}" exists, length:`, s.data?.length);
+    }
+  });
+}
+console.log('[CFD Forecast] base:', base);
+console.log('[CFD Forecast] up:', up);
+console.log('[CFD Forecast] lo:', lo);
+if (!(base && base.length && Array.isArray(base[0]) && base[0].length === 2)) {
+  console.error('[CFD Forecast] base array is empty or malformed!', base);
+}
+if (!(up && up.length === base.length && lo && lo.length === base.length)) {
+  console.error('[CFD Forecast] up/lo array lengths do not match base!', up, lo);
+}
+// -----------------------------------------------------
 
   // ②  Wire listeners *once*
   worker.addEventListener('message', ({ data }) => {
   if (data.type === 'cfdForecast') {
     const { base, up, lo } = data.payload;
+    if (!obCFD || obCFD.series.length < 7) {
+        console.warn('CFD chart not ready for forecast lines!', obCFD);
+      }
+    console.log('CFD Chart series IDs:', obCFD.series.map(s => s.id));
     updateForecastSeries(base, up, lo);      // existing call
     
     metricsWorker.__lastFc = data.payload;   // (optional debug)
@@ -770,7 +802,6 @@ function initCFDChart () {
 }
 
 /**
-/**
  * Replace the data of the three forecast lines and the confidence band
  * *without* creating new series every tick, then visually separate
  * live vs-forecast.
@@ -780,21 +811,37 @@ function initCFDChart () {
  * @param {Array<[number, number]>} lo   – lower bound
  */
 function updateForecastSeries(base, up, lo) {
-  if (!obCFD) return;                      // chart not ready yet
+  // 0️⃣ --- PATCH: Chart/Series Existence Check ---
+  if (!obCFD) {
+    console.warn('[CFD Forecast] Chart not initialized! Initializing now…');
+    initCFDChart();
+  }
+  // Check for critical series IDs and auto-repair if missing
+  ['imb-fore','imb-up','imb-lo','imb-conf'].forEach(id=>{
+    if (!obCFD.get(id)) {
+      console.warn(`[CFD Forecast] Series "${id}" missing—resetting chart!`);
+      obCFD.destroy();
+      obCFD = null;
+      initCFDChart();
+    }
+  });
+
+  // 1️⃣ Validate arguments
+  if (!obCFD) return;  // still not ready after patch
   if (!base?.length) {                     // nothing to draw – clean up & exit
     obCFD.xAxis[0].removePlotLine('fcStart');
     obCFD.redraw(false);
     return;
   }
 
-  /* ── Existing series (created once in initCFDChart) ───────────── */
-  const fore  = obCFD.get('imb-fore');   // dashed centre line
-  const upper = obCFD.get('imb-up');     // dotted upper band
-  const lower = obCFD.get('imb-lo');     // dotted lower band
-  const band  = obCFD.get('imb-conf');   // translucent arearange
-  const live  = obCFD.series[2];         // solid live imbalance line
+  /* 2️⃣ Series handles */
+  const fore  = obCFD.get('imb-fore');      // dashed centre line
+  const upper = obCFD.get('imb-up');        // dotted upper band
+  const lower = obCFD.get('imb-lo');        // dotted lower band
+  const band  = obCFD.get('imb-conf');      // translucent arearange
+  const live  = obCFD.series[2];            // solid live imbalance line
 
-  /* 1️⃣  Replace data (no immediate redraw) */
+  /* 3️⃣ Replace data */
   fore?.setData(base,  false);
   upper?.setData(up,   false);
   lower?.setData(lo,   false);
@@ -804,20 +851,28 @@ function updateForecastSeries(base, up, lo) {
     band.setData(bandData, false);
   }
 
-  /* 2️⃣  Style tweaks that make the forecast obvious */
-fore?.update({
-  color            : '#ff1493',          // strong magenta
-  dashStyle        : 'Dash',
-  lineWidth        : 3,
-  zIndex           : 20,                 // <<< lift it above the areas
-  enableMouseTracking : false
-}, false);
+  if (obCFD && obCFD.xAxis[0]) {
+    const extremes = obCFD.xAxis[0].getExtremes();
+    console.log('[CFD Forecast] xAxis extremes:', extremes, 'Forecast range:', base[0]?.[0], '-', base[base.length-1]?.[0]);
+    if (base[base.length-1]?.[0] > extremes.max || base[0]?.[0] < extremes.min) {
+      console.warn('[CFD Forecast] Forecast data outside of viewable range!');
+    }
+  }
 
-upper?.update({ zIndex : 19 }, false);
-lower?.update({ zIndex : 19 }, false);
-band?.update ({ zIndex : 18 }, false);    // still under the lines
+  /* 4️⃣ Style tweaks for visibility */
+  fore?.update({
+    color            : '#ff1493',          // strong magenta
+    dashStyle        : 'Dash',
+    lineWidth        : 3,
+    zIndex           : 20,                 // <<< lift it above the areas
+    enableMouseTracking : false
+  }, false);
 
-  const cutOff = base[0][0];                    // first forecast ts
+  upper?.update({ zIndex : 19 }, false);
+  lower?.update({ zIndex : 19 }, false);
+  band?.update ({ zIndex : 18 }, false);    // still under the lines
+
+  const cutOff = base[0][0];    // first forecast ts
   const xAx    = obCFD.xAxis[0];
 
   xAx.removePlotLine('fcStart');
@@ -830,13 +885,12 @@ band?.update ({ zIndex : 18 }, false);    // still under the lines
     zIndex: 5
   });
 
-const horizon  = base[base.length - 1][0];   // *last* forecast point
+  const horizon  = base[base.length - 1][0];   // *last* forecast point
+  ensureViewport(horizon);
 
-ensureViewport(horizon);
-
-  /* Fade live line to the right of the cut-off */
+  // Fade live line to the right of the cut-off
   live?.update({
-    zoneAxis : 'x',                  // 👈 tell Highcharts to zone on the x-axis
+    zoneAxis : 'x',
     zones    : [{
       value: cutOff,
       color: '#1e90ff'
@@ -845,7 +899,7 @@ ensureViewport(horizon);
     }]
   }, false);
 
-  /* 3️⃣  One inexpensive repaint */
+  /* 5️⃣  One inexpensive repaint */
   obCFD.redraw(false);
 }
 
