@@ -47,13 +47,22 @@ export class SignalRadar {
         gridLineWidth: 1,
         plotBands: bands
       },
-      yAxis: {
+      yAxis: [{
         min: 0,
-        max: 180,
+        max: 200,
         reversed: true,
         gridLineWidth: 1,
-        labels: { formatter() { return this.value + ' s'; } }
-      },
+        labels: { formatter() { return this.value + ' s'; } },
+        title: { text: 'Age of signal' }
+      }, {
+        min: 0,
+        max: 200,
+        reversed: false,
+        gridLineWidth: 1,
+        labels: { formatter() { return this.value + ' s'; } },
+        title: { text: 'Age of signal' },
+        opposite: true
+      }],
       tooltip: {
         useHTML: true,
         pointFormatter() {
@@ -75,7 +84,20 @@ export class SignalRadar {
         }
       },
       series: [{
-        name: 'Signals',
+        name: 'BearSignals',
+        yAxis: 0,
+        colorKey: 'colorValue',
+        data: [],
+        point: {
+          events: {
+            click: function(){
+              this.series.chart.options.custom.radar.highlight(this);
+            }
+          }
+        }
+      }, {
+        name: 'BullSignals',
+        yAxis: 1,
         colorKey: 'colorValue',
         data: [],
         point: {
@@ -98,6 +120,7 @@ export class SignalRadar {
     const cfg  = this.config.probe || {};
     const val  = colorValue ?? stateScore;
     const sign = Math.sign(val);
+    const seriesIdx = sign >= 0 ? 1 : 0;
     const colour = sign >= 0
       ? (cfg.color?.bull || '#17c964')
       : (cfg.color?.bear || '#ff4d4d');
@@ -114,15 +137,14 @@ export class SignalRadar {
       strength,
       meta
     };
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    this.chart.series[seriesIdx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[seriesIdx].data[this.chart.series[seriesIdx].data.length - 1];
     this.points.push({ born: ts, startY, strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a,b)=>a.strength-b.strength);
       const excess = this.points.splice(0, this.points.length-400);
       excess.forEach(p=>{
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx>-1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -159,15 +181,15 @@ export class SignalRadar {
       meta: { ...cfg.meta, value: strength, ...meta }
     };
     if (point.strength <= 0) return;
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    const idx = bullish ? 1 : 0;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
       excess.forEach(p => {
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -199,15 +221,15 @@ export class SignalRadar {
       strength: Math.abs(strength),
       meta: { ...cfg.meta, value: strength, ...meta }
     };
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    const idxSeries = bullish ? 1 : 0;
+    this.chart.series[idxSeries].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idxSeries].data[this.chart.series[idxSeries].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
       excess.forEach(p => {
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -240,15 +262,15 @@ export class SignalRadar {
       meta: { ...cfg.meta, value: strength, ...meta }
     };
     if (point.strength <= 0) return;
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    const idx = 1;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
       excess.forEach(p => {
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -281,15 +303,15 @@ export class SignalRadar {
       meta: { ...cfg.meta, value: strength, ...meta }
     };
     if (point.strength <= 0) return;
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    const idx = 0;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
       excess.forEach(p => {
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -322,15 +344,15 @@ export class SignalRadar {
       meta: { ...cfg.meta, value: strength, ...meta }
     };
     if (point.strength <= 0) return;
-    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    const idx = 1;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
       excess.forEach(p => {
-        const idx = this.chart.series[0].data.indexOf(p.point);
-        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+        if (p.point.remove) p.point.remove(false);
       });
       this.chart.redraw(false);
     }
@@ -361,6 +383,7 @@ export class SignalRadar {
     };
 
     const existing = this.namedPoints.get(id);
+    const idx = bullish ? 1 : 0;
     if (existing) {
       Object.assign(existing, { born: ts, startY, strength: props.strength });
       if (typeof existing.point.update === 'function') {
@@ -368,8 +391,8 @@ export class SignalRadar {
       }
       this.chart.redraw(false);
     } else {
-      this.chart.series[0].addPoint(props, true, false, { duration: 300 });
-      const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+      this.chart.series[idx].addPoint(props, true, false, { duration: 300 });
+      const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
       const rec = { id, born: ts, startY, strength: props.strength, point: hcPoint };
       this.points.push(rec);
       this.namedPoints.set(id, rec);
@@ -377,8 +400,7 @@ export class SignalRadar {
         this.points.sort((a, b) => a.strength - b.strength);
         const excess = this.points.splice(0, this.points.length - 400);
         excess.forEach(p => {
-          const idx = this.chart.series[0].data.indexOf(p.point);
-          if (idx > -1) this.chart.series[0].data[idx].remove(false);
+          if (p.point.remove) p.point.remove(false);
           if (p.id) this.namedPoints.delete(p.id);
         });
         this.chart.redraw(false);
@@ -392,7 +414,7 @@ export class SignalRadar {
     for (let i = this.points.length - 1; i >= 0; i--) {
       const p = this.points[i];
       const age = (now - p.born) / 1000 + (p.startY || 0);
-      if (age > 180) {
+      if (age > 200) {
         if (typeof p.point.remove === 'function') p.point.remove(false);
         this.points.splice(i, 1);
         if (p.id && this.namedPoints.get(p.id)?.point === p.point) {
@@ -409,10 +431,11 @@ export class SignalRadar {
 
   highlight(point) {
     this.selectedSign = point ? Math.sign(point.colorValue || 0) : null;
-    const series = this.chart.series[0];
-    series.data.forEach(p => {
-      const same = this.selectedSign == null || Math.sign(p.colorValue || 0) === this.selectedSign;
-      p.update({ marker: { fillOpacity: same ? 0.85 : 0.2, lineWidth: same && this.selectedSign != null ? 2 : 0 } }, false);
+    this.chart.series.forEach(s => {
+      s.data.forEach(p => {
+        const same = this.selectedSign == null || Math.sign(p.colorValue || 0) === this.selectedSign;
+        p.update({ marker: { fillOpacity: same ? 0.85 : 0.2, lineWidth: same && this.selectedSign != null ? 2 : 0 } }, false);
+      });
     });
     this.chart.redraw(false);
   }

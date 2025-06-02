@@ -2,17 +2,18 @@
 import { SignalRadar } from '../public/js/core/signalRadar.js';
 
 function makeHighchartsStub() {
+  const makeSeries = () => ({
+    data: [],
+    addPoint(point) {
+      this.data.push(Object.assign(point, {
+        update(changes) { Object.assign(this, changes); },
+        remove() { this.removed = true; }
+      }));
+    }
+  });
   return {
     chart: jest.fn(() => ({
-      series: [{
-        data: [],
-        addPoint(point) {
-          this.data.push(Object.assign(point, {
-            update(changes) { Object.assign(this, changes); },
-            remove() { this.removed = true; }
-          }));
-        }
-      }],
+      series: [makeSeries(), makeSeries()],
       redraw: jest.fn()
     }))
   };
@@ -32,7 +33,7 @@ describe('SignalRadar', () => {
   test('bubble drifts down with time', () => {
     const radar = new SignalRadar('rad');
     radar.addProbe({ stateScore: 0, strength: 0.5, ts: Date.now() });
-    const point = radar.chart.series[0].data[0];
+    const point = radar.chart.series[1].data[0];
     expect(point.y).toBe(0);
 
     jest.advanceTimersByTime(10000);
@@ -41,22 +42,21 @@ describe('SignalRadar', () => {
     expect(point.y).toBeCloseTo(10, 0);
   });
 
-  test('bubble removed after 180s', () => {
+  test('bubble removed after 200s', () => {
     const radar = new SignalRadar('rad');
     radar.addProbe({ stateScore: 0, strength: 0.5, ts: Date.now() });
-    const point = radar.chart.series[0].data[0];
-
-    jest.advanceTimersByTime(181000);
-    jest.setSystemTime(181000);
+    const point = radar.chart.series[1].data[0];
+    jest.advanceTimersByTime(201000);
+    jest.setSystemTime(201000);
 
     expect(point.removed).toBe(true);
-    expect(radar.chart.series[0].data).not.toContain(point);
+    expect(radar.chart.series[1].data).not.toContain(point);
   });
 
   test('bubble can start at custom recency', () => {
     const radar = new SignalRadar('rad');
     radar.addProbe({ stateScore: 0, strength: 0.4, ts: Date.now(), startY: 10 });
-    const point = radar.chart.series[0].data[0];
+    const point = radar.chart.series[1].data[0];
     expect(point.y).toBe(10);
 
     jest.advanceTimersByTime(5000);
