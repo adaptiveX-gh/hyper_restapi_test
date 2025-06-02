@@ -160,7 +160,7 @@ function setTxt(id, txt) {
     function feedCFD(depthSnap) {
       if (!obCFD || obCFD.series.length < 4) return;   // safety guard
 
-      const ts   = depthSnap.ts;
+      const ts   = Number(depthSnap.ts) || Date.now();   // ← fallback
       const bidN = depthSnap.bidDepth;
       const askN = depthSnap.askDepth;
       const mid  = (depthSnap.topBid + depthSnap.topAsk) / 2;

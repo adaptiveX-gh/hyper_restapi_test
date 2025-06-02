@@ -146,13 +146,13 @@ let BUF = [];                 // [{ts, val}]
 const MAX = 900;              // 15-min @ 1-Hz
 const HORIZON = 120 * 1000;   // project 2 min
 
-self.onmessage = ({data}) => {
-  if (data.type === 'cfdPoint') {
-    BUF.push({ ts: data.ts, val: data.val });
-    if (BUF.length > MAX) BUF.shift();
-    forecastAndPost();
-  }
-};
+ self.addEventListener('message', ({ data }) => {
+   if (data.type !== 'cfdPoint') return;
+
+   BUF.push({ ts: Number(data.ts), val: data.val });
+   if (BUF.length > MAX) BUF.shift();
+   forecastAndPost();
+ });
 
 function forecastAndPost () {
   console.debug('BUF length', BUF.length);
