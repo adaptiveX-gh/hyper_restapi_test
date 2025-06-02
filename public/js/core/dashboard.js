@@ -1,7 +1,7 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
     import { BookBiasLine } from '../lib/bookBiasLine.js';
-    import { classifyObi } from "./utils.js";
+    import { classifyObi, classifyBias } from "./utils.js";
     import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
@@ -243,6 +243,17 @@ function setTxt(id, txt) {
 
       elNum.classList.add(cls);
       elTxt.classList.add(cls);
+    }
+
+    function colourBias(val){
+      const num = document.getElementById('biasRoll');
+      const txt = document.getElementById('biasRollTxt');
+      if (!num || !txt) return;
+      num.classList.remove('obi-bull','obi-bear','obi-flat');
+      txt.classList.remove('obi-bull','obi-bear','obi-flat');
+      const cls = 'obi-' + classifyBias(val);
+      num.classList.add(cls);
+      txt.classList.add(cls);
     }
     /* helper – call whenever you need the current yard-stick           */
     function bigPrintThreshold () {
@@ -1479,6 +1490,7 @@ flowSSE.onmessage = (e) => {
   setHtml('biasRoll',     biasVal.toFixed(2));
   setHtml('biasRollTxt',  biasVal > 0 ? 'Bullish'
                         : biasVal < 0 ? 'Bearish' : 'Flat');
+  colourBias(biasVal);
   
 
   /* ─── 11.  Bull / Bear composite meters  ───────────────────── */
