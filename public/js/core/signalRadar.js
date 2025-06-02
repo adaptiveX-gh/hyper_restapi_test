@@ -167,6 +167,46 @@ export class SignalRadar {
     }
   }
 
+  addIgnitionSpark({
+    stateScore = 0,
+    strength = 0.1,
+    ts = Date.now(),
+    side = 'up',
+    meta = {},
+    startY = 0
+  }) {
+    const bullish = side === 'up';
+    const cfg = bullish ? this.config.ignition_spark_up : this.config.ignition_spark_down;
+    if (!cfg) return;
+    const val = bullish ? 1 : -1;
+    const max = cfg.normalize?.max ?? 1;
+    const scale = 40; // base bubble size
+    const point = {
+      x: cfg.zone ?? (bullish ? 0.5 : -0.5),
+      y: startY,
+      z: Math.min(Math.abs(strength) / max, 1) * scale,
+      colorValue: val,
+      color: cfg.color || '#f4d142',
+      marker: { symbol: cfg.shape || 'triangle' },
+      tag: cfg.label || (bullish ? 'Ignition Spark \u2191' : 'Ignition Spark \u2193'),
+      xRaw: ts,
+      strength: Math.abs(strength),
+      meta: { ...cfg.meta, value: strength, ...meta }
+    };
+    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    if (this.points.length > 400) {
+      this.points.sort((a, b) => a.strength - b.strength);
+      const excess = this.points.splice(0, this.points.length - 400);
+      excess.forEach(p => {
+        const idx = this.chart.series[0].data.indexOf(p.point);
+        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+      });
+      this.chart.redraw(false);
+    }
+  }
+
   tick() {
     const now = Date.now();
     let dirty = false;
