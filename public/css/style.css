@@ -255,3 +255,10 @@ section.hidden { display: none; }
   transform: translateX(-50%);
 }
 
+/* Pong overlay on radar chart */
+.pong-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+}
+
