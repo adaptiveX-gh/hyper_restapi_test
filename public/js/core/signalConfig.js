@@ -171,5 +171,18 @@ export default {
     meta: { side: 'bull', category: 'continuation' },
     implementationTip: 'abs(deltaImb) < sigma && confirmation \u2265 0',
     valueEffort: { value: 3, effort: 2 }
+  },
+
+  controlled_pop: {
+    id: 'controlled_pop',
+    label: 'Controlled Pop',
+    zone: -0.35,
+    color: '#c0392b',
+    shape: 'square',
+    normalize: { max: 1 },
+    tooltip: 'Imbalance rises but \u2264 +1\u03c3 & Confirmation \u2264 0',
+    meta: { side: 'bear', category: 'continuation' },
+    implementationTip: 'deltaImb < sigma && confirmation \u2264 0',
+    valueEffort: { value: 3, effort: 2 }
   }
 };
