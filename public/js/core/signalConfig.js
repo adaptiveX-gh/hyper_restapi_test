@@ -158,5 +158,18 @@ export default {
     meta: { side: 'bear', category: 'reversal' },
     implementationTip: 'confirmationGauge < -0.10 for \u2265 N samples',
     valueEffort: { value: 5, effort: 4 }
+  },
+
+  controlled_pullback: {
+    id: 'controlled_pullback',
+    label: 'Controlled Dip',
+    zone: 0.35,
+    color: '#1abc9c',
+    shape: 'square',
+    normalize: { max: 1 },
+    tooltip: 'Imbalance falls but stays \u2265 \u20131\u03c3 & Confirmation \u2265 0',
+    meta: { side: 'bull', category: 'continuation' },
+    implementationTip: 'abs(deltaImb) < sigma && confirmation \u2265 0',
+    valueEffort: { value: 3, effort: 2 }
   }
 };
