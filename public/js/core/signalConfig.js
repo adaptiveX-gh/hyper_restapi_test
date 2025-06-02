@@ -49,5 +49,25 @@ export default {
     meta: { side: 'bear', category: 'breakout' },
     implementationTip: 'momGauge < -0.30 && \u0394t \u2264 5 s',
     valueEffort: { value: 5, effort: 3 }
+  },
+  early_warn_ask: {
+    id: 'early_warn_ask',
+    label: 'Ask Exhaustion',
+    zone: 0.70,
+    color: '#3ad17d',
+    shape: 'circle',
+    normalize: { max: 1 },
+    tooltip: 'Early-Warn flips positive: bids absorb, asks vanish',
+    meta: { side: 'bull', category: 'reversal' }
+  },
+  early_warn_bid: {
+    id: 'early_warn_bid',
+    label: 'Bid Exhaustion',
+    zone: -0.70,
+    color: '#ff6e6e',
+    shape: 'circle',
+    normalize: { max: 1 },
+    tooltip: 'Early-Warn flips negative: asks absorb, bids vanish',
+    meta: { side: 'bear', category: 'reversal' }
   }
 };

@@ -128,7 +128,6 @@ export class SignalRadar {
   }
 
   addEarlyWarn({
-    stateScore = 0,
     strength = 0.1,
     ts = Date.now(),
     side = 'ask',
@@ -136,23 +135,29 @@ export class SignalRadar {
     startY = 0
   }) {
     const bullish = side === 'ask';
-    const cfg = bullish ? this.config.askExhaustion : this.config.bidExhaustion || {};
+    const key = bullish ? 'early_warn_ask' : 'early_warn_bid';
+    const cfg = this.config[key];
+    if (!cfg) {
+      console.warn('Missing config for', key);
+      return;
+    }
     const val = bullish ? 1 : -1;
-    const colour = cfg.color || (bullish ? '#17c964' : '#ff4d4d');
-    const scale = cfg.normalization?.scale ?? 120;
+    const max = cfg.normalize?.max ?? 1;
+    const scale = 40; // base bubble size
+    const zone = cfg.zone ?? (bullish ? 0.7 : -0.7);
     const point = {
-      x: stateScore,
+      x: zone,
       y: startY,
-      z: Math.sqrt(Math.abs(strength)) * scale,
+      z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
-      color: colour,
+      color: cfg.color || (bullish ? '#17c964' : '#ff4d4d'),
       marker: { symbol: cfg.shape || 'circle' },
-      tag: cfg.label || (bullish ? 'Ask exhaustion' : 'Bid exhaustion'),
+      tag: cfg.label || (bullish ? 'Ask Exhaustion' : 'Bid Exhaustion'),
       xRaw: ts,
       strength: Math.abs(strength),
-      meta: { value: strength, ...meta }
+      meta: { ...cfg.meta, value: strength, ...meta }
     };
-    if (point.strength < 0.05) return;
+    if (point.strength <= 0) return;
     this.chart.series[0].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
     this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });

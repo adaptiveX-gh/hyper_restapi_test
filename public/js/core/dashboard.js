@@ -1544,18 +1544,16 @@ flowSSE.onmessage = (e) => {
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
 
-  if (w >= 0.10 && lastWarnGauge < 0.10) {
+  if (w > 0 && lastWarnGauge <= 0) {
     radar.addEarlyWarn({
-      stateScore: window.stateScore || 0,
       strength: w,
       ts: now,
       side: 'ask',
       meta: { type: 'Ask exhaustion', value: w }
     });
   }
-  if (w <= -0.10 && lastWarnGauge > -0.10) {
+  if (w < 0 && lastWarnGauge >= 0) {
     radar.addEarlyWarn({
-      stateScore: window.stateScore || 0,
       strength: w,
       ts: now,
       side: 'bid',
