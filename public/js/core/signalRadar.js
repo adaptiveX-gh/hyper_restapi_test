@@ -30,7 +30,7 @@ export class SignalRadar {
           click: () => this.highlight(null)
         }
       },
-      title: { text: '<b>Flow-Signal Radar</b>', align: 'center', style:{fontSize:'16px'} },
+      title: { text: null },
       colorAxis: {
         min: -1,
         max: 1,
