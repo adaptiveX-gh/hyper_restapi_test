@@ -760,17 +760,16 @@ function regimeDetails(value) {
   }
 
 function initCFDChart () {
-  if (obCFD) return; // already initialised
-
-  obCFD = Highcharts.stockChart('obCfd', {  // <<<< CHANGED HERE
-    chart : { height: 320, spacing:[10,10,25,10] },
-    title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
-    xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
-    yAxis : [{
-        title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
-      },{ title:{ text:'Price' }, opposite:true, visible:false }],
-    tooltip : { shared:true, xDateFormat:'%H:%M' },
-    legend  : { enabled:false },
+  if (obCFD) return;             // already initialised
+    obCFD = Highcharts.chart('obCfd', {
+      chart : { type:'area', height:320, spacing:[10,10,25,10], zoomType:'x' },
+      title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
+      xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
+      yAxis : [{
+          title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
+        },{ title:{ text:'Price' }, opposite:true, visible:false }],
+      tooltip : { shared:true, xDateFormat:'%H:%M' },
+      legend  : { enabled:false },
 
     // ** Enable the navigator **
     navigator: { enabled: true },
@@ -785,36 +784,37 @@ function initCFDChart () {
         { type: 'all', text: 'All' }
       ],
       selected: 1 // Default to 5m view
-    },
+    },      
 
-    series  : [
-      { id: 'bids',       name:'Bids',      type:'area', data:[],
-        color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
-      { id: 'asks',       name:'Asks',      type:'area', data:[],
-        color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
-      { id: 'imb',        name:'Imbalance', type:'line', data:[],
-        color:'#1e90ff',  lineWidth:1.6 },
-      { id: 'mid',        name:'Mid-price', type:'line', data:[],
-        color:'#555',     dashStyle:'Dash', yAxis:1 },
+      // ⬇⬇⬇  NOTICE the added 'id' for EVERY SERIES  ⬇⬇⬇
+      series  : [
+        { id: 'bids',       name:'Bids',      type:'area', data:[],
+          color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
+        { id: 'asks',       name:'Asks',      type:'area', data:[],
+          color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
+        { id: 'imb',        name:'Imbalance', type:'line', data:[],
+          color:'#1e90ff',  lineWidth:1.6 },
+        { id: 'mid',        name:'Mid-price', type:'line', data:[],
+          color:'#555',     dashStyle:'Dash', yAxis:1 },
 
-      { id:'imb-fore', name:'Forecast',
-        type:'line', data:[], dashStyle:'Dash',
-        color:'#1e90ff', lineWidth:1.5, enableMouseTracking:false },
+        // Forecast & bands, all WITH explicit id!
+        { id:'imb-fore', name:'Forecast',
+          type:'line', data:[], dashStyle:'Dash',
+          color:'#1e90ff', lineWidth:1.5, enableMouseTracking:false },
 
-      { id:'imb-up', type:'line', data:[], dashStyle:'Dot',
-        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
+        { id:'imb-up', type:'line', data:[], dashStyle:'Dot',
+          color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
 
-      { id:'imb-lo', type:'line', data:[], dashStyle:'Dot',
-        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
+        { id:'imb-lo', type:'line', data:[], dashStyle:'Dot',
+          color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
 
-      { id:'imb-conf', type:'arearange', data:[], zIndex:0,
-        color:'#1e90ff', fillOpacity:.08, lineWidth:0,
-        enableMouseTracking:false }        
-    ],
-    credits : { enabled:false }
-  });
+        { id:'imb-conf', type:'arearange', data:[], zIndex:0,
+          color:'#1e90ff', fillOpacity:.08, lineWidth:0,
+          enableMouseTracking:false }        
+      ],
+      credits : { enabled:false }
+    });
   window.obCFD = obCFD;
-
 }
 
 /**
