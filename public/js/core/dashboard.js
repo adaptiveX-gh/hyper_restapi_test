@@ -9,6 +9,7 @@ import { BiasTimer } from '../lib/biasTimer.js';
 import { SignalRadar } from './signalRadar.js';
 import { updateSpectrumBar } from './spectrumBar.js';
 import { detectControlledPullback } from '../lib/detectControlledPullback.js';
+import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -234,15 +235,21 @@ function setTxt(id, txt) {
 
     /* ─── Re-usable JSON fetch with one quick retry ───────────────── */
     async function fetchJSON(url, opts = {}, retry = true) {
-      const resp = await fetch(url, opts);
-      if (resp.ok) return resp.json();
+      const delay = getBackoff();
+      if (delay) await new Promise(r => setTimeout(r, delay));
 
-      /* first failure – maybe transient; wait 100 ms and retry once  */
+      const resp = await fetch(url, opts);
+      if (resp.ok) {
+        recordSuccess();
+        return resp.json();
+      }
+
+      recordError(resp.status, url);
+
       if (retry) {
         await new Promise(r => setTimeout(r, 100));
         return fetchJSON(url, opts, false);          // second try, no more retries
       }
-      /* still not OK → propagate an Error the caller can catch       */
       throw new Error(`HTTP ${resp.status}`);
     }
 
@@ -1180,6 +1187,7 @@ async function start () {
 
 
 obiSSE.onmessage = async (e) => {
+  recordSuccess();
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
 
@@ -1273,9 +1281,7 @@ setHtml('obiRatioTxt', txt);
   /* 5.  Spread & LaR (unchanged, uses dynamic FULL_SCALE_LAR) */
   try {
     // a) top‑of‑book spread
-    const topResp = await fetch(`/books/${symbol}?depth=${depthParam}`);
-    if (!topResp.ok) throw new Error(`HTTP ${topResp.status}`);
-    const topBk  = await topResp.json();
+    const topBk  = await fetchJSON(`/books/${symbol}?depth=${depthParam}`);
     const bidPx  = +topBk.bids[0][0];
     const askPx  = +topBk.asks[0][0];
     const mid    = (bidPx + askPx) / 2;
@@ -1288,9 +1294,7 @@ setHtml('obiRatioTxt', txt);
     const vol5m = calcRealizedVol(priceBuf);
 
     // c) deep book depth → raw LaR
-    const deepResp = await fetch(`/books/${symbol}?depth=${depthParam * 2}`);
-    if (!deepResp.ok) throw new Error(`HTTP ${deepResp.status}`);
-    const deepBk = await deepResp.json();
+    const deepBk = await fetchJSON(`/books/${symbol}?depth=${depthParam * 2}`);
     let depth10bps = 0;
     const lower = mid * (1 - P.DEPTH_BPS),
       upper = mid * (1 + P.DEPTH_BPS);
@@ -1362,7 +1366,10 @@ setHtml('obiRatioTxt', txt);
     setGaugeStatus('statusShock', 0);
   }
 };
-  obiSSE.onerror = ()=> setHtml('obiRatio','--');
+  obiSSE.onerror = ()=> {
+    recordError(502, '/api/obImbalanceLive');
+    setHtml('obiRatio','--');
+  };
 
   /*************************************************************************
   * 3.  Initialize center-out spectrum bar
@@ -1377,7 +1384,12 @@ flowSSE = new EventSource(
   `/api/flowStream?coin=${$('obi-coin').value}`
 );
 
+flowSSE.onerror = () => {
+  recordError(502, '/api/flowStream');
+};
+
 flowSSE.onmessage = (e) => {
+  recordSuccess();
   /* ─── 0.  Parse & filter ───────────────────────────────────── */
   if (e.data.trim().endsWith('heartbeat')) return;
 
