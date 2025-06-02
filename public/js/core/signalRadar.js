@@ -5,13 +5,20 @@ export class SignalRadar {
     this.points = [];
     this.selectedSign = null;
     this.config = cfg;
-    const bands = [
-      { from: -1.05, to: -0.6,  label:{ text:'Compression'          , style:{color:'#345'} } },
-      { from: -0.6, to: -0.2,  label:{ text:'Range / Chop'          , style:{color:'#345'} } },
-      { from: -0.2, to:  0.2,  label:{ text:'Neutral'               , style:{color:'#345'} } },
-      { from:  0.2, to:  0.6,  label:{ text:'Break-out / Pull-back', style:{color:'#345'} } },
-      { from:  0.6, to:  1.05, label:{ text:'Exhaust / Reversal'   , style:{color:'#345'} } }
+    const regimes = [
+      { from: -1.05, to: -0.6,  label:'\u2193 Exhaust / Reversal',   side:'bear',   color:'rgba(255,0,0,0.08)' },
+      { from: -0.6,  to: -0.2,  label:'Break-out / Pull-back',      side:'bear',   color:'rgba(255,0,0,0.04)' },
+      { from: -0.2,  to:  0.2,  label:'Neutral',                    side:'neutral',color:'rgba(128,128,128,0.06)' },
+      { from:  0.2,  to:  0.6,  label:'Break-out / Pull-back',      side:'bull',   color:'rgba(0,255,0,0.04)' },
+      { from:  0.6,  to:  1.05, label:'\u2191 Exhaust / Reversal',   side:'bull',   color:'rgba(0,255,0,0.08)' }
     ];
+    const bands = regimes.map(r => ({
+      from: r.from,
+      to: r.to,
+      color: r.color,
+      label: { text: r.label, style:{ color:'#345' } }
+    }));
+    this.regimes = regimes;
 
     this.chart = Highcharts.chart(containerId, {
       chart: {
@@ -54,8 +61,15 @@ export class SignalRadar {
             `Bids +${m['\u0394Depth'].toFixed(0)}$` : '';
           const p = typeof m.PxTrend === 'number' ?
             ` price ${m.PxTrend.toFixed(2)}%` : '';
+          const r = this.series.chart.options.custom.radar.regimes.find(
+            b => this.x >= b.from && this.x <= b.to
+          );
+          const zone = r ? `${r.label} ` +
+            (r.side === 'bear' ? '(bear zone)' : r.side === 'bull' ? '(bull zone)' : '(neutral)')
+            : '';
           return `<b>${this.tag}</b><br>` +
             Highcharts.dateFormat('%H:%M:%S', this.xRaw) + '<br>' +
+            zone + '<br>' +
             `Strength ${Highcharts.numberFormat(this.strength,2)}<br>` + d + p;
         }
       },
@@ -74,7 +88,7 @@ export class SignalRadar {
       plotOptions: { bubble: { minSize: 12, maxSize: 40, opacity: 0.85 } },
       credits: { enabled: false },
       exporting: { enabled: false },
-      custom: { radar: this }
+      custom: { radar: this, regimes }
     });
     this.timer = setInterval(() => this.tick(), 1000);
   }
