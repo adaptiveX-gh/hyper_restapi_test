@@ -134,6 +134,30 @@ export default {
     implementationTip: "detectSqueeze(side='sell', thresh=-0.4)"
   },
 
+  squeeze_warn_up: {
+    id: 'squeeze_warn_up',
+    label: 'Micro-Squeeze \u2191',
+    zone: 0.55,
+    shape: 'diamond',
+    color: '#41e084',
+    normalize: { max: 1 },
+    tooltip: 'First +0.20 Squeeze pulse\u2026',
+    meta: { side: 'bull', category: 'reversal' },
+    implementationTip: "detectSqueeze(side='buy', thresh=0.2)"
+  },
+
+  squeeze_warn_down: {
+    id: 'squeeze_warn_down',
+    label: 'Micro-Squeeze \u2193',
+    zone: -0.55,
+    shape: 'diamond',
+    color: '#ea4d5c',
+    normalize: { max: 1 },
+    tooltip: 'First \u20130.20 Squeeze pulse\u2026',
+    meta: { side: 'bear', category: 'reversal' },
+    implementationTip: "detectSqueeze(side='sell', thresh=-0.2)"
+  },
+
   hidden_accumulation: {
     id: 'hidden_accumulation',
     label: 'Hidden Accumulation',
