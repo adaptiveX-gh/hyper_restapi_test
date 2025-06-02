@@ -108,5 +108,17 @@ export default {
     meta: { side: 'bear', category: 'continuation' },
     implementationTip: 'earlyWarnGauge < 0 post pop',
     valueEffort: { value: 4, effort: 3 }
+  },
+
+  flow_flip_squeeze_up: {
+    id: 'flow_flip_squeeze_up',
+    label: 'Squeeze \u2013 Shorts Trapped',
+    zone: 0.65,
+    shape: 'diamond',
+    color: '#41e084',
+    normalize: { max: 1 },
+    tooltip: 'Squeeze spike +0.4 \u2026 +1.0 within 5 s of large sell burst',
+    meta: { side: 'bull', category: 'reversal' },
+    implementationTip: "detectSqueeze(side='buy', thresh=0.4)"
   }
 };
