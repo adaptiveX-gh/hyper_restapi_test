@@ -1,13 +1,4 @@
 export default {
-  probe: {
-    id: 'probe',
-    label: 'Probe',
-    zone: 0,
-    color: { bull: '#17c964', bear: '#ff4d4d' },
-    shape: 'circle',
-    normalization: { scale: 35 },
-    tooltip: 'Depth probe event'
-  },
   askExhaustion: {
     id: 'askExhaustion',
     label: 'Ask exhaustion',
