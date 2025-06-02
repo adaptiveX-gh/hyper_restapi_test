@@ -1132,7 +1132,7 @@ function updateBigTiles({ oi, funding8h, vol24h, liqSnap = NaN, ts }) {
     funding : asNum(funding8h)
   });
 
-  paintDot($('#dot-oi'), oiState,
+  paintDot($('dot-oi'), oiState,
     `OI ${deltaOi >= 0 ? '▲' : '▼'} ${Math.abs(deltaOi).toLocaleString()}  |  `
   + `Funding ${pctStr(asNum(funding8h))}`);
 
@@ -1140,20 +1140,20 @@ function updateBigTiles({ oi, funding8h, vol24h, liqSnap = NaN, ts }) {
   /*   – only colour-code once we have the 30-day medians   */
   if (Number.isFinite(LIQ_MEDIAN) && Number.isFinite(liqSnap)) {
     const pctLiq   = (liqSnap - LIQ_MEDIAN) / LIQ_MEDIAN;
-    paintDot($('#dot-liq'),
+    paintDot($('dot-liq'),
       stateStrength({ pctVsMedian: pctLiq }),
       `Liquidity ${(pctLiq * 100).toFixed(1)} % vs 30-day median`);
   } else {
-    paintDot($('#dot-liq'), 'normal', 'Liquidity — median pending');
+    paintDot($('dot-liq'), 'normal', 'Liquidity — median pending');
   }
 
   if (Number.isFinite(VOL_MEDIAN)) {
     const pctVol   = (asNum(vol24h) - VOL_MEDIAN) / VOL_MEDIAN;
-    paintDot($('#dot-vol'),
+    paintDot($('dot-vol'),
       stateStrength({ pctVsMedian: pctVol }),
       `Volume ${(pctVol * 100).toFixed(1)} % vs 30-day median`);
   } else {
-    paintDot($('#dot-vol'), 'normal', 'Volume — median pending');
+    paintDot($('dot-vol'), 'normal', 'Volume — median pending');
   }
 
 /* 3️⃣  Numeric tiles (compact notation) ---------------- */
@@ -1269,7 +1269,7 @@ setHtml('obiRatioTxt', txt);
   if (totalDepthSnap > LIQ_THICK) { liqState = 'Thick'; colour = 'green'; }
 
   setHtml('liqTxt', liqState);
-  dot('liqDot', colour);
+  dot('dot-liq', colour);
 
   /* 4.  Book Resilience – slope of depth change */
   if (!obiSSE._lastDepthTs) {
