@@ -95,5 +95,18 @@ export default {
     meta: { side: 'bull', category: 'continuation' },
     implementationTip: 'trigger once earlyWarn flips >0 after dip',
     valueEffort: { value: 4, effort: 3 }
+  },
+
+  sell_the_rally: {
+    id: 'sell_the_rally',
+    label: 'Sell-the-Rally Footprint',
+    zone: -0.40,
+    color: '#c0392b',
+    shape: 'circle',
+    normalize: { max: 1 },
+    tooltip: 'Early-Warn < 0 after up-leg; ask absorption resumes',
+    meta: { side: 'bear', category: 'continuation' },
+    implementationTip: 'earlyWarnGauge < 0 post pop',
+    valueEffort: { value: 4, effort: 3 }
   }
 };
