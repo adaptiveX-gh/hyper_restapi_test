@@ -120,5 +120,17 @@ export default {
     tooltip: 'Squeeze spike +0.4 \u2026 +1.0 within 5 s of large sell burst',
     meta: { side: 'bull', category: 'reversal' },
     implementationTip: "detectSqueeze(side='buy', thresh=0.4)"
+  },
+
+  flow_flip_squeeze_down: {
+    id: 'flow_flip_squeeze_down',
+    label: 'Squeeze \u2013 Longs Trapped',
+    zone: -0.65,
+    shape: 'diamond',
+    color: '#ea4d5c',
+    normalize: { max: 1 },
+    tooltip: 'Squeeze spike \u20130.4 \u2026 \u20131.0 within 5 s of large buy burst',
+    meta: { side: 'bear', category: 'reversal' },
+    implementationTip: "detectSqueeze(side='sell', thresh=-0.4)"
   }
 };
