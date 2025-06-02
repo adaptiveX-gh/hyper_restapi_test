@@ -10,6 +10,12 @@
 
 import { RollingStats } from '../lib/rollingStats.js';   // path is from /js/worker
 
+self.addEventListener('message', m =>
+  console.debug('[worker ⇐ main]', m.data.type, m.data)
+);
+
+
+
 /*───────────────────────────────────────────────────────────────
  * Rolling windows
  *───────────────────────────────────────────────────────────────*/
@@ -149,10 +155,11 @@ self.onmessage = ({data}) => {
 };
 
 function forecastAndPost () {
-  if (BUF.length < 30) return;    // need a bit of history
+  console.debug('BUF length', BUF.length);
+  if (BUF.length < 10) return;    // need a bit of history
 
   // --- 1) ordinary least squares on the last 90 s ------------
-  const span = 90;                               // seconds
+  const span = 30;                               // seconds
   const slice = BUF.slice(-span);
   const n = slice.length;
   const t0 = slice[0].ts;

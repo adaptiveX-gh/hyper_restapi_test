@@ -164,7 +164,9 @@ function setTxt(id, txt) {
       const bidN = depthSnap.bidDepth;
       const askN = depthSnap.askDepth;
       const mid  = (depthSnap.topBid + depthSnap.topAsk) / 2;
+      
       worker.postMessage({ type:'cfdPoint', ts, val: bidN - askN });
+      console.debug('[main ⇒ worker] cfdPoint', ts);
 
       // 1️⃣ keep the raw buffers bounded to CFD_CAP points
       addPoint(cfdSeries.bids, [ts, bidN]);
@@ -804,12 +806,16 @@ function updateForecastSeries(base, up, lo) {
 
   /* 2️⃣  Style tweaks that make the forecast obvious */
 fore?.update({
-  color     : '#ff1493',    // strong magenta
-  dashStyle : 'Dash',
-  lineWidth : 3,
-  zIndex    : 5,
+  color            : '#ff1493',          // strong magenta
+  dashStyle        : 'Dash',
+  lineWidth        : 3,
+  zIndex           : 20,                 // <<< lift it above the areas
   enableMouseTracking : false
 }, false);
+
+upper?.update({ zIndex : 19 }, false);
+lower?.update({ zIndex : 19 }, false);
+band?.update ({ zIndex : 18 }, false);    // still under the lines
 
   const cutOff = base[0][0];                    // first forecast ts
   const xAx    = obCFD.xAxis[0];
