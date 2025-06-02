@@ -2,10 +2,19 @@ export class SignalRadar {
   constructor(containerId) {
     this.points = [];
     this.chart = Highcharts.chart(containerId, {
-      chart: { type: 'bubble', height: 190, backgroundColor: 'transparent' },
+      chart: { type: 'bubble', height: 250, backgroundColor: 'transparent' },
       title: { text: '<b>Flow-Signal Radar</b>', align: 'center', style:{fontSize:'16px'} },
-      xAxis: { min: -1.05, max: 1.05, tickInterval: 0.5, gridLineWidth: 0 },
-      yAxis: { min: 0, max: 180, reversed: true,
+      colorAxis: {
+        min: -1,
+        max: 1,
+        stops: [
+          [0, '#ff4d4d'],
+          [0.5, '#f4d142'],
+          [1, '#17c964']
+        ]
+      },
+      xAxis: { min: -1.05, max: 1.05, tickInterval: 0.5, gridLineWidth: 1 },
+      yAxis: { min: 0, max: 180, reversed: true, gridLineWidth: 1,
         labels: { formatter() { return this.value + ' s'; } } },
       tooltip: {
         useHTML: true,
@@ -20,8 +29,8 @@ export class SignalRadar {
             `Strength ${Highcharts.numberFormat(this.strength,2)}<br>` + d + p;
         }
       },
-      series: [{ name: 'Signals', data: [] }],
-      plotOptions: { bubble: { minSize: '3%', maxSize: '12%', opacity: 0.85 } },
+      series: [{ name: 'Signals', colorKey: 'colorValue', data: [] }],
+      plotOptions: { bubble: { minSize: 12, maxSize: 40, opacity: 0.85 } },
       credits: { enabled: false },
       exporting: { enabled: false }
     });
@@ -33,14 +42,14 @@ export class SignalRadar {
       x: stateScore,
       y: 0,
       z: Math.sqrt(strength) * 35,
-      color: 'rgba(50,210,110,0.5)',
+      colorValue: stateScore,
       marker: { symbol: 'triangle' },
       tag: 'Probe',
       xRaw: ts,
       strength,
       meta
     };
-    this.chart.series[0].addPoint(point, true, false);
+    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
     this.points.push({ born: ts, strength, point });
     if (this.points.length > 400) {
       this.points.sort((a,b)=>a.strength-b.strength);
@@ -65,9 +74,7 @@ export class SignalRadar {
       x: stateScore,
       y: 0,
       z: Math.sqrt(Math.abs(strength)) * 120,
-      color: bullish
-        ? 'rgba(244,209,66,0.55)'
-        : 'rgba(133,133,133,0.55)',
+      colorValue: stateScore,
       marker: { symbol: bullish ? 'triangle' : 'triangle-down' },
       tag: bullish ? 'Ask exhaustion' : 'Bid exhaustion',
       xRaw: ts,
@@ -75,7 +82,7 @@ export class SignalRadar {
       meta: { value: strength, ...meta }
     };
     if (point.strength < 0.05) return;
-    this.chart.series[0].addPoint(point, true, false);
+    this.chart.series[0].addPoint(point, true, false, { duration: 300 });
     this.points.push({ born: ts, strength: point.strength, point });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
