@@ -64,7 +64,7 @@ export class SignalRadar {
     const point = {
       x: stateScore,
       y: 0,
-      z: Math.sqrt(Math.abs(strength)) * 35,
+      z: Math.sqrt(Math.abs(strength)) * 120,
       color: bullish
         ? 'rgba(244,209,66,0.55)'
         : 'rgba(133,133,133,0.55)',
