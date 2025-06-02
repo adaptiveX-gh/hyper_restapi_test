@@ -3,7 +3,8 @@
     import { BookBiasLine } from '../lib/bookBiasLine.js';
     import { classifyObi } from "./utils.js";
     import { formatCompact } from '../lib/formatCompact.js';
-    import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
+import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
+import { RollingBias } from '../lib/rollingBias.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -416,9 +417,10 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         a.push(v);
         if (a.length > maxLen) a.shift();
       };
-      
+
       /* *** ADD THIS LINE *** */
       const priceBuf = [];              // stores { ts, mid } for realised-vol calc
+      const biasCalc = new RollingBias(P.WINDOW);
 
 
     // donut counters
@@ -1371,8 +1373,11 @@ flowSSE.onmessage = (e) => {
     return;
   }
 
-  /* ─── 4.  Big-print anomaly check (3× recent 90-pct) ───────── */
-  const biasVal = fastAvg(buf.c.slice(-P.WINDOW)); // rolling bias
+  /* ─── 4.  Rolling bias (abs + exh) ─────────────────────────── */
+  if (isAbs || isExh) {
+    biasCalc.push(t.type, t.side);
+  }
+  const biasVal = biasCalc.value();
   biasChart.pushBias(now, biasVal);
 
   const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();
