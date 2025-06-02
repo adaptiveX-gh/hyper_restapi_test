@@ -1009,6 +1009,20 @@ function ensureViewport (fcEndTs) {
 
     worker.addEventListener('message', ({ data }) => {
       if (data.type === 'anomaly') {
+        const { ts, side, size, kind } = data.payload;
+        if (kind === 'ice') {
+          const strength = Math.min(size / bigPrintThreshold(), 1);
+          if (side === 'buy')
+            radar.addIcebergEventUp({ strength, ts });
+          else
+            radar.addIcebergEventDown({ strength, ts });
+        } else if (kind === 'sq') {
+          const strength = Math.min(size / bigPrintThreshold(), 1);
+          if (side === 'buy')
+            radar.addSqueezeWarnUp({ strength, ts });
+          else
+            radar.addSqueezeWarnDown({ strength, ts });
+        }
         biasChart.addAnomalyPoint(data.payload);
       }
     });
@@ -1456,13 +1470,19 @@ flowSSE.onmessage = (e) => {
     lastHeavy = t.notional >= P.FALSE_ABS;
     lastNeutral = now;
 
-    if (t.iceberg && t.notional >= bigPrintThreshold())
+    if (t.iceberg && t.notional >= bigPrintThreshold()) {
+      const strength = Math.min(t.notional / bigPrintThreshold(), 1);
+      if (t.side === 'buy')
+        radar.addIcebergEventUp({ strength, ts: t.ts || now });
+      else
+        radar.addIcebergEventDown({ strength, ts: t.ts || now });
       biasChart.addAnomalyPoint({
         ts   : t.ts || now,
         side : t.side,
         size : t.notional,
         kind : 'ice'
       });
+    }
   }
 
   /* 5-b) Exhaustions ------------------------------------------ */
@@ -1481,13 +1501,19 @@ flowSSE.onmessage = (e) => {
 
     pushBuf(buf.s, sq, 15);
 
-    if (sq && t.notional >= bigPrintThreshold())
+    if (sq && t.notional >= bigPrintThreshold()) {
+      const strength = Math.min(t.notional / bigPrintThreshold(), 1);
+      if (t.side === 'buy')
+        radar.addSqueezeWarnUp({ strength, ts: t.ts || now });
+      else
+        radar.addSqueezeWarnDown({ strength, ts: t.ts || now });
       biasChart.addAnomalyPoint({
         ts   : t.ts || now,
         side : t.side,
         size : t.notional,
         kind : 'sq'
       });
+    }
   }
 
   /* ─── 6.  Momentum gauge (now that big prints counted) ─────── */
