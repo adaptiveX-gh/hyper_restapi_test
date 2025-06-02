@@ -76,12 +76,15 @@ export class SignalRadar {
     this.timer = setInterval(() => this.tick(), 1000);
   }
 
-  addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0 }) {
+  addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0, colorValue=null }) {
+    const val = colorValue ?? stateScore;
+    const sign = Math.sign(val);
     const point = {
       x: stateScore,
       y: startY,
       z: Math.sqrt(Math.abs(strength)) * 35,
-      colorValue: stateScore,
+      colorValue: val,
+      color: sign >= 0 ? '#17c964' : '#ff4d4d',
       marker: { symbol: 'circle' },
       tag: 'Probe',
       xRaw: ts,
@@ -110,11 +113,14 @@ export class SignalRadar {
     startY = 0
   }) {
     const bullish = side === 'ask';
+    const val = bullish ? 1 : -1;
+    const sign = val;
     const point = {
       x: stateScore,
       y: startY,
       z: Math.sqrt(Math.abs(strength)) * 120,
-      colorValue: bullish ? Math.abs(stateScore) : -Math.abs(stateScore),
+      colorValue: val,
+      color: sign >= 0 ? '#17c964' : '#ff4d4d',
       marker: { symbol: 'circle' },
       tag: bullish ? 'Ask exhaustion' : 'Bid exhaustion',
       xRaw: ts,
