@@ -1,10 +1,11 @@
 
     import { onCtx, onCandle } from './perpDataFeed.js';
-    import { BookBiasLine } from '../lib/bookBiasLine.js';
-    import { classifyObi, classifyBias } from "./utils.js";
-    import { formatCompact } from '../lib/formatCompact.js';
+import { BookBiasLine } from '../lib/bookBiasLine.js';
+import { classifyObi, classifyBias } from "./utils.js";
+import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
+import { BiasTimer } from '../lib/biasTimer.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -77,6 +78,8 @@ import { RollingBias } from '../lib/rollingBias.js';
     function fmtDeltaPct(x) {
       return (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
     }
+
+    const biasTimer = new BiasTimer('biasRollTimer');
 
 function startPriceFeed(coin = 'BTC') {
   const COIN = coin.toUpperCase().replace(/-PERP$/, '');
@@ -1491,6 +1494,7 @@ flowSSE.onmessage = (e) => {
   setHtml('biasRollTxt',  biasVal > 0 ? 'Bullish'
                         : biasVal < 0 ? 'Bearish' : 'Flat');
   colourBias(biasVal);
+  biasTimer.update(biasVal);
   
 
   /* ─── 11.  Bull / Bear composite meters  ───────────────────── */
@@ -1586,6 +1590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
   initCFDChart();
   start();
+  biasTimer.start();
   startPriceFeed('BTC');          // 👉 starts the live price stream
   try {
     const res = await fetch('/api/slow-stats');
