@@ -440,6 +440,8 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
     const SELL_RALLY_DEDUP_MS = 30_000;
     const SQUEEZE_DEDUP_MS = 5_000;
     const SQUEEZE_THRESH = 0.4;
+    const HIDDEN_THRESH = 0.10;
+    const HIDDEN_MIN_STREAK = 6;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -456,6 +458,8 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
       /* *** ADD THIS LINE *** */
       const priceBuf = [];              // stores { ts, mid } for realised-vol calc
       const biasCalc = new RollingBias(P.WINDOW);
+      const hiddenBuf = [];
+      let hiddenActive = false;
 
 
     // donut counters
@@ -1507,6 +1511,24 @@ flowSSE.onmessage = (e) => {
   updW(w); setGaugeStatus('statusWarn',     w);
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
+
+  if (c > HIDDEN_THRESH) {
+    hiddenBuf.push({ value: c, ts: now });
+    if (hiddenBuf.length > HIDDEN_MIN_STREAK) hiddenBuf.shift();
+    if (hiddenBuf.length === HIDDEN_MIN_STREAK && !hiddenActive && hiddenBuf.every(d => d.value > HIDDEN_THRESH)) {
+      const mean = hiddenBuf.reduce((a, b) => a + b.value, 0) / HIDDEN_MIN_STREAK;
+      const strength = Math.min((mean - HIDDEN_THRESH) / (1 - HIDDEN_THRESH), 1);
+      radar.addHiddenAccumulation({
+        strength,
+        ts: now,
+        meta: { streak: HIDDEN_MIN_STREAK, meanGauge: mean, confirmations: hiddenBuf.map(d => d.value) }
+      });
+      hiddenActive = true;
+    }
+  } else {
+    hiddenBuf.length = 0;
+    hiddenActive = false;
+  }
 
   squeezeMetricBuf.push({ ts: now, value: s });
   while (squeezeMetricBuf.length && now - squeezeMetricBuf[0].ts > 5000)
