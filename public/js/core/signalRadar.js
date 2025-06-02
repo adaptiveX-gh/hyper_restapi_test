@@ -2,7 +2,7 @@ export class SignalRadar {
   constructor(containerId) {
     this.points = [];
     this.chart = Highcharts.chart(containerId, {
-      chart: { type: 'bubble', height: 250, backgroundColor: 'transparent' },
+      chart: { type: 'bubble', height: 420, backgroundColor: 'transparent' },
       title: { text: '<b>Flow-Signal Radar</b>', align: 'center', style:{fontSize:'16px'} },
       colorAxis: {
         min: -1,
