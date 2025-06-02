@@ -424,7 +424,8 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastHeavy   = 0,
         lastExtreme = {side:0,ts:0},
         lastSpread  = null,
-        lastLaR     = 0.3; // ◀── TODO: replace with your realized-vol calculation
+        lastLaR     = 0.3, // ◀── TODO: replace with your realized-vol calculation
+        lastWarnGauge = 0;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -1518,6 +1519,26 @@ flowSSE.onmessage = (e) => {
   updW(w); setGaugeStatus('statusWarn',     w);
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
+
+  if (w >= 0.10 && lastWarnGauge < 0.10) {
+    radar.addEarlyWarn({
+      stateScore: window.stateScore || 0,
+      strength: w,
+      ts: now,
+      side: 'ask',
+      meta: { type: 'Ask exhaustion', value: w }
+    });
+  }
+  if (w <= -0.10 && lastWarnGauge > -0.10) {
+    radar.addEarlyWarn({
+      stateScore: window.stateScore || 0,
+      strength: w,
+      ts: now,
+      side: 'bid',
+      meta: { type: 'Bid exhaustion', value: w }
+    });
+  }
+  lastWarnGauge = w;
 
   
 

@@ -53,6 +53,41 @@ export class SignalRadar {
     }
   }
 
+  addEarlyWarn({
+    stateScore = 0,
+    strength = 0.1,
+    ts = Date.now(),
+    side = 'ask',
+    meta = {}
+  }) {
+    const bullish = side === 'ask';
+    const point = {
+      x: stateScore,
+      y: 0,
+      z: Math.sqrt(Math.abs(strength)) * 35,
+      color: bullish
+        ? 'rgba(244,209,66,0.55)'
+        : 'rgba(133,133,133,0.55)',
+      marker: { symbol: bullish ? 'triangle' : 'triangle-down' },
+      tag: bullish ? 'Ask exhaustion' : 'Bid exhaustion',
+      xRaw: ts,
+      strength: Math.abs(strength),
+      meta: { value: strength, ...meta }
+    };
+    if (point.strength < 0.05) return;
+    this.chart.series[0].addPoint(point, true, false);
+    this.points.push({ born: ts, strength: point.strength, point });
+    if (this.points.length > 400) {
+      this.points.sort((a, b) => a.strength - b.strength);
+      const excess = this.points.splice(0, this.points.length - 400);
+      excess.forEach(p => {
+        const idx = this.chart.series[0].data.indexOf(p.point);
+        if (idx > -1) this.chart.series[0].data[idx].remove(false);
+      });
+      this.chart.redraw(false);
+    }
+  }
+
   tick() {
     const now = Date.now();
     const series = this.chart.series[0];
