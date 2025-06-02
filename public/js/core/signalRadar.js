@@ -92,7 +92,8 @@ export class SignalRadar {
       meta
     };
     this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    this.points.push({ born: ts, startY, strength, point });
+    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    this.points.push({ born: ts, startY, strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a,b)=>a.strength-b.strength);
       const excess = this.points.splice(0, this.points.length-400);
@@ -129,7 +130,8 @@ export class SignalRadar {
     };
     if (point.strength < 0.05) return;
     this.chart.series[0].addPoint(point, true, false, { duration: 300 });
-    this.points.push({ born: ts, startY, strength: point.strength, point });
+    const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -143,19 +145,16 @@ export class SignalRadar {
 
   tick() {
     const now = Date.now();
-    const series = this.chart.series[0];
     let dirty = false;
     for (let i = this.points.length - 1; i >= 0; i--) {
       const p = this.points[i];
       const age = (now - p.born) / 1000 + (p.startY || 0);
       if (age > 180) {
-        const idx = series.data.indexOf(p.point);
-        if (idx > -1) series.data[idx].remove(false);
+        if (typeof p.point.remove === 'function') p.point.remove(false);
         this.points.splice(i, 1);
         dirty = true;
       } else {
-        const idx = series.data.indexOf(p.point);
-        if (idx > -1) series.data[idx].update({ y: age }, false);
+        if (typeof p.point.update === 'function') p.point.update({ y: age }, false);
         dirty = true;
       }
     }
