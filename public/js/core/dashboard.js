@@ -441,6 +441,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
     const SQUEEZE_DEDUP_MS = 5_000;
     const SQUEEZE_THRESH = 0.4;
     const HIDDEN_THRESH = 0.10;
+    const HIDDEN_DIST_THRESH = -0.10;
     const HIDDEN_MIN_STREAK = 6;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
@@ -460,6 +461,8 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
       const biasCalc = new RollingBias(P.WINDOW);
       const hiddenBuf = [];
       let hiddenActive = false;
+      const hiddenDistBuf = [];
+      let hiddenDistActive = false;
 
 
     // donut counters
@@ -1528,6 +1531,28 @@ flowSSE.onmessage = (e) => {
   } else {
     hiddenBuf.length = 0;
     hiddenActive = false;
+  }
+
+  if (c < HIDDEN_DIST_THRESH) {
+    hiddenDistBuf.push({ value: c, ts: now });
+    if (hiddenDistBuf.length > HIDDEN_MIN_STREAK) hiddenDistBuf.shift();
+    if (
+      hiddenDistBuf.length === HIDDEN_MIN_STREAK &&
+      !hiddenDistActive &&
+      hiddenDistBuf.every(d => d.value < HIDDEN_DIST_THRESH)
+    ) {
+      const mean = hiddenDistBuf.reduce((a, b) => a + b.value, 0) / HIDDEN_MIN_STREAK;
+      const strength = Math.min(Math.abs(mean - HIDDEN_DIST_THRESH) / (1 - Math.abs(HIDDEN_DIST_THRESH)), 1);
+      radar.addHiddenDistribution({
+        strength,
+        ts: now,
+        meta: { streak: HIDDEN_MIN_STREAK, meanGauge: mean, confirmations: hiddenDistBuf.map(d => d.value) }
+      });
+      hiddenDistActive = true;
+    }
+  } else {
+    hiddenDistBuf.length = 0;
+    hiddenDistActive = false;
   }
 
   squeezeMetricBuf.push({ ts: now, value: s });
