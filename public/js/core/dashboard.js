@@ -7,6 +7,7 @@ import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
 import { BiasTimer } from '../lib/biasTimer.js';
 import { SignalRadar } from './signalRadar.js';
+import { updateSpectrumBar } from './spectrumBar.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -501,59 +502,6 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
 *************************************************************************/
 const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 
-/*************************************************************************
-* 2.  A tiny factory that returns a nice-looking horizontal gauge
-*************************************************************************/
-function makeProgress(containerID, titleText) {
-  return Highcharts.chart(containerID, {
-    chart  : { type: 'bar', height: 80, spacing: [0, 10, 0, 10], backgroundColor: 'transparent' },
-    title  : { text: `<b>${titleText}</b>`, align: 'center', y: 10, style: { fontSize: '15px', textTransform: 'uppercase' } },
-    xAxis  : { visible: false },
-    yAxis  : {
-      min: 0, max: 100, tickInterval: 25, gridLineWidth: 0, title: null,
-      plotBands: [{ from: 0, to: 100, color: '#e6e6e6' }],
-      plotLines: [{ value: 75, width: 2, color: '#555', zIndex: 3 }]
-    },
-    legend : { enabled: false },
-    tooltip: { enabled: false },
-    plotOptions: {
-      series: {
-        pointWidth: 30,
-        borderRadius: 7,
-        dataLabels: {
-          enabled: true,
-          inside: true,
-          align: 'left',
-          style: { color: '#fff', fontSize: '22px', fontWeight: 900, textOutline: '2px solid #333' },
-          formatter() { return `${Math.round(this.y)} %`; }
-        }
-      }
-    },
-    credits : { enabled: false },
-    exporting: { enabled: false },
-    series : [{
-      data          : [0],
-      color         : '#4dff88', // Will be overridden in runtime update
-      showInLegend  : false
-    }]
-  });
-}
-
-// Takes a value 0-100 and returns the regime category as a string
-function regimeName(pct) {
-  const v = Number(pct);               // force numeric
-  if (v >=   0 && v < 33) return "Mean Reversion";          // 0-32 %
-  if (v >=  33 && v < 66) return "Pull-back Continuation";  // 33-65 %
-  return "Break-out Continuation";                          // 66-100 %
-}
-
-function regimeDetails(value) {
-  if (value < 33) 
-    return {name: "Mean Reversion", desc:"Fade moves, play reversals"};
-  if (value < 66)
-    return {name: "Trend Pullback", desc:"Ride trends on dips/pullbacks"};
-  return {name: "Breakout", desc:"Momentum & breakout trades"};
-}
 
     // ─────────────────────────────────────────────────────────────────────
     // GAUGE FACTORY
@@ -1393,10 +1341,9 @@ setHtml('obiRatioTxt', txt);
   obiSSE.onerror = ()=> setHtml('obiRatio','--');
 
   /*************************************************************************
-  * 3.  Create the two gauges once  (replaces your old bullet code)
+  * 3.  Initialize center-out spectrum bar
   *************************************************************************/
-  const bullGauge = makeProgress('bullMeter', 'BULL SPECTRUM');
-  const bearGauge = makeProgress('bearMeter', 'BEAR SPECTRUM');
+  updateSpectrumBar(0, 0);
 
 
  /* ---------------------------------------------------------------
@@ -1646,23 +1593,9 @@ flowSSE.onmessage = (e) => {
   const bearVal = pct(amplify *
         raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100);
 
-  bullGauge.series[0].points[0].update({
-    y: bullVal,
-    color: Highcharts.color('#4dff88').brighten(-bullVal/150).get()
-  }, false);
-  bearGauge.series[0].points[0].update({
-    y: bearVal,
-    color: Highcharts.color('#ff4d4d').brighten(-bearVal/150).get()
-  }, true);
+  updateSpectrumBar(bearVal, bullVal);
 
   window.stateScore = (bullVal - bearVal) / 100;
-
-  const bullRegime = regimeName(Math.round(bullVal));
-  const bearRegime = regimeName(Math.round(bearVal));
-  $('bullRegime').textContent = `Strategy: ${bullRegime}`;
-  $('bearRegime').textContent = `Strategy: ${bearRegime}`;
-  $('bullRegime').title = regimeDetails(bullVal).desc;
-  $('bearRegime').title = regimeDetails(bearVal).desc;
 
   /* ─── 12.  Donut charts & grid  ────────────────────────────── */
   absChart.series[0].setData([
