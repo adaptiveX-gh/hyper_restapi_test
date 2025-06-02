@@ -452,13 +452,17 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastSellRally = 0,
         lastControlledDip = 0,
         lastSqueezeGauge = 0,
-        lastSqueezeSignal = 0;
+        lastSqueezeSignal = 0,
+        lastSqueezeWarnGauge = 0,
+        lastSqueezeWarnSignal = 0;
 
     const BUY_DIP_DEDUP_MS = 30_000;
     const SELL_RALLY_DEDUP_MS = 30_000;
     const CONTROLLED_DIP_DEDUP_MS = 30_000;
     const SQUEEZE_DEDUP_MS = 5_000;
+    const SQUEEZE_WARN_DEDUP_MS = 5_000;
     const SQUEEZE_THRESH = 0.4;
+    const SQUEEZE_WARN_THRESH = 0.20;
     const HIDDEN_THRESH = 0.10;
     const HIDDEN_DIST_THRESH = -0.10;
     const HIDDEN_MIN_STREAK = 6;
@@ -1005,6 +1009,20 @@ function ensureViewport (fcEndTs) {
 
     worker.addEventListener('message', ({ data }) => {
       if (data.type === 'anomaly') {
+        const { ts, side, size, kind } = data.payload;
+        if (kind === 'ice') {
+          const strength = Math.min(size / bigPrintThreshold(), 1);
+          if (side === 'buy')
+            radar.addIcebergEventUp({ strength, ts });
+          else
+            radar.addIcebergEventDown({ strength, ts });
+        } else if (kind === 'sq') {
+          const strength = Math.min(size / bigPrintThreshold(), 1);
+          if (side === 'buy')
+            radar.addSqueezeWarnUp({ strength, ts });
+          else
+            radar.addSqueezeWarnDown({ strength, ts });
+        }
         biasChart.addAnomalyPoint(data.payload);
       }
     });
@@ -1452,13 +1470,19 @@ flowSSE.onmessage = (e) => {
     lastHeavy = t.notional >= P.FALSE_ABS;
     lastNeutral = now;
 
-    if (t.iceberg && t.notional >= bigPrintThreshold())
+    if (t.iceberg && t.notional >= bigPrintThreshold()) {
+      const strength = Math.min(t.notional / bigPrintThreshold(), 1);
+      if (t.side === 'buy')
+        radar.addIcebergEventUp({ strength, ts: t.ts || now });
+      else
+        radar.addIcebergEventDown({ strength, ts: t.ts || now });
       biasChart.addAnomalyPoint({
         ts   : t.ts || now,
         side : t.side,
         size : t.notional,
         kind : 'ice'
       });
+    }
   }
 
   /* 5-b) Exhaustions ------------------------------------------ */
@@ -1477,13 +1501,19 @@ flowSSE.onmessage = (e) => {
 
     pushBuf(buf.s, sq, 15);
 
-    if (sq && t.notional >= bigPrintThreshold())
+    if (sq && t.notional >= bigPrintThreshold()) {
+      const strength = Math.min(t.notional / bigPrintThreshold(), 1);
+      if (t.side === 'buy')
+        radar.addSqueezeWarnUp({ strength, ts: t.ts || now });
+      else
+        radar.addSqueezeWarnDown({ strength, ts: t.ts || now });
       biasChart.addAnomalyPoint({
         ts   : t.ts || now,
         side : t.side,
         size : t.notional,
         kind : 'sq'
       });
+    }
   }
 
   /* ─── 6.  Momentum gauge (now that big prints counted) ─────── */
@@ -1601,6 +1631,37 @@ flowSSE.onmessage = (e) => {
   squeezeMetricBuf.push({ ts: now, value: s });
   while (squeezeMetricBuf.length && now - squeezeMetricBuf[0].ts > 5000)
     squeezeMetricBuf.shift();
+  if (
+    s > SQUEEZE_WARN_THRESH &&
+    lastSqueezeWarnGauge <= SQUEEZE_WARN_THRESH &&
+    now - lastSqueezeWarnSignal > SQUEEZE_WARN_DEDUP_MS
+  ) {
+    radar.addSqueezeWarnUp({
+      strength: Math.min(
+        (s - SQUEEZE_WARN_THRESH) / (SQUEEZE_THRESH - SQUEEZE_WARN_THRESH),
+        1
+      ),
+      ts: now,
+      meta: { value: s }
+    });
+    lastSqueezeWarnSignal = now;
+  }
+  if (
+    s < -SQUEEZE_WARN_THRESH &&
+    lastSqueezeWarnGauge >= -SQUEEZE_WARN_THRESH &&
+    now - lastSqueezeWarnSignal > SQUEEZE_WARN_DEDUP_MS
+  ) {
+    radar.addSqueezeWarnDown({
+      strength: Math.min(
+        (-s - SQUEEZE_WARN_THRESH) / (SQUEEZE_THRESH - SQUEEZE_WARN_THRESH),
+        1
+      ),
+      ts: now,
+      meta: { value: s }
+    });
+    lastSqueezeWarnSignal = now;
+  }
+  lastSqueezeWarnGauge = s;
   if (s > SQUEEZE_THRESH && lastSqueezeGauge <= SQUEEZE_THRESH &&
       now - lastSqueezeSignal > SQUEEZE_DEDUP_MS) {
     radar.addFlowFlipSqueezeUp({
