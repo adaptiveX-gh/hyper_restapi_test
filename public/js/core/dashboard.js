@@ -8,6 +8,7 @@ import { RollingBias } from '../lib/rollingBias.js';
 import { BiasTimer } from '../lib/biasTimer.js';
 import { SignalRadar } from './signalRadar.js';
 import { updateSpectrumBar } from './spectrumBar.js';
+import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -176,9 +177,18 @@ function setTxt(id, txt) {
       const bidN = depthSnap.bidDepth;
       const askN = depthSnap.askDepth;
       const mid  = (depthSnap.topBid + depthSnap.topAsk) / 2;
-      
+
       worker.postMessage({ type:'cfdPoint', ts, val: bidN - askN });
       console.debug('[main ⇒ worker] cfdPoint', ts);
+
+      const currImb = bidN - askN;
+      if (typeof feedCFD.prevImb === 'number') {
+        const dImb = currImb - feedCFD.prevImb;
+        ctrlDipImbBuf.push({ value: dImb, ts });
+        ctrlDipStats.push(dImb);
+        if (ctrlDipImbBuf.length > 10) ctrlDipImbBuf.shift();
+      }
+      feedCFD.prevImb = currImb;
 
       // 1️⃣ keep the raw buffers bounded to CFD_CAP points
       addPoint(cfdSeries.bids, [ts, bidN]);
@@ -433,11 +443,13 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastSparkDown = 0,
         lastBuyDip = 0,
         lastSellRally = 0,
+        lastControlledDip = 0,
         lastSqueezeGauge = 0,
         lastSqueezeSignal = 0;
 
     const BUY_DIP_DEDUP_MS = 30_000;
     const SELL_RALLY_DEDUP_MS = 30_000;
+    const CONTROLLED_DIP_DEDUP_MS = 30_000;
     const SQUEEZE_DEDUP_MS = 5_000;
     const SQUEEZE_THRESH = 0.4;
     const HIDDEN_THRESH = 0.10;
@@ -463,6 +475,9 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
       let hiddenActive = false;
       const hiddenDistBuf = [];
       let hiddenDistActive = false;
+      const ctrlDipImbBuf = [];
+      const ctrlDipConfBuf = [];
+      const ctrlDipStats = new RollingStats(120);
 
 
     // donut counters
@@ -1511,6 +1526,20 @@ flowSSE.onmessage = (e) => {
         w = fastAvg(buf.w),
         s = fastAvg(buf.s),
         f = fastAvg(buf.f);
+
+  ctrlDipConfBuf.push({ value: c, ts: now });
+  if (ctrlDipConfBuf.length > 10) ctrlDipConfBuf.shift();
+
+  const sigma = ctrlDipStats.std();
+  const sig = sigma ? detectControlledPullback(ctrlDipImbBuf, ctrlDipConfBuf, sigma, 4) : null;
+  if (sig && now - lastControlledDip > CONTROLLED_DIP_DEDUP_MS) {
+    radar.addControlledPullback({
+      strength: sig.strength,
+      ts: sig.ts,
+      meta: { imbWindow: sig.meta.imbWindow, confWindow: sig.meta.confWindow }
+    });
+    lastControlledDip = now;
+  }
 
   updC(c); setGaugeStatus('statusConfirm',  c);
   updW(w); setGaugeStatus('statusWarn',     w);
