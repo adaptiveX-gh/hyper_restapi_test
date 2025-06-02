@@ -774,8 +774,8 @@ function regimeDetails(value) {
 
 function initCFDChart () {
   if (obCFD) return;             // already initialised
-    obCFD = Highcharts.chart('obCfd', {
-      chart : { type:'area', height:320, spacing:[10,10,25,10], zoomType:'x' },
+  obCFD = Highcharts.stockChart('obCfd', {
+    chart : { height:320, spacing:[10,10,25,10] },
       title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
       xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
       yAxis : [{
