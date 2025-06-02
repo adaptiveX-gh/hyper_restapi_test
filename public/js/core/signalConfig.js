@@ -184,5 +184,27 @@ export default {
     meta: { side: 'bear', category: 'continuation' },
     implementationTip: 'deltaImb < sigma && confirmation \u2264 0',
     valueEffort: { value: 3, effort: 2 }
+  },
+
+  iceberg_event_up: {
+    id: 'iceberg_event_up',
+    label: 'Iceberg Buy',
+    zone: 0.9,
+    color: '#17c964',
+    shape: 'square',
+    normalize: { max: 1 },
+    tooltip: 'Hidden bid absorption: successive prints with <10% shown',
+    meta: { side: 'bull', category: 'stealth' }
+  },
+
+  iceberg_event_down: {
+    id: 'iceberg_event_down',
+    label: 'Iceberg Sell',
+    zone: -0.9,
+    color: '#ff4d4d',
+    shape: 'square',
+    normalize: { max: 1 },
+    tooltip: 'Hidden ask absorption: successive prints with <10% shown',
+    meta: { side: 'bear', category: 'stealth' }
   }
 };
