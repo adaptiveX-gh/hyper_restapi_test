@@ -63,22 +63,42 @@ export class BookBiasLine {
   }
 
   /** Drop an anomaly icon */
-  addAnomalyPoint ({ ts, side, size, kind /* 'abs' | 'exh' */ }) {
+  addAnomalyPoint ({ ts, side, size = 0, kind }) {
     const bullish = side === 'buy';
-    const isAbs   = kind === 'abs';
+    let symbol    = 'circle';
+    let fill      = bullish ? '#4dff88' : '#ff4d4d';
+    let label     = '';
+    let anm       = '';
+
+    if (kind === 'abs' || kind === 'exh') {
+      symbol = kind === 'abs' ? 'triangle' : 'square';
+      anm    = kind === 'abs' ? 'Big ABS' : 'Big EXH';
+    } else if (kind === 'ice') {
+      label  = '🧊';
+      anm    = 'Iceberg';
+    } else if (kind === 'sq') {
+      label  = '🚨';
+      anm    = 'Squeeze';
+    }
 
     this.#chart.get(this.#eventSeriesId).addPoint({
       x       : ts,
       y       : this.#currentBiasValue(),
-      anm     : isAbs ? 'Big ABS' : 'Big EXH',
+      anm,
       sideStr : bullish ? 'Bullish' : 'Bearish',
       size,
       marker  : {
-        symbol    : isAbs ? 'triangle' : 'square',
-        fillColor : bullish ? '#4dff88' : '#ff4d4d',
+        symbol,
+        fillColor : fill,
         lineColor : '#000',
-        radius    : 7
-      }
+        radius    : label ? 10 : 7
+      },
+      dataLabels: label ? {
+        enabled: true,
+        useHTML: true,
+        y: -8,
+        formatter () { return label; }
+      } : undefined
     }, false, false);
 
     this.#maybeRedraw();

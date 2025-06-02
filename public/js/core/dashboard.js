@@ -1376,14 +1376,6 @@ flowSSE.onmessage = (e) => {
   biasChart.pushBias(now, biasVal);
 
   const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();
-  if (tooLarge) {
-    biasChart.addAnomalyPoint({
-      ts   : t.ts || now,
-      side : t.side,
-      size : t.notional,
-      kind : isAbs ? 'abs' : 'exh'
-    });
-  }
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
 
   /* 5-a) Absorptions ------------------------------------------ */
@@ -1403,24 +1395,39 @@ flowSSE.onmessage = (e) => {
 
     lastHeavy = t.notional >= P.FALSE_ABS;
     lastNeutral = now;
+
+    if (t.iceberg && t.notional >= bigPrintThreshold())
+      biasChart.addAnomalyPoint({
+        ts   : t.ts || now,
+        side : t.side,
+        size : t.notional,
+        kind : 'ice'
+      });
   }
 
   /* 5-b) Exhaustions ------------------------------------------ */
   if (isExh) {
-    lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
-
-    const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
-    pushBuf(buf.w, warn, 15);
-    lastHeavy = false;                     // reset
-
-    /* Squeeze – flow flips within 5 s                             */
     let sq = 0;
     const age = (now - lastExtreme.ts) / 1000;
     if (age <= S_STALE && lastExtreme.side) {
       if ( lastExtreme.side ===  1 && t.side === 'sell') sq = -1;
       if ( lastExtreme.side === -1 && t.side === 'buy')  sq =  1;
     }
+    lastExtreme = { side: t.side === 'buy' ? 1 : -1, ts: now };
+
+    const warn = lastHeavy ? (t.side === 'sell' ? 1 : -1) : 0;
+    pushBuf(buf.w, warn, 15);
+    lastHeavy = false;                     // reset
+
     pushBuf(buf.s, sq, 15);
+
+    if (sq && t.notional >= bigPrintThreshold())
+      biasChart.addAnomalyPoint({
+        ts   : t.ts || now,
+        side : t.side,
+        size : t.notional,
+        kind : 'sq'
+      });
   }
 
   /* ─── 6.  Momentum gauge (now that big prints counted) ─────── */
