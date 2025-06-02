@@ -1645,6 +1645,7 @@ $('liqTxt').title = () =>
 document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
   radar = new SignalRadar('signalRadar');
+  window.radar = radar; // <----- add this
   initCFDChart();
   start();
   biasTimer.start();
