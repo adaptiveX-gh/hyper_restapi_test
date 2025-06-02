@@ -307,16 +307,19 @@ function setTxt(id, txt) {
     }
 
   // ----  NEW: spawn worker  -----------------------------------
- let  worker = new Worker('/js/worker/metricsWorker.js', { type: 'module' });
+ let  worker = new Worker('./metricsWorker.js', { type: 'module' });
  window.metricsWorker = worker;   // ← expose for debugging
 /* -----------------------------------------------------------
  * (Re)-initialise the metrics Web-Worker
  * ----------------------------------------------------------- */
+let workerGen = 0;
 function ensureWorker () {
   if (worker && !worker.terminated) return;      // still alive – nothing to do
 
   // ①  (re)Create
-  worker = new Worker('./js/worker/metricsWorker.js', { type: 'module' });
+  workerGen += 1;
+  const thisGen = workerGen;
+  worker = new Worker('./metricsWorker.js', { type: 'module' });
   window.metricsWorker = worker;   // ← expose for debugging
 
   // ----- DIAGNOSTIC PATCH: CFD Forecast Debugger -----
@@ -349,16 +352,17 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
 
   // ②  Wire listeners *once*
   worker.addEventListener('message', ({ data }) => {
-  if (data.type === 'cfdForecast') {
-    const { base, up, lo } = data.payload;
-    if (!obCFD || obCFD.series.length < 7) {
-        console.warn('CFD chart not ready for forecast lines!', obCFD);
+    if (thisGen !== workerGen) return;
+      if (data.type === 'cfdForecast') {
+        const { base, up, lo } = data.payload;
+        if (!obCFD || obCFD.series.length < 7) {
+            console.warn('CFD chart not ready for forecast lines!', obCFD);
+          }
+        console.log('CFD Chart series IDs:', obCFD.series.map(s => s.id));
+        updateForecastSeries(base, up, lo);      // existing call
+        
+        metricsWorker.__lastFc = data.payload;   // (optional debug)
       }
-    console.log('CFD Chart series IDs:', obCFD.series.map(s => s.id));
-    updateForecastSeries(base, up, lo);      // existing call
-    
-    metricsWorker.__lastFc = data.payload;   // (optional debug)
-  }
 
     /* existing adaptive / gauges / anomaly routing  */
     if (data.type === 'adapt')   { /* … */ }
