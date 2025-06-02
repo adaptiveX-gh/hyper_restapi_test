@@ -1245,8 +1245,21 @@ setHtml('obiRatioTxt', txt);
   const oldDepth = depthBufProbe.length ? depthBufProbe[0].val : null;
   const depthMean = depthBufProbe.reduce((a,b)=>a+b.val,0)/depthBufProbe.length || 0;
   const depthStd = Math.sqrt(depthBufProbe.reduce((s,b)=>s+(b.val-depthMean)**2,0)/(depthBufProbe.length||1));
-  const oldPrice = priceProbeBuf.length ? priceProbeBuf[0].px : null;
-  const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px : null;
+const oldPrice = priceProbeBuf.length ? priceProbeBuf[0].px : null;
+const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px : null;
+
+  const sigmaBps = (() => {
+    if (priceProbeBuf.length < 2) return 0;
+    let sum = 0, sumSq = 0;
+    for (let i = 1; i < priceProbeBuf.length; i++) {
+      const rLog = Math.log(priceProbeBuf[i].px / priceProbeBuf[i-1].px);
+      sum += rLog; sumSq += rLog * rLog;
+    }
+    const n = priceProbeBuf.length - 1;
+    const mean = sum / n;
+    const variance = sumSq / n - mean * mean;
+    return Math.sqrt(Math.max(variance, 0)) * 10000;
+  })();
   if (oldDepth && oldPrice && priceNow && depthStd) {
     const dDepth = d.bidDepth - oldDepth;
     const pxTrend = (priceNow - oldPrice) / oldPrice;
@@ -1745,6 +1758,16 @@ flowSSE.onmessage = (e) => {
         raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100);
 
   updateSpectrumBar(bearVal, bullVal);
+
+  if (window.radar && typeof window.radar.updatePong === 'function') {
+    window.radar.updatePong({
+      bearPct: bearVal,
+      bullPct: bullVal,
+      obi: r,
+      sigmaBps,
+      midPrice: priceNow
+    });
+  }
 
   window.stateScore = (bullVal - bearVal) / 100;
 

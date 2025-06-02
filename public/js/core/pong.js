@@ -1,3 +1,13 @@
+export function vFromSigma(sigmaBps) {
+  return 0.3 + Math.min(3, sigmaBps) / 3 * 0.9;
+}
+
+export function chase(paddle, ballY, obi) {
+  const chaseSpeed = Math.abs(obi - 1) * 1.5;
+  if (ballY > paddle.y) paddle.y += Math.min(chaseSpeed, 2);
+  else                   paddle.y -= Math.min(chaseSpeed, 2);
+}
+
 export class PongGame {
   constructor(chart) {
     this.chart = chart;
@@ -16,6 +26,16 @@ export class PongGame {
     this.ballX = 0;
     this.ballY = 0;
 
+    this.leftY = 0;
+    this.rightY = 0;
+    this.vx = this.speed;
+    this.vy = 0;
+
+    this.obi = 1;
+    this.bull = 0;
+    this.bear = 0;
+    this.midPrice = 0;
+
     this.resize();
     requestAnimationFrame(() => this.loop());
   }
@@ -30,14 +50,29 @@ export class PongGame {
     this.canvas.height = plotHeight;
     this.ballY = plotHeight / 2;
     this.ballX = (this.leftBoundary() + this.rightBoundary()) / 2;
+    this.leftY = plotHeight / 2;
+    this.rightY = plotHeight / 2;
   }
 
   leftBoundary() { return this.canvas.width * 0.4048; }
   rightBoundary() { return this.canvas.width * 0.5952; }
 
-  setPaddles(bear, bull) {
-    this.leftPct = Math.max(3, +bear) / 100;
-    this.rightPct = Math.max(3, +bull) / 100;
+  update({ bearPct, bullPct, obi, sigmaBps, midPrice }) {
+    if (bearPct != null) {
+      this.leftPct = Math.max(3, +bearPct) / 100;
+      this.bear = bearPct;
+    }
+    if (bullPct != null) {
+      this.rightPct = Math.max(3, +bullPct) / 100;
+      this.bull = bullPct;
+    }
+    if (obi != null) this.obi = obi;
+    if (sigmaBps != null) {
+      this.sigma = sigmaBps;
+      this.speed = vFromSigma(sigmaBps);
+      this.vx = Math.sign(this.vx || 1) * this.speed;
+    }
+    if (midPrice != null) this.midPrice = midPrice;
   }
 
   loop() {
@@ -53,25 +88,47 @@ export class PongGame {
     const paddleW = this.paddleWidth;
     const lH = h * this.leftPct;
     const rH = h * this.rightPct;
-    const lY = (h - lH) / 2;
-    const rY = (h - rH) / 2;
 
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = '#ea4d5c';
-    ctx.fillRect(leftX, lY, paddleW, lH);
+    ctx.fillRect(leftX, this.leftY - lH / 2, paddleW, lH);
 
     ctx.fillStyle = '#41e084';
-    ctx.fillRect(rightX - paddleW, rY, paddleW, rH);
+    ctx.fillRect(rightX - paddleW, this.rightY - rH / 2, paddleW, rH);
 
-    this.ballX += this.dir * this.speed;
+    const lp = { y: this.leftY };
+    const rp = { y: this.rightY };
+    chase(lp, this.ballY, this.obi);
+    chase(rp, this.ballY, this.obi);
+    this.leftY = Math.max(lH / 2, Math.min(h - lH / 2, lp.y));
+    this.rightY = Math.max(rH / 2, Math.min(h - rH / 2, rp.y));
+
+    this.ballX += this.vx;
+    this.ballY += this.vy;
+
+    if (this.ballY - this.ballRadius <= 0 || this.ballY + this.ballRadius >= h) {
+      this.vy *= -1;
+      this.ballY = Math.max(this.ballRadius, Math.min(h - this.ballRadius, this.ballY));
+    }
+
     if (this.ballX - this.ballRadius <= leftX + paddleW) {
-      this.dir = 1;
-      this.ballX = leftX + paddleW + this.ballRadius;
+      if (this.ballY >= this.leftY - lH / 2 && this.ballY <= this.leftY + lH / 2) {
+        this.vx = Math.abs(this.vx);
+        this.ballX = leftX + paddleW + this.ballRadius;
+      } else if (this.ballX < leftX) {
+        this.registerMiss('left');
+        return;
+      }
     }
     if (this.ballX + this.ballRadius >= rightX - paddleW) {
-      this.dir = -1;
-      this.ballX = rightX - paddleW - this.ballRadius;
+      if (this.ballY >= this.rightY - rH / 2 && this.ballY <= this.rightY + rH / 2) {
+        this.vx = -Math.abs(this.vx);
+        this.ballX = rightX - paddleW - this.ballRadius;
+      } else if (this.ballX > rightX) {
+        this.registerMiss('right');
+        return;
+      }
     }
 
     ctx.fillStyle = '#999';
@@ -80,5 +137,34 @@ export class PongGame {
     ctx.fill();
 
     requestAnimationFrame(() => this.loop());
+  }
+
+  registerMiss(side) {
+    const dir = side === 'left' ? 'LONG' : 'SHORT';
+    const allow = (dir === 'LONG' && this.bull > 45) ||
+                  (dir === 'SHORT' && this.bear > 45);
+    if (allow && this.midPrice) {
+      const entry = {
+        dir,
+        price: this.midPrice,
+        ts: Date.now(),
+        ctx: { obi: this.obi, sigma: this.sigma }
+      };
+      try {
+        const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
+        log.push(entry);
+        localStorage.setItem('tradeLog', JSON.stringify(log));
+      } catch {}
+      console.log(entry);
+    }
+    this.resetBall(dir === 'LONG' ? 1 : -1);
+  }
+
+  resetBall(direction) {
+    const h = this.canvas.height;
+    this.ballX = (this.leftBoundary() + this.rightBoundary()) / 2;
+    this.ballY = Math.random() * (h - this.ballRadius * 2) + this.ballRadius;
+    this.vx = direction * this.speed;
+    this.vy = (Math.random() * 2 - 1) * this.speed;
   }
 }

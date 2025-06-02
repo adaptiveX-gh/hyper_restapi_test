@@ -118,8 +118,8 @@ export class SignalRadar {
     this.timer = setInterval(() => this.tick(), 1000);
   }
 
-  updatePong(bear, bull) {
-    if (this.pong) this.pong.setPaddles(bear, bull);
+  updatePong(data) {
+    if (this.pong) this.pong.update(data);
   }
 
   addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0, colorValue=null }) {
