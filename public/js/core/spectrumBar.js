@@ -12,4 +12,7 @@ export function updateSpectrumBar(bearPct, bullPct) {
   if (bullFill) bullFill.style.width = `${bull / 2}%`;
   if (bearText) bearText.textContent = `${Math.round(bear)}%`;
   if (bullText) bullText.textContent = `${Math.round(bull)}%`;
+  if (window.radar && typeof window.radar.updatePong === 'function') {
+    window.radar.updatePong(bear, bull);
+  }
 }

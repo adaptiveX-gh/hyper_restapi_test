@@ -13,7 +13,12 @@ function makeHighchartsStub() {
           }));
         }
       }],
-      redraw: jest.fn()
+      redraw: jest.fn(),
+      plotLeft: 0,
+      plotTop: 0,
+      plotWidth: 200,
+      plotHeight: 200,
+      renderTo: document.createElement('div')
     }))
   };
 }

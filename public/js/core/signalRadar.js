@@ -1,4 +1,5 @@
 import config from './signalConfig.js';
+import { PongGame } from './pong.js';
 
 export class SignalRadar {
   constructor(containerId, cfg = config) {
@@ -113,7 +114,12 @@ export class SignalRadar {
       exporting: { enabled: false },
       custom: { radar: this, regimes }
     });
+    this.pong = new PongGame(this.chart);
     this.timer = setInterval(() => this.tick(), 1000);
+  }
+
+  updatePong(bear, bull) {
+    if (this.pong) this.pong.setPaddles(bear, bull);
   }
 
   addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0, colorValue=null }) {
