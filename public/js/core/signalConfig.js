@@ -132,5 +132,18 @@ export default {
     tooltip: 'Squeeze spike \u20130.4 \u2026 \u20131.0 within 5 s of large buy burst',
     meta: { side: 'bear', category: 'reversal' },
     implementationTip: "detectSqueeze(side='sell', thresh=-0.4)"
+  },
+
+  hidden_accumulation: {
+    id: 'hidden_accumulation',
+    label: 'Hidden Accumulation',
+    zone: 0.75,
+    color: '#2ecc71',
+    shape: 'triangle',
+    normalize: { max: 1 },
+    tooltip: 'Confirmation gauge > +0.10 = net bid absorptions',
+    meta: { side: 'bull', category: 'reversal' },
+    implementationTip: 'confirmationGauge > 0.10 for \u2265 N samples',
+    valueEffort: { value: 5, effort: 4 }
   }
 };
