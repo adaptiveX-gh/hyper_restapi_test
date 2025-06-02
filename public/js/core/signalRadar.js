@@ -3,6 +3,7 @@ import config from './signalConfig.js';
 export class SignalRadar {
   constructor(containerId, cfg = config) {
     this.points = [];
+    this.namedPoints = new Map();
     this.selectedSign = null;
     this.config = cfg;
     const regimes = [
@@ -212,6 +213,56 @@ export class SignalRadar {
     }
   }
 
+  addOrUpdateProbe({ id, stateScore = 0, strength = 0.1, ts = Date.now(), meta = {}, startY = 0 }) {
+    const cfg = this.config[id];
+    if (!cfg) {
+      console.warn('Missing config for', id);
+      return;
+    }
+    const bullish = id.endsWith('_up');
+    const val = bullish ? 1 : -1;
+    const max = cfg.normalize?.max ?? 1;
+    const scale = 40;
+    const zone = cfg.zone ?? (bullish ? 0.85 : -0.85);
+    const props = {
+      x: zone,
+      y: startY,
+      z: Math.min(Math.abs(strength) / max, 1) * scale,
+      colorValue: val,
+      color: cfg.color || (bullish ? '#28c76f' : '#ff4d4d'),
+      marker: { symbol: cfg.shape || 'triangle' },
+      tag: cfg.label || (bullish ? 'Smart-Money Probe \u2191' : 'Smart-Money Probe \u2193'),
+      xRaw: ts,
+      strength: Math.abs(strength),
+      meta: { ...cfg.meta, value: strength, ...meta }
+    };
+
+    const existing = this.namedPoints.get(id);
+    if (existing) {
+      Object.assign(existing, { born: ts, startY, strength: props.strength });
+      if (typeof existing.point.update === 'function') {
+        existing.point.update(props, false);
+      }
+      this.chart.redraw(false);
+    } else {
+      this.chart.series[0].addPoint(props, true, false, { duration: 300 });
+      const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
+      const rec = { id, born: ts, startY, strength: props.strength, point: hcPoint };
+      this.points.push(rec);
+      this.namedPoints.set(id, rec);
+      if (this.points.length > 400) {
+        this.points.sort((a, b) => a.strength - b.strength);
+        const excess = this.points.splice(0, this.points.length - 400);
+        excess.forEach(p => {
+          const idx = this.chart.series[0].data.indexOf(p.point);
+          if (idx > -1) this.chart.series[0].data[idx].remove(false);
+          if (p.id) this.namedPoints.delete(p.id);
+        });
+        this.chart.redraw(false);
+      }
+    }
+  }
+
   tick() {
     const now = Date.now();
     let dirty = false;
@@ -221,6 +272,9 @@ export class SignalRadar {
       if (age > 180) {
         if (typeof p.point.remove === 'function') p.point.remove(false);
         this.points.splice(i, 1);
+        if (p.id && this.namedPoints.get(p.id)?.point === p.point) {
+          this.namedPoints.delete(p.id);
+        }
         dirty = true;
       } else {
         if (typeof p.point.update === 'function') p.point.update({ y: age }, false);

@@ -69,5 +69,27 @@ export default {
     normalize: { max: 1 },
     tooltip: 'Early-Warn flips negative: asks absorb, bids vanish',
     meta: { side: 'bear', category: 'reversal' }
+  },
+  smart_money_probe_up: {
+    id: 'smart_money_probe_up',
+    label: 'Smart-Money Probe \u2191',
+    zone: 0.85,
+    color: '#28c76f',
+    shape: 'triangle',
+    normalize: { max: 1 },
+    implementationTip: 'OB-CFD \u0394>0 & price \u0394<0 for \u22653 ticks',
+    tooltip: 'Order book diverges bullishly',
+    meta: { side: 'bull', category: 'reversal' }
+  },
+  smart_money_probe_down: {
+    id: 'smart_money_probe_down',
+    label: 'Smart-Money Probe \u2193',
+    zone: -0.85,
+    color: '#ff4d4d',
+    shape: 'triangle',
+    normalize: { max: 1 },
+    implementationTip: 'OB-CFD \u0394<0 & price \u0394>0 for \u22653 ticks',
+    tooltip: 'Order book diverges bearishly',
+    meta: { side: 'bear', category: 'reversal' }
   }
 };
