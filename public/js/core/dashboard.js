@@ -609,22 +609,24 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
       series : [{ data: [0] }]     // single bar, single value
     };
 
-    /* 4⃣  Instantiate the two spectra ------------------------------------ */
-    const bullMeter = Highcharts.chart(
-      'bullMeter',
+    /* 4⃣  Instantiate the two spectra (if containers exist) -------------- */
+    const bullMeterEl = document.getElementById('bullMeter');
+    const bullMeter = bullMeterEl ? Highcharts.chart(
+      bullMeterEl,
       Highcharts.merge(barOpts, {
         chart: { backgroundColor: 'transparent' },
         title: { text: '<b>Bull Spectrum</b>', align: 'center', y: 10 }
       })
-    );
+    ) : null;
 
-    const bearMeter = Highcharts.chart(
-      'bearMeter',
+    const bearMeterEl = document.getElementById('bearMeter');
+    const bearMeter = bearMeterEl ? Highcharts.chart(
+      bearMeterEl,
       Highcharts.merge(barOpts, {
         chart: { backgroundColor: 'transparent' },
         title: { text: '<b>Bear Spectrum</b>', align: 'center', y: 10 }
       })
-    );
+    ) : null;
     
     const gC = makeGauge('gConfirm'),
           gW = makeGauge('gWarn'),
