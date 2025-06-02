@@ -429,9 +429,11 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastMomGauge = 0,
         lastSparkUp = 0,
         lastSparkDown = 0,
-        lastBuyDip = 0;
+        lastBuyDip = 0,
+        lastSellRally = 0;
 
     const BUY_DIP_DEDUP_MS = 30_000;
+    const SELL_RALLY_DEDUP_MS = 30_000;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -1578,6 +1580,15 @@ flowSSE.onmessage = (e) => {
       side: 'bid',
       meta: { type: 'Bid exhaustion', value: w }
     });
+    const trend = calcShortTrend(priceProbeBuf);
+    if (trend > 0.001 && now - lastSellRally > SELL_RALLY_DEDUP_MS) {
+      radar.addSellTheRally({
+        strength: w,
+        ts: now,
+        meta: { PxTrend: trend * 100 }
+      });
+      lastSellRally = now;
+    }
   }
   lastWarnGauge = w;
 
