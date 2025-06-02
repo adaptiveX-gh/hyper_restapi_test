@@ -2,17 +2,18 @@
 import { SignalRadar } from '../public/js/core/signalRadar.js';
 
 function makeHighchartsStub() {
+  const makeSeries = () => ({
+    data: [],
+    addPoint(point) {
+      this.data.push(Object.assign(point, {
+        update(changes) { Object.assign(this, changes); },
+        remove() { this.removed = true; }
+      }));
+    }
+  });
   return {
     chart: jest.fn(() => ({
-      series: [{
-        data: [],
-        addPoint(point) {
-          this.data.push(Object.assign(point, {
-            update(changes) { Object.assign(this, changes); },
-            remove() { this.removed = true; }
-          }));
-        }
-      }],
+      series: [makeSeries(), makeSeries()],
       redraw: jest.fn()
     }))
   };
@@ -32,8 +33,8 @@ describe('Smart Money Probe signal', () => {
     const radar = new SignalRadar('rad');
     const cfg = radar.config.smart_money_probe_up;
     radar.addOrUpdateProbe({ id: 'smart_money_probe_up', strength: 0.5, ts: 0 });
-    expect(radar.chart.series[0].data.length).toBe(1);
-    const p = radar.chart.series[0].data[0];
+    expect(radar.chart.series[1].data.length).toBe(1);
+    const p = radar.chart.series[1].data[0];
     expect(p.x).toBe(cfg.zone);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
@@ -41,8 +42,8 @@ describe('Smart Money Probe signal', () => {
     expect(cfg.implementationTip).toBe('OB-CFD \u0394>0 & price \u0394<0 for \u22653 ticks');
 
     radar.addOrUpdateProbe({ id: 'smart_money_probe_up', strength: 0.8, ts: 1000 });
-    expect(radar.chart.series[0].data.length).toBe(1);
-    const updated = radar.chart.series[0].data[0];
+    expect(radar.chart.series[1].data.length).toBe(1);
+    const updated = radar.chart.series[1].data[0];
     const expectedSize = Math.min(Math.abs(0.8) / (cfg.normalize.max ?? 1), 1) * 40;
     expect(updated.z).toBeCloseTo(expectedSize);
     expect(updated.xRaw).toBe(1000);

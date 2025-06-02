@@ -1573,6 +1573,15 @@ flowSSE.onmessage = (e) => {
     });
     lastSqueezeSignal = now;
   }
+  if (s < -SQUEEZE_THRESH && lastSqueezeGauge >= -SQUEEZE_THRESH &&
+      now - lastSqueezeSignal > SQUEEZE_DEDUP_MS) {
+    radar.addFlowFlipSqueezeDown({
+      strength: Math.min((-s - SQUEEZE_THRESH) / (1 - SQUEEZE_THRESH), 1),
+      ts: now,
+      meta: { value: s }
+    });
+    lastSqueezeSignal = now;
+  }
   lastSqueezeGauge = s;
 
   if (w > 0 && lastWarnGauge <= 0) {
