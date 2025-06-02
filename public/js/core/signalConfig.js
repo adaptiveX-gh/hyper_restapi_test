@@ -145,5 +145,18 @@ export default {
     meta: { side: 'bull', category: 'reversal' },
     implementationTip: 'confirmationGauge > 0.10 for \u2265 N samples',
     valueEffort: { value: 5, effort: 4 }
+  },
+
+  hidden_distribution: {
+    id: 'hidden_distribution',
+    label: 'Hidden Distribution',
+    zone: -0.75,
+    color: '#ff5e5e',
+    shape: 'triangle',
+    normalize: { max: 1 },
+    tooltip: 'Confirmation gauge < \u20130.10 \u2192 BEAR',
+    meta: { side: 'bear', category: 'reversal' },
+    implementationTip: 'confirmationGauge < -0.10 for \u2265 N samples',
+    valueEffort: { value: 5, effort: 4 }
   }
 };

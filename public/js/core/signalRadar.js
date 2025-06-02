@@ -440,6 +440,47 @@ export class SignalRadar {
     }
   }
 
+  addHiddenDistribution({
+    strength = 0.1,
+    ts = Date.now(),
+    meta = {},
+    startY = 0
+  }) {
+    const cfg = this.config.hidden_distribution;
+    if (!cfg) {
+      console.warn('Missing config for hidden_distribution');
+      return;
+    }
+    const val = -1;
+    const max = cfg.normalize?.max ?? 1;
+    const scale = 40;
+    const point = {
+      x: cfg.zone ?? -0.75,
+      y: startY,
+      z: Math.min(Math.abs(strength) / max, 1) * scale,
+      colorValue: val,
+      color: cfg.color || '#ff5e5e',
+      marker: { symbol: cfg.shape || 'triangle' },
+      tag: cfg.label || 'Hidden Distribution',
+      xRaw: ts,
+      strength: Math.abs(strength),
+      meta: { ...cfg.meta, value: strength, ...meta }
+    };
+    if (point.strength <= 0) return;
+    const idx = 0;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
+    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    if (this.points.length > 400) {
+      this.points.sort((a, b) => a.strength - b.strength);
+      const excess = this.points.splice(0, this.points.length - 400);
+      excess.forEach(p => {
+        if (p.point.remove) p.point.remove(false);
+      });
+      this.chart.redraw(false);
+    }
+  }
+
   addOrUpdateProbe({ id, stateScore = 0, strength = 0.1, ts = Date.now(), meta = {}, startY = 0 }) {
     const cfg = this.config[id];
     if (!cfg) {
