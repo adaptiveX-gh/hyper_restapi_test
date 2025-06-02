@@ -84,7 +84,7 @@ export class SignalRadar {
         }
       },
       series: [{
-        name: 'BearSignals',
+        name: 'Short Signals',
         yAxis: 0,
         colorKey: 'colorValue',
         data: [],
@@ -96,7 +96,7 @@ export class SignalRadar {
           }
         }
       }, {
-        name: 'BullSignals',
+        name: 'Long Signals',
         yAxis: 1,
         colorKey: 'colorValue',
         data: [],
