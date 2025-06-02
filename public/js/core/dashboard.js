@@ -761,47 +761,44 @@ function regimeDetails(value) {
 
 function initCFDChart () {
   if (obCFD) return;             // already initialised
+    obCFD = Highcharts.chart('obCfd', {
+      chart : { type:'area', height:320, spacing:[10,10,25,10], zoomType:'x' },
+      title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
+      xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
+      yAxis : [{
+          title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
+        },{ title:{ text:'Price' }, opposite:true, visible:false }],
+      tooltip : { shared:true, xDateFormat:'%H:%M' },
+      legend  : { enabled:false },
 
-  obCFD = Highcharts.chart('obCfd', {
-    chart : { type:'area', height:320, spacing:[10,10,25,10], zoomType:'x' },
-    title : { text:'Order-Book Imbalance CFD', style:{ fontSize:'15px' } },
-    xAxis : { type:'datetime', labels : { format : '{value:%H:%M:%S}' } },
-    yAxis : [{
-        title:{ text:'Depth Notional ($)', style:{ fontWeight:600 } }
-      },{ title:{ text:'Price' }, opposite:true, visible:false }],
-    tooltip : { shared:true, xDateFormat:'%H:%M' },
-    legend  : { enabled:false },
+      // ⬇⬇⬇  NOTICE the added 'id' for EVERY SERIES  ⬇⬇⬇
+      series  : [
+        { id: 'bids',       name:'Bids',      type:'area', data:[],
+          color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
+        { id: 'asks',       name:'Asks',      type:'area', data:[],
+          color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
+        { id: 'imb',        name:'Imbalance', type:'line', data:[],
+          color:'#1e90ff',  lineWidth:1.6 },
+        { id: 'mid',        name:'Mid-price', type:'line', data:[],
+          color:'#555',     dashStyle:'Dash', yAxis:1 },
 
-    /* empty placeholders – ensures 4 series exist from the start */
-    series  : [
-      { name:'Bids',      type:'area', data:[],
-        color:'rgba(77,255,136,.55)',  fillOpacity:.6 },
-      { name:'Asks',      type:'area', data:[],
-        color:'rgba(255,77,77,.55)',   fillOpacity:.6 },
-      { name:'Imbalance', type:'line', data:[],
-        color:'#1e90ff',  lineWidth:1.6 },
-      { name:'Mid-price', type:'line', data:[],
-        color:'#555',     dashStyle:'Dash', yAxis:1 },
+        // Forecast & bands, all WITH explicit id!
+        { id:'imb-fore', name:'Forecast',
+          type:'line', data:[], dashStyle:'Dash',
+          color:'#1e90ff', lineWidth:1.5, enableMouseTracking:false },
 
-   /* NEW: forecast centre line (4) */
-      { id:'imb-fore', name:'Forecast',
-        type:'line', data:[], dashStyle:'Dash',
-        color:'#1e90ff', lineWidth:1.5, enableMouseTracking:false },
+        { id:'imb-up', type:'line', data:[], dashStyle:'Dot',
+          color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
 
-      /* NEW: upper band (5) */
-      { id:'imb-up', type:'line', data:[], dashStyle:'Dot',
-        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
+        { id:'imb-lo', type:'line', data:[], dashStyle:'Dot',
+          color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
 
-      /* NEW: lower band (6) */
-      { id:'imb-lo', type:'line', data:[], dashStyle:'Dot',
-        color:'#ffcc00', lineWidth:1, enableMouseTracking:false },
-        
-    { id:'imb-conf', type:'arearange', data:[], zIndex:0,
-      color:'#1e90ff', fillOpacity:.08, lineWidth:0,
-      enableMouseTracking:false }        
-    ],
-    credits : { enabled:false }
-  });
+        { id:'imb-conf', type:'arearange', data:[], zIndex:0,
+          color:'#1e90ff', fillOpacity:.08, lineWidth:0,
+          enableMouseTracking:false }        
+      ],
+      credits : { enabled:false }
+    });
   window.obCFD = obCFD;
 }
 
