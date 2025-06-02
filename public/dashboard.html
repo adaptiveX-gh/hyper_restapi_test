@@ -67,41 +67,7 @@
       justify-content: flex-start; /* or center if you want */
       margin-bottom: 30px;     /* add space after meters */
     }
-    .spectrum-meter {
-      position: relative;
-      flex: 1 1 0;
-      min-width: 280px;        /* to avoid squishing */
-      height: 100px;
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 1px 10px rgba(60,100,140,0.03);
-      padding: 14px 18px;
-    }      
-    
-  .spectrum-regime {
-    text-align: center;
-    font-weight: bold;
-    font-size: 1rem;
-    margin-top: 3px;
-    letter-spacing: .13em;
-    color: #235;
-  }    
-  .spectrum-regime-overlay {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 8px; /* Adjust distance from bottom as needed */
-    text-align: center;
-    font-size: .90rem;          /* a bit smaller */
-    font-weight: bold;
-    color: #235;
-    letter-spacing: .12em;
-    pointer-events: none; /* So overlay doesn't block interaction */
-    z-index: 5;
-    /* background fade for contrast */
-    background: rgba(255,255,255,0.7); border-radius: 7px;
-    
-  }  
+
     .hidden { display:none !important; }
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
@@ -329,15 +295,13 @@
     </div>
   </div>
   <div class="obi-spectrum-row">
-      <div class="spectrum-meter">
-      <div id="bullMeter"></div>
-      <div id="bullRegime" class="spectrum-regime-overlay"></div>
+    <div class="obi-block" style="flex:1; min-height:100px; display:flex; align-items:center; justify-content:center;">
+      <div id="bullBearBar" class="center-spectrum" style="width:90%;">
+        <div class="bear-fill"><span id="bearPct">0%</span></div>
+        <div class="bull-fill"><span id="bullPct">0%</span></div>
+      </div>
     </div>
-    <div class="spectrum-meter">
-      <div id="bearMeter"></div>
-      <div id="bearRegime" class="spectrum-regime-overlay"></div>
-    </div>
-</div>
+  </div>
 
   <!-- ─── Order-book CFD chart ───────────────────────────────────── -->
   <div id="bigCFDRow" class="row-flex">
