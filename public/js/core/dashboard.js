@@ -425,7 +425,10 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastExtreme = {side:0,ts:0},
         lastSpread  = null,
         lastLaR     = 0.3, // ◀── TODO: replace with your realized-vol calculation
-        lastWarnGauge = 0;
+        lastWarnGauge = 0,
+        lastMomGauge = 0,
+        lastSparkUp = 0,
+        lastSparkDown = 0;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -1490,6 +1493,27 @@ flowSSE.onmessage = (e) => {
     : 0;
   updMom(momVal);
   setGaugeStatus('statusMom', momVal);
+  if (momVal > 0.30 && lastMomGauge <= 0.30 && now - lastSparkUp > 5000) {
+    radar.addIgnitionSpark({
+      stateScore: window.stateScore || 0,
+      strength: momVal,
+      ts: now,
+      side: 'up',
+      meta: { value: momVal }
+    });
+    lastSparkUp = now;
+  }
+  if (momVal < -0.30 && lastMomGauge >= -0.30 && now - lastSparkDown > 5000) {
+    radar.addIgnitionSpark({
+      stateScore: window.stateScore || 0,
+      strength: momVal,
+      ts: now,
+      side: 'down',
+      meta: { value: momVal }
+    });
+    lastSparkDown = now;
+  }
+  lastMomGauge = momVal;
 
   /* ─── 7.  Donut counters & ticker messages  ────────────────── */
   if (isAbs) absCount[t.side]++;
