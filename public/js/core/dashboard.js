@@ -16,6 +16,7 @@ let hlWs = null;          // keep a reference so we can close / restart
   let radar;
   const depthBufProbe = [];
   const priceProbeBuf = [];
+  const squeezeMetricBuf = [];
 
     // put near the top of dashboard.js – before updateBigTiles is ever called
     let LIQ_MEDIAN = NaN;     // <- will be filled once slow-stats arrives
@@ -430,10 +431,14 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastSparkUp = 0,
         lastSparkDown = 0,
         lastBuyDip = 0,
-        lastSellRally = 0;
+        lastSellRally = 0,
+        lastSqueezeGauge = 0,
+        lastSqueezeSignal = 0;
 
     const BUY_DIP_DEDUP_MS = 30_000;
     const SELL_RALLY_DEDUP_MS = 30_000;
+    const SQUEEZE_DEDUP_MS = 5_000;
+    const SQUEEZE_THRESH = 0.4;
 
      if (!Number.isFinite(lastLaR)) lastLaR = 0;        
 
@@ -1555,6 +1560,20 @@ flowSSE.onmessage = (e) => {
   updW(w); setGaugeStatus('statusWarn',     w);
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
+
+  squeezeMetricBuf.push({ ts: now, value: s });
+  while (squeezeMetricBuf.length && now - squeezeMetricBuf[0].ts > 5000)
+    squeezeMetricBuf.shift();
+  if (s > SQUEEZE_THRESH && lastSqueezeGauge <= SQUEEZE_THRESH &&
+      now - lastSqueezeSignal > SQUEEZE_DEDUP_MS) {
+    radar.addFlowFlipSqueezeUp({
+      strength: Math.min((s - SQUEEZE_THRESH) / (1 - SQUEEZE_THRESH), 1),
+      ts: now,
+      meta: { value: s }
+    });
+    lastSqueezeSignal = now;
+  }
+  lastSqueezeGauge = s;
 
   if (w > 0 && lastWarnGauge <= 0) {
     radar.addEarlyWarn({
