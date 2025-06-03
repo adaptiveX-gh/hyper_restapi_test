@@ -1,6 +1,6 @@
 export const GOOGLE_URL =
   process.env.GS_TOP_TRADER_WEIGHTS_URL ||
-  'https://script.google.com/macros/s/AKfycbwiSwVbWyRNH5UZ6KkXy-qbV1mAaFWrwiISRDIBEtlCYvXec-UT2PdQh6romltUIfM/exec';
+  'https://script.google.com/macros/s/AKfycbzjKnWddkHao_7-BWBpdhGcK1zZNkWp8o8m_fM-b06_y71xvSc_6V8NFXliV65d58x1/exec';
 
 export function relayRoute(app) {
   app.get('/weights.json', async (req, res) => {
