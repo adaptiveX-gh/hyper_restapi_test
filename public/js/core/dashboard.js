@@ -11,6 +11,7 @@ import { updateSpectrumBar } from './spectrumBar.js';
 import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
+import { onGaugeUpdate } from './topTraderTrigger.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1827,9 +1828,10 @@ flowSSE.onmessage = (e) => {
     biasSlope15m: 0
   };
 
-  const r = Number.isFinite(lastObiRatio) ? lastObiRatio : 1.0;
-  const priceNow = priceProbeBuf.length ?
-        priceProbeBuf[priceProbeBuf.length - 1].px : null;
+    const r = Number.isFinite(lastObiRatio) ? lastObiRatio : 1.0;
+    const priceNow = priceProbeBuf.length ?
+          priceProbeBuf[priceProbeBuf.length - 1].px : null;
+    onGaugeUpdate({ bullPct: bullVal, bearPct: bearVal, midPrice: priceNow });
   const sigmaBps = (() => {
     if (priceProbeBuf.length < 2) return 0;
     let sum = 0, sumSq = 0;

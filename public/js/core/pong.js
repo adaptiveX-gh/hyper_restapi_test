@@ -201,9 +201,6 @@ export class PongGame {
   registerMiss(side, opts = {}) {
     const { force = false } = opts;
     const dir = side === 'left' ? 'LONG' : 'SHORT';
-    const allow = force ||
-                  (dir === 'LONG' && this.bull >= 45) ||
-                  (dir === 'SHORT' && this.bear >= 45);
 
     const ctx = window.contextMetrics || {};
     const result = passesContextGuards(dir, {
@@ -233,7 +230,7 @@ export class PongGame {
       test: force
     };
 
-    if (allow && result.grade !== 'Vetoed') {
+    if (result.grade !== 'Vetoed') {
       try {
         const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
         log.push({ ts: Date.now(), ...entry });
