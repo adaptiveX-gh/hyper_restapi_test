@@ -27,7 +27,7 @@ describe('PongGame update', () => {
 
   test('updatePong survives missing obi', () => {
     const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
-    const game = new PongGame(chart);
+    const game = new PongGame(chart, true);
     expect(() => game.update({ bearPct:10, bullPct:20 })).not.toThrow();
   });
 });
@@ -40,7 +40,7 @@ describe('PongGame miss logging', () => {
 
   test('registerMiss stores trade when conditions met', () => {
     const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
-    const game = new PongGame(chart);
+    const game = new PongGame(chart, true);
     game.update({ bullPct:60, bearPct:10, midPrice:100 });
     game.registerMiss('left');
     const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
@@ -56,7 +56,7 @@ describe('PongGame collision detection', () => {
 
   test('ball crossing paddle outside range triggers miss', () => {
     const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
-    const game = new PongGame(chart);
+    const game = new PongGame(chart, true);
     const leftX = game.leftBoundary();
     const paddleW = game.paddleWidth;
     game.leftY = chart.plotHeight * 0.1;
@@ -71,7 +71,7 @@ describe('PongGame collision detection', () => {
 
   test('ball crossing paddle within range bounces', () => {
     const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
-    const game = new PongGame(chart);
+    const game = new PongGame(chart, true);
     const leftX = game.leftBoundary();
     const paddleW = game.paddleWidth;
     game.leftY = chart.plotHeight / 2;

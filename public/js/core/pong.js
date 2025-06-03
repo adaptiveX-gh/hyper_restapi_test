@@ -13,7 +13,7 @@ export function chase (paddle, ballY, obi = 1) {
 }
 
 export class PongGame {
-  constructor(chart) {
+  constructor(chart, autoStart = false) {
     this.chart = chart;
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'pong-overlay';
@@ -42,7 +42,7 @@ export class PongGame {
 
     this.running = false;
     this.resize();
-    this.start();
+    if (autoStart) this.start();
   }
 
   resize() {
