@@ -1,11 +1,14 @@
 export function vFromSigma(sigmaBps) {
-  return 0.3 + Math.min(3, sigmaBps) / 3 * 0.9;
+  const capped = Math.min(3, Math.max(0, sigmaBps));
+  return 0.6 + capped / 3 * 1.9; // 0→0.6, 3→2.5 px/frame
 }
 
 export function chase(paddle, ballY, obi) {
-  const chaseSpeed = Math.abs(obi - 1) * 1.5;
-  if (ballY > paddle.y) paddle.y += Math.min(chaseSpeed, 2);
-  else                   paddle.y -= Math.min(chaseSpeed, 2);
+  const base = 0.6;
+  const factor = 3.0;
+  const chaseSpeed = base + factor * Math.min(1, Math.abs(obi - 1));
+  if (ballY > paddle.y) paddle.y += Math.min(chaseSpeed, 6);
+  else                   paddle.y -= Math.min(chaseSpeed, 6);
 }
 
 export class PongGame {
@@ -29,7 +32,7 @@ export class PongGame {
     this.leftY = 0;
     this.rightY = 0;
     this.vx = this.speed;
-    this.vy = 0;
+    this.randomiseVy();
 
     this.obi = 1;
     this.bull = 0;
@@ -116,6 +119,7 @@ export class PongGame {
       if (this.ballY >= this.leftY - lH / 2 && this.ballY <= this.leftY + lH / 2) {
         this.vx = Math.abs(this.vx);
         this.ballX = leftX + paddleW + this.ballRadius;
+        this.randomiseVy();
       } else if (this.ballX < leftX) {
         this.registerMiss('left');
         return;
@@ -125,6 +129,7 @@ export class PongGame {
       if (this.ballY >= this.rightY - rH / 2 && this.ballY <= this.rightY + rH / 2) {
         this.vx = -Math.abs(this.vx);
         this.ballX = rightX - paddleW - this.ballRadius;
+        this.randomiseVy();
       } else if (this.ballX > rightX) {
         this.registerMiss('right');
         return;
@@ -160,11 +165,16 @@ export class PongGame {
     this.resetBall(dir === 'LONG' ? 1 : -1);
   }
 
+  randomiseVy() {
+    this.vy = (Math.random() * 2 - 1) * this.speed;
+    if (Math.abs(this.vy) < 0.2) this.vy = 0.2 * Math.sign(this.vy || 1);
+  }
+
   resetBall(direction) {
     const h = this.canvas.height;
     this.ballX = (this.leftBoundary() + this.rightBoundary()) / 2;
     this.ballY = Math.random() * (h - this.ballRadius * 2) + this.ballRadius;
     this.vx = direction * this.speed;
-    this.vy = (Math.random() * 2 - 1) * this.speed;
+    this.randomiseVy();
   }
 }

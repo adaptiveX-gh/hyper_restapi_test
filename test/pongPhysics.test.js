@@ -3,14 +3,20 @@ import { PongGame, vFromSigma, chase } from '../public/js/core/pong.js';
 
 describe('Pong helpers', () => {
   test('vFromSigma maps volatility to speed', () => {
-    expect(vFromSigma(0)).toBeCloseTo(0.3, 2);
-    expect(vFromSigma(3)).toBeCloseTo(1.2, 1);
+    expect(vFromSigma(0)).toBeCloseTo(0.6, 2);
+    expect(vFromSigma(3)).toBeCloseTo(2.5, 1);
   });
 
   test('chase moves paddle toward ball', () => {
     const p = { y: 10 };
-    chase(p, 20, 1.3); // (1.3-1)*1.5 = 0.45
-    expect(p.y).toBeCloseTo(10 + 0.45, 2);
+    chase(p, 20, 1.3); // base0.6 + factor3*(0.3)=1.5
+    expect(p.y).toBeCloseTo(11.5, 2);
+  });
+
+  test('chase has baseline speed at OBI neutral', () => {
+    const p = { y: 5 };
+    chase(p, 8, 1.0);
+    expect(p.y).toBeCloseTo(5.6, 2); // base speed 0.6
   });
 });
 
