@@ -229,7 +229,8 @@ export class PongGame {
       earlyWarn: ctx.earlyWarn,
       resilience: ctx.resilience,
       grade : result.grade,
-      warnings: result.reasons
+      warnings: result.reasons,
+      test: force
     };
 
     if (allow && result.grade !== 'Vetoed') {
