@@ -17,6 +17,7 @@ function load(){
 
 export async function logMiss(entry){
   const row = { timestamp:new Date().toISOString(), ...entry };
+  console.log('[TEST TRADE EVENT]', row, 'URL:', window.GS_LOG_URL);
   const q = load();
   q.push(row);
   save(q);
@@ -25,18 +26,24 @@ export async function logMiss(entry){
 
 export async function flushQueue(){
   const url = window.GS_LOG_URL;
-  if(!url) return;
+  if(!url){
+    console.warn('[missLogger] GS_LOG_URL not set');
+    return;
+  }
   let q = load();
   while(q.length){
     const item = q[0];
     try{
-      await fetch(url, {
+      const resp = await fetch(url, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify(item)
       });
+      const text = await resp.text();
+      console.log('[SHEET RESP]', resp.status, text);
       q.shift();
-    }catch{
+    }catch(e){
+      console.warn('[GS LOG ERROR]', e);
       break;
     }
   }
