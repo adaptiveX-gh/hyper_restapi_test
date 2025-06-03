@@ -3,6 +3,7 @@
 const QUEUE_KEY = 'missLogQueue';
 const FLUSH_MS  = 10000; // 10 s
 let failStreak = 0;
+let isFlushing = false;
 
 /** Persist queue to localStorage */
 function save(q){
@@ -32,35 +33,41 @@ export async function logMiss(entry){
 }
 
 export async function flushQueue(){
+  if (isFlushing) return;
+  isFlushing = true;
   const url = '/gs-journal';
   let q = load();
-  while(q.length){
-    const item = q[0];
-    if (item.test) {
-      q.shift();
-      continue;
-    }
-    try{
-      const resp = await fetch(url, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(item)
-      });
-      const text = await resp.text();
-      console.log('[SHEET RESP]', resp.status, text);
-      if(!resp.ok || text.includes('Upstream failed')) throw new Error(text);
-      q.shift();
-      failStreak = 0;
-    }catch(e){
-      console.warn('[GS LOG ERROR]', e);
-      failStreak++;
-      if(failStreak >= 3 && typeof window !== 'undefined') {
-        console.warn('Could not log trades – retrying…');
+  try {
+    while (q.length) {
+      const item = q[0];
+      if (item.test) {
+        q.shift();
+        continue;
       }
-      break;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+        const text = await resp.text();
+        console.log('[SHEET RESP]', resp.status, text);
+        if (!resp.ok || text.includes('Upstream failed')) throw new Error(text);
+        q.shift();
+        failStreak = 0;
+      } catch (e) {
+        console.warn('[GS LOG ERROR]', e);
+        failStreak++;
+        if (failStreak >= 3 && typeof window !== 'undefined') {
+          console.warn('Could not log trades – retrying…');
+        }
+        break;
+      }
     }
+    save(q);
+  } finally {
+    isFlushing = false;
   }
-  save(q);
 }
 
 if (typeof window !== 'undefined'){
