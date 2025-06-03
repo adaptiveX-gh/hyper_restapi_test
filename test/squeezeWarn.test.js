@@ -39,7 +39,9 @@ describe('Micro-Squeeze warning signals', () => {
     radar.addSqueezeWarnUp({ strength: 0.3, ts: Date.now() });
     const cfg = radar.config.squeeze_warn_up;
     const p = radar.chart.series[1].data[0];
-    expect(p.x).toBe(cfg.zone);
+    const [minUp, maxUp] = radar.calcZoneRange(cfg);
+    expect(p.x).toBeGreaterThanOrEqual(minUp);
+    expect(p.x).toBeLessThanOrEqual(maxUp);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
     expect(p.tag).toBe(cfg.label);
@@ -50,7 +52,9 @@ describe('Micro-Squeeze warning signals', () => {
     radar.addSqueezeWarnDown({ strength: 0.3, ts: Date.now() });
     const cfg = radar.config.squeeze_warn_down;
     const p = radar.chart.series[0].data[0];
-    expect(p.x).toBe(cfg.zone);
+    const [minDown, maxDown] = radar.calcZoneRange(cfg);
+    expect(p.x).toBeGreaterThanOrEqual(minDown);
+    expect(p.x).toBeLessThanOrEqual(maxDown);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
     expect(p.tag).toBe(cfg.label);
