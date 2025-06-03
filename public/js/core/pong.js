@@ -202,6 +202,8 @@ export class PongGame {
       } catch {}
       console.log(entry);
     }
+    // flag the loop as stopped so start() schedules a new frame
+    this.stop();
     this.resetBall(dir === 'LONG' ? 1 : -1);
     this.start();
   }
