@@ -262,3 +262,17 @@ section.hidden { display: none; }
   z-index: 10;
 }
 
+/* BAN-style score row below radar */
+.score-row {
+  width: 100%;
+  display: flex;
+  gap: 24px;
+  justify-content: space-around;
+  margin-top: 12px;
+}
+
+.score-row .big-indicator-card {
+  flex: 1;
+  min-width: 90px;
+}
+
