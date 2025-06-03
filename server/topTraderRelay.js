@@ -1,4 +1,5 @@
 export const GOOGLE_URL =
+  process.env.GS_TOP_TRADER_WEIGHTS_URL ||
   'https://script.google.com/macros/s/AKfycbVoUCKNWedWUStRHQexzDDfW5mMRRzEz1ygZ0oWR8IFT2Ly7hsrVdVKDLJyyS6tD-a4g/exec';
 
 export function relayRoute(app) {
