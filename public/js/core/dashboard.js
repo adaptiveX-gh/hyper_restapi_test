@@ -1863,6 +1863,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { resetBtn.disabled = false; }, 200);
     });
   }
+  const bullBtn = document.getElementById('test-bull-trade');
+  if (bullBtn) {
+    bullBtn.addEventListener('click', () => {
+      bullBtn.disabled = true;
+      window.radar?.pong?.registerMiss('left');
+      setTimeout(() => { bullBtn.disabled = false; }, 200);
+    });
+  }
+  const bearBtn = document.getElementById('test-bear-trade');
+  if (bearBtn) {
+    bearBtn.addEventListener('click', () => {
+      bearBtn.disabled = true;
+      window.radar?.pong?.registerMiss('right');
+      setTimeout(() => { bearBtn.disabled = false; }, 200);
+    });
+  }
   initCFDChart();
   start();
   biasTimer.start();
