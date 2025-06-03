@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { onGaugeUpdate, resetTrigger } from '../public/js/core/topTraderTrigger.js';
+import { onGaugeUpdate, resetTrigger, setWarmupMs } from '../public/js/core/topTraderTrigger.js';
 import bus from '../public/js/core/eventBus.js';
 import { logMiss } from '../public/js/core/missLogger.js';
 
@@ -10,6 +10,7 @@ jest.mock('../public/js/core/missLogger.js', () => ({
 describe('topTraderTrigger', () => {
   beforeEach(() => {
     resetTrigger();
+    setWarmupMs(0);
     bus.removeAllListeners();
     logMiss.mockClear();
   });
@@ -41,5 +42,15 @@ describe('topTraderTrigger', () => {
     onGaugeUpdate({ bearPct: 46, bullPct: 10, midPrice: 200 });
     expect(logMiss).toHaveBeenCalledTimes(1);
     expect(events[0].dir).toBe('SHORT');
+  });
+
+  test('does not fire during warmup period', () => {
+    setWarmupMs(5000);
+    resetTrigger();
+    const events = [];
+    bus.on('trade:fire', e => events.push(e));
+    onGaugeUpdate({ bullPct: 50, bearPct: 0 });
+    expect(logMiss).not.toHaveBeenCalled();
+    expect(events.length).toBe(0);
   });
 });

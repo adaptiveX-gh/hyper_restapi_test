@@ -1,19 +1,28 @@
 import { logMiss } from './missLogger.js';
 import bus from './eventBus.js';
 
+let warmupMs = 5000;
+let startTime = Date.now();
+
 let prevBull = 0;
 let prevBear = 0;
 let bullArmed = true;
 let bearArmed = true;
+
+export function setWarmupMs(ms) {
+  warmupMs = ms;
+}
 
 export function resetTrigger() {
   prevBull = 0;
   prevBear = 0;
   bullArmed = true;
   bearArmed = true;
+  startTime = Date.now();
 }
 
 export function onGaugeUpdate({ bullPct = 0, bearPct = 0, midPrice = null } = {}) {
+  if (Date.now() - startTime < warmupMs) return;
   if (bullArmed && bullPct >= 45 && prevBull < 45) {
     fire('LONG', 'bull', bullPct, midPrice);
     bullArmed = false;
