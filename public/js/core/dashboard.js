@@ -1863,13 +1863,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { resetBtn.disabled = false; }, 200);
     });
   }
-  const testBtn = document.getElementById('test-trade');
-  if (testBtn) {
-    testBtn.addEventListener('click', () => {
-      testBtn.disabled = true;
-      const side = Math.random() < 0.5 ? 'left' : 'right';
-      window.radar?.pong?.registerMiss(side);
-      setTimeout(() => { testBtn.disabled = false; }, 200);
+  const bullBtn = document.getElementById('test-bull-trade');
+  if (bullBtn) {
+    bullBtn.addEventListener('click', () => {
+      bullBtn.disabled = true;
+      window.radar?.pong?.registerMiss('left');
+      setTimeout(() => { bullBtn.disabled = false; }, 200);
+    });
+  }
+  const bearBtn = document.getElementById('test-bear-trade');
+  if (bearBtn) {
+    bearBtn.addEventListener('click', () => {
+      bearBtn.disabled = true;
+      window.radar?.pong?.registerMiss('right');
+      setTimeout(() => { bearBtn.disabled = false; }, 200);
     });
   }
   initCFDChart();
