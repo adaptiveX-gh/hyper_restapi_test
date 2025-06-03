@@ -38,7 +38,9 @@ describe('Flow Flip Squeeze signal', () => {
     radar.addFlowFlipSqueezeDown({ strength: 0.6, ts: Date.now() });
     const cfg = radar.config.flow_flip_squeeze_down;
     const p = radar.chart.series[0].data[0];
-    expect(p.x).toBe(cfg.zone);
+    const [min, max] = radar.calcZoneRange(cfg);
+    expect(p.x).toBeGreaterThanOrEqual(min);
+    expect(p.x).toBeLessThanOrEqual(max);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
     expect(p.tag).toBe(cfg.label);

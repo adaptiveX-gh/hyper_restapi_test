@@ -122,6 +122,22 @@ export class SignalRadar {
     if (this.pong) this.pong.update(data);
   }
 
+  calcZoneRange(cfg = {}, fallbackZone = 0) {
+    const zone = cfg.zone ?? fallbackZone;
+    const band = this.regimes.find(b => zone >= b.from && zone <= b.to);
+    const defMin = Math.max(zone - 0.1, band?.from ?? zone - 0.1);
+    const defMax = Math.min(zone + 0.1, band?.to ?? zone + 0.1);
+    const min = cfg.zoneMin ?? defMin;
+    const max = cfg.zoneMax ?? defMax;
+    return [min, max];
+  }
+
+  jitterX(cfg = {}, fallbackZone = 0) {
+    const [min, max] = this.calcZoneRange(cfg, fallbackZone);
+    if (max <= min) return min;
+    return min + Math.random() * (max - min);
+  }
+
   addProbe({ stateScore=0, strength=0.3, ts=Date.now(), meta={}, startY=0, colorValue=null }) {
     const cfg  = this.config.probe || {};
     const val  = colorValue ?? stateScore;
@@ -173,9 +189,8 @@ export class SignalRadar {
     const val = bullish ? 1 : -1;
     const max = cfg.normalize?.max ?? 1;
     const scale = 40; // base bubble size
-    const zone = cfg.zone ?? (bullish ? 0.7 : -0.7);
     const point = {
-      x: zone,
+      x: this.jitterX(cfg, bullish ? 0.7 : -0.7),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -216,7 +231,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40; // base bubble size
     const point = {
-      x: cfg.zone ?? (bullish ? 0.5 : -0.5),
+      x: this.jitterX(cfg, bullish ? 0.5 : -0.5),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -256,7 +271,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.4,
+      x: this.jitterX(cfg, 0.4),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -297,7 +312,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.4,
+      x: this.jitterX(cfg, -0.4),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -338,7 +353,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.65,
+      x: this.jitterX(cfg, 0.65),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -379,7 +394,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.65,
+      x: this.jitterX(cfg, -0.65),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -420,7 +435,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.55,
+      x: this.jitterX(cfg, 0.55),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -459,7 +474,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.55,
+      x: this.jitterX(cfg, -0.55),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -498,7 +513,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.75,
+      x: this.jitterX(cfg, 0.75),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -539,7 +554,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.75,
+      x: this.jitterX(cfg, -0.75),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -580,7 +595,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.35,
+      x: this.jitterX(cfg, 0.35),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -621,7 +636,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.35,
+      x: this.jitterX(cfg, -0.35),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -657,7 +672,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? 0.9,
+      x: this.jitterX(cfg, 0.9),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -690,7 +705,7 @@ export class SignalRadar {
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
     const point = {
-      x: cfg.zone ?? -0.9,
+      x: this.jitterX(cfg, -0.9),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
@@ -723,9 +738,8 @@ export class SignalRadar {
     const val = bullish ? 1 : -1;
     const max = cfg.normalize?.max ?? 1;
     const scale = 40;
-    const zone = cfg.zone ?? (bullish ? 0.85 : -0.85);
     const props = {
-      x: zone,
+      x: this.jitterX(cfg, bullish ? 0.85 : -0.85),
       y: startY,
       z: Math.min(Math.abs(strength) / max, 1) * scale,
       colorValue: val,
