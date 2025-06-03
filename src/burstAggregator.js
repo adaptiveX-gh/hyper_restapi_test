@@ -1,4 +1,5 @@
 export const BUCKET_MS = 1000;
+export const TOP_WEIGHT_THRESHOLD = 0.6;
 
 let hiddenCount = 0;
 const buckets = new Map();
@@ -34,7 +35,8 @@ function flush(key) {
       price: +(price.toFixed(2)),
       time: new Date().toLocaleTimeString('en-US', { hour12: false }),
       weight: b.weight,
-      bias: b.bias
+      bias: b.bias,
+      top: b.weight >= TOP_WEIGHT_THRESHOLD
     };
     onEmit(row);
   } else {
