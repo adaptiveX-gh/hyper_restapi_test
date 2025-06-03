@@ -1,14 +1,15 @@
-export function vFromSigma(sigmaBps) {
+export function vFromSigma (sigmaBps = 0) {
   const capped = Math.min(3, Math.max(0, sigmaBps));
-  return 0.6 + capped / 3 * 1.9; // 0→0.6, 3→2.5 px/frame
+  // 0 bps  → 0.6   3 bps → 2.5  (px / frame)
+  return 0.6 + (capped / 3) * 1.9;
 }
 
-export function chase(paddle, ballY, obi) {
-  const base = 0.6;
-  const factor = 3.0;
-  const chaseSpeed = base + factor * Math.min(1, Math.abs(obi - 1));
-  if (ballY > paddle.y) paddle.y += Math.min(chaseSpeed, 6);
-  else                   paddle.y -= Math.min(chaseSpeed, 6);
+export function chase (paddle, ballY, obi = 1) {
+  const base   = 0.6;          // always move a little
+  const factor = 3.0;          // extra speed when OBI extreme
+  const speed  = base + factor * Math.min(1, Math.abs(obi - 1));
+  if (ballY > paddle.y) paddle.y += Math.min(speed, 6);
+  else                  paddle.y -= Math.min(speed, 6);
 }
 
 export class PongGame {
@@ -21,7 +22,7 @@ export class PongGame {
     this.ctx = this.canvas.getContext('2d');
 
     this.paddleWidth = 6;
-    this.leftPct = 0.03;
+    this.leftPct  = 0.03;   // 3 % default
     this.rightPct = 0.03;
     this.ballRadius = 4;
     this.speed = 1.5;
@@ -32,7 +33,7 @@ export class PongGame {
     this.leftY = 0;
     this.rightY = 0;
     this.vx = this.speed;
-    this.randomiseVy();
+    this.randomiseVy();      // random vertical component
 
     this.obi = 1;
     this.bull = 0;
@@ -57,17 +58,19 @@ export class PongGame {
     this.rightY = plotHeight / 2;
   }
 
-  leftBoundary() { return this.canvas.width * 0.4048; }
-  rightBoundary() { return this.canvas.width * 0.5952; }
+  leftBoundary () { return this.canvas.width * 0.42; }   // centre-neutral ±8 %
+  rightBoundary() { return this.canvas.width * 0.58; }
 
-  update({ bearPct, bullPct, obi, sigmaBps, midPrice }) {
-    if (bearPct != null) {
-      this.leftPct = Math.max(3, +bearPct) / 100;
-      this.bear = bearPct;
-    }
-    if (bullPct != null) {
-      this.rightPct = Math.max(3, +bullPct) / 100;
-      this.bull = bullPct;
+  setPaddles (bearPct = 3, bullPct = 3) {
+    this.leftPct  = Math.max(3, +bearPct)  / 100;
+    this.rightPct = Math.max(3, +bullPct)  / 100;
+  }
+
+  update ({ bearPct, bullPct, obi, sigmaBps, midPrice }) {
+    if (bearPct != null || bullPct != null) {
+      this.setPaddles(bearPct ?? this.leftPct * 100, bullPct ?? this.rightPct * 100);
+      if (bearPct != null) this.bear = bearPct;
+      if (bullPct != null) this.bull = bullPct;
     }
     if (obi != null) this.obi = obi;
     if (sigmaBps != null) {
@@ -89,8 +92,8 @@ export class PongGame {
     const leftX = this.leftBoundary();
     const rightX = this.rightBoundary();
     const paddleW = this.paddleWidth;
-    const lH = h * this.leftPct;
-    const rH = h * this.rightPct;
+    const lH = Math.max(12, h * this.leftPct);
+    const rH = Math.max(12, h * this.rightPct);
 
     ctx.clearRect(0, 0, w, h);
 
