@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { WebSocket } from 'ws';
 import { PassThrough } from 'stream';
+import { handleFill, setEmitHandler } from './burstAggregator.js';
 
 export const SHEET_CSV =
   'https://docs.google.com/spreadsheets/d/1EI4_ZL_HPJh66Q5aXlbhAKJhGSQjwc0e9D968mc1yR0/export?format=csv&gid=486840509';
@@ -88,6 +89,8 @@ function recordRow(row) {
   console.log(`[TopFlow] ${row.time} ${shortAddr} ${row.side} $${row.notional.toLocaleString()} weight ${row.weight} bias ${row.bias > 0 ? '+1' : '-1'}`);
 }
 
+setEmitHandler(recordRow);
+
 let ws;
 function startWs() {
   ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
@@ -103,7 +106,7 @@ function startWs() {
     if (msg.channel !== 'trades') return;
     for (const t of msg.data || []) {
       const rows = extractRowsFromTrade(t);
-      rows.forEach(recordRow);
+      rows.forEach(handleFill);
     }
   });
   ws.on('close', () => setTimeout(startWs, 2000));
@@ -126,6 +129,6 @@ export function getTopTrades() {
 
 export function injectTopTrade(trade) {
   const rows = extractRowsFromTrade(trade);
-  rows.forEach(recordRow);
+  rows.forEach(handleFill);
   return rows;
 }
