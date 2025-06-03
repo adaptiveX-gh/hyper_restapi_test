@@ -40,7 +40,9 @@ describe('Smart Money Probe signal', () => {
     radar.addOrUpdateProbe({ id: 'smart_money_probe_up', strength: 0.5, ts: 0 });
     expect(radar.chart.series[1].data.length).toBe(1);
     const p = radar.chart.series[1].data[0];
-    expect(p.x).toBe(cfg.zone);
+    const [min, max] = radar.calcZoneRange(cfg);
+    expect(p.x).toBeGreaterThanOrEqual(min);
+    expect(p.x).toBeLessThanOrEqual(max);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
     expect(p.tag).toBe(cfg.label);

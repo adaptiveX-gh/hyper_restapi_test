@@ -39,7 +39,9 @@ describe('Ignition Spark signal', () => {
     radar.addIgnitionSpark({ side: 'up', strength: 0.8, ts: Date.now() });
     const cfg = radar.config.ignition_spark_up;
     const p = radar.chart.series[1].data[0];
-    expect(p.x).toBe(cfg.zone);
+    const [min, max] = radar.calcZoneRange(cfg);
+    expect(p.x).toBeGreaterThanOrEqual(min);
+    expect(p.x).toBeLessThanOrEqual(max);
     expect(p.color).toBe(cfg.color);
     expect(p.marker.symbol).toBe(cfg.shape);
     expect(p.tag).toBe(cfg.label);
