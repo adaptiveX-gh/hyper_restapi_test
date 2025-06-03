@@ -48,3 +48,38 @@ describe('PongGame miss logging', () => {
     expect(log[0].dir).toBe('LONG');
   });
 });
+
+describe('PongGame collision detection', () => {
+  beforeEach(() => {
+    global.requestAnimationFrame = () => {};
+  });
+
+  test('ball crossing paddle outside range triggers miss', () => {
+    const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
+    const game = new PongGame(chart);
+    const leftX = game.leftBoundary();
+    const paddleW = game.paddleWidth;
+    game.leftY = chart.plotHeight * 0.1;
+    game.ballX = leftX + paddleW + game.ballRadius + 1;
+    game.ballY = chart.plotHeight - 10;
+    game.vx = -30;
+    game.vy = 0;
+    game.registerMiss = jest.fn();
+    game.loop();
+    expect(game.registerMiss).toHaveBeenCalledWith('left');
+  });
+
+  test('ball crossing paddle within range bounces', () => {
+    const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
+    const game = new PongGame(chart);
+    const leftX = game.leftBoundary();
+    const paddleW = game.paddleWidth;
+    game.leftY = chart.plotHeight / 2;
+    game.ballX = leftX + paddleW + game.ballRadius + 1;
+    game.ballY = game.leftY;
+    game.vx = -30;
+    game.vy = 0;
+    game.loop();
+    expect(game.vx).toBeGreaterThan(0);
+  });
+});

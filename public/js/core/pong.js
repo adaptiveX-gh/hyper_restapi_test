@@ -110,6 +110,8 @@ export class PongGame {
     this.leftY = Math.max(lH / 2, Math.min(h - lH / 2, lp.y));
     this.rightY = Math.max(rH / 2, Math.min(h - rH / 2, rp.y));
 
+    const prevX = this.ballX;
+    const prevY = this.ballY;
     this.ballX += this.vx;
     this.ballY += this.vy;
 
@@ -118,20 +120,38 @@ export class PongGame {
       this.ballY = Math.max(this.ballRadius, Math.min(h - this.ballRadius, this.ballY));
     }
 
-    if (this.ballX - this.ballRadius <= leftX + paddleW) {
-      if (this.ballY >= this.leftY - lH / 2 && this.ballY <= this.leftY + lH / 2) {
+    const crossedLeft  = prevX - this.ballRadius > leftX + paddleW &&
+                         this.ballX - this.ballRadius <= leftX + paddleW;
+    const crossedRight = prevX + this.ballRadius < rightX - paddleW &&
+                         this.ballX + this.ballRadius >= rightX - paddleW;
+
+    if (crossedLeft || this.ballX - this.ballRadius <= leftX + paddleW) {
+      const t = crossedLeft
+        ? (prevX - this.ballRadius - (leftX + paddleW)) /
+          (prevX - this.ballRadius - (this.ballX - this.ballRadius))
+        : 0;
+      const yAtCross = crossedLeft ? prevY + (this.ballY - prevY) * t : this.ballY;
+      if (yAtCross >= this.leftY - lH / 2 && yAtCross <= this.leftY + lH / 2) {
         this.vx = Math.abs(this.vx);
         this.ballX = leftX + paddleW + this.ballRadius;
+        this.ballY = yAtCross;
         this.randomiseVy();
       } else if (this.ballX < leftX) {
         this.registerMiss('left');
         return;
       }
     }
-    if (this.ballX + this.ballRadius >= rightX - paddleW) {
-      if (this.ballY >= this.rightY - rH / 2 && this.ballY <= this.rightY + rH / 2) {
+
+    if (crossedRight || this.ballX + this.ballRadius >= rightX - paddleW) {
+      const t = crossedRight
+        ? ((rightX - paddleW) - (prevX + this.ballRadius)) /
+          ((this.ballX + this.ballRadius) - (prevX + this.ballRadius))
+        : 0;
+      const yAtCross = crossedRight ? prevY + (this.ballY - prevY) * t : this.ballY;
+      if (yAtCross >= this.rightY - rH / 2 && yAtCross <= this.rightY + rH / 2) {
         this.vx = -Math.abs(this.vx);
         this.ballX = rightX - paddleW - this.ballRadius;
+        this.ballY = yAtCross;
         this.randomiseVy();
       } else if (this.ballX > rightX) {
         this.registerMiss('right');
