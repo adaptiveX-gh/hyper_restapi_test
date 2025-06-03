@@ -2034,10 +2034,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      const top = Array.from(weights.entries())
+      const allEntries = Array.from(weights.entries());
+      const invalid = allEntries.filter(([, w]) => Number.isNaN(Number(w)));
+      if (invalid.length) {
+        console.warn('[TopTrader] invalid weights found:', invalid);
+      }
+      console.debug('[TopTrader] total weights:', weights.size);
+      console.debug('[TopTrader] sample entries:', allEntries.slice(0, 5));
+
+      const top = allEntries
         .filter(([, w]) => !Number.isNaN(Number(w)))
         .sort((a, b) => Number(b[1]) - Number(a[1]))
         .slice(0, 10);
+      console.debug('[TopTrader] computed top list:', top);
 
       console.groupCollapsed('Top 10 Traders');
       top.forEach(([addr, weight], idx) => {
