@@ -18,7 +18,7 @@ export function mountGsRelay(app) {
       res.sendStatus(200);
     } catch (err) {
       console.warn('[GS-Relay] upstream error:', err.message);
-      res.status(502).json({ error: 'Upstream failed' });
+      res.status(200).json({ error: 'Upstream failed' });
     }
   });
 }

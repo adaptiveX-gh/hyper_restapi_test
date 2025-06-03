@@ -42,6 +42,7 @@ export async function flushQueue(){
       });
       const text = await resp.text();
       console.log('[SHEET RESP]', resp.status, text);
+      if(!resp.ok || text.includes('Upstream failed')) throw new Error(text);
       q.shift();
       failStreak = 0;
     }catch(e){
