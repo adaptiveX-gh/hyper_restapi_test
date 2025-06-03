@@ -24,12 +24,10 @@ export async function logMiss(entry){
     localStorage.removeItem('missLogQueue');
     localStorage.setItem('missLogQueueV', 'v2');
   }
-  if (!entry.test) {
-    const q = load();
-    q.push(row);
-    save(q);
-    flushQueue();
-  }
+  const q = load();
+  q.push(row);
+  save(q);
+  flushQueue();
 }
 
 export async function flushQueue(){
@@ -40,10 +38,6 @@ export async function flushQueue(){
   try {
     while (q.length) {
       const item = q[0];
-      if (item.test) {
-        q.shift();
-        continue;
-      }
       try {
         const resp = await fetch(url, {
           method: 'POST',

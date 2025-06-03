@@ -44,6 +44,7 @@ export function onGaugeUpdate({ bullPct = 0, bearPct = 0, midPrice = null } = {}
 function fire(dir, side, pct, midPrice) {
   const ctx = window.contextMetrics || {};
   const entry = {
+    type: 'Top Trader',
     side,
     dir,
     price: midPrice ?? null,
