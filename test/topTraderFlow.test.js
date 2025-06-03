@@ -1,4 +1,4 @@
-import { parseWeightsCsv, extractRowsFromTrade, addrWeights } from '../src/topTraderFlow.js';
+import { parseWeightsCsv, extractRowsFromTrade, injectTopTrade, addrWeights, topTrades } from '../src/topTraderFlow.js';
 
 describe('topTraderFlow helpers', () => {
   test('parseWeightsCsv builds map', () => {
@@ -27,5 +27,14 @@ describe('topTraderFlow helpers', () => {
     const m = Object.fromEntries(rows.map(r => [r.trader, r.bias]));
     expect(m['0xaaa']).toBe(1);
     expect(m['0xbbb']).toBe(-1);
+  });
+
+  test('injectTopTrade records rows', () => {
+    addrWeights = new Map([['0xabc', 1]]);
+    topTrades.length = 0;
+    const trade = { users:['0xAbC','0xdef'], px:'10', sz:'2', time:0 };
+    const rows = injectTopTrade(trade);
+    expect(rows.length).toBe(1);
+    expect(topTrades[0].trader).toBe('0xabc');
   });
 });

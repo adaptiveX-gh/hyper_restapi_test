@@ -15,7 +15,8 @@ import {
   startTopTraderService,
   getTopTrades,
   topFlowBus,
-  addrWeights
+  addrWeights,
+  injectTopTrade
 } from './src/topTraderFlow.js';
 import { relayRoute } from './server/topTraderRelay.js';
 import { mountGsRelay } from './server/gsRelay.js';
@@ -1164,6 +1165,18 @@ app.get('/api/slow-stats', (_, res) => res.json(slowStatsCache.current));
 // recent top-trader trades (JSON array)
 app.get('/top-trader-trades', (_, res) => {
   res.json(getTopTrades());
+});
+
+app.post('/api/inject-top-trader', _json(), (req, res) => {
+  try {
+    const rows = injectTopTrade(req.body || {});
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Address not in weights map' });
+    }
+    res.json({ inserted: rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const thisFile = resolve(fileURLToPath(import.meta.url));
