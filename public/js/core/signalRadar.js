@@ -115,7 +115,8 @@ export class SignalRadar {
       custom: { radar: this, regimes }
     });
     this.pong = new PongGame(this.chart, false);
-    this.timer = setInterval(() => this.tick(), 1000);
+    this.lastTick = Date.now();
+    this.timer = setInterval(() => this.tick(), 50);
   }
 
   updatePong(data) {
@@ -165,7 +166,7 @@ export class SignalRadar {
     };
     this.chart.series[seriesIdx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[seriesIdx].data[this.chart.series[seriesIdx].data.length - 1];
-    this.points.push({ born: ts, startY, strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a,b)=>a.strength-b.strength);
       const excess = this.points.splice(0, this.points.length-400);
@@ -209,7 +210,7 @@ export class SignalRadar {
     const idx = bullish ? 1 : 0;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -249,7 +250,7 @@ export class SignalRadar {
     const idxSeries = bullish ? 1 : 0;
     this.chart.series[idxSeries].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idxSeries].data[this.chart.series[idxSeries].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -290,7 +291,7 @@ export class SignalRadar {
     const idx = 1;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -331,7 +332,7 @@ export class SignalRadar {
     const idx = 0;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -372,7 +373,7 @@ export class SignalRadar {
     const idx = 1;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -412,7 +413,7 @@ export class SignalRadar {
     if (point.strength <= 0) return;
     this.chart.series[0].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -454,7 +455,7 @@ export class SignalRadar {
     const idx = 1;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -493,7 +494,7 @@ export class SignalRadar {
     const idx = 0;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -532,7 +533,7 @@ export class SignalRadar {
     const idx = 1;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -573,7 +574,7 @@ export class SignalRadar {
     const idx = 0;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -614,7 +615,7 @@ export class SignalRadar {
     const idx = 1;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -655,7 +656,7 @@ export class SignalRadar {
     const idx = 0;
     this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -690,7 +691,7 @@ export class SignalRadar {
     if (point.strength <= 0) return;
     this.chart.series[1].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[1].data[this.chart.series[1].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -723,7 +724,7 @@ export class SignalRadar {
     if (point.strength <= 0) return;
     this.chart.series[0].addPoint(point, true, false, { duration: 300 });
     const hcPoint = this.chart.series[0].data[this.chart.series[0].data.length - 1];
-    this.points.push({ born: ts, startY, strength: point.strength, point: hcPoint });
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
     if (this.points.length > 400) {
       this.points.sort((a, b) => a.strength - b.strength);
       const excess = this.points.splice(0, this.points.length - 400);
@@ -783,11 +784,16 @@ export class SignalRadar {
 
   tick() {
     const now = Date.now();
+    const dt = (now - this.lastTick) / 1000;
+    this.lastTick = now;
+    const speedFactor = this.pong && this.pong.running
+      ? this.pong.speed / 1.5
+      : 1;
     let dirty = false;
     for (let i = this.points.length - 1; i >= 0; i--) {
       const p = this.points[i];
-      const age = (now - p.born) / 1000 + (p.startY || 0);
-      if (age > 200) {
+      p.elapsed = (p.elapsed ?? (p.startY || 0)) + dt * speedFactor;
+      if (p.elapsed > 200) {
         if (typeof p.point.remove === 'function') p.point.remove(false);
         this.points.splice(i, 1);
         if (p.id && this.namedPoints.get(p.id)?.point === p.point) {
@@ -795,7 +801,7 @@ export class SignalRadar {
         }
         dirty = true;
       } else {
-        if (typeof p.point.update === 'function') p.point.update({ y: age }, false);
+        if (typeof p.point.update === 'function') p.point.update({ y: p.elapsed }, false);
         dirty = true;
       }
     }
