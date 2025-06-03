@@ -1855,6 +1855,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
   radar = new SignalRadar('signalRadar');
   window.radar = radar; // <----- add this
+  const resetBtn = document.getElementById('score-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      resetBtn.disabled = true;
+      window.radar?.pong?.resetScores();
+      setTimeout(() => { resetBtn.disabled = false; }, 200);
+    });
+  }
   initCFDChart();
   start();
   biasTimer.start();
