@@ -12,6 +12,7 @@ import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
 import { onGaugeUpdate } from './topTraderTrigger.js';
+import { getBook, abortBookFetch } from './bookCache.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1357,7 +1358,8 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
   /* 5.  Spread & LaR (unchanged, uses dynamic FULL_SCALE_LAR) */
   try {
     // a) top‑of‑book spread
-    const topBk  = await fetchJSON(`/books/${symbol}?depth=${depthParam}`);
+    const topBk  = await getBook(symbol, depthParam);
+    if (!topBk) return;        // skipped due to cool-down
     const bidPx  = +topBk.bids[0][0];
     const askPx  = +topBk.asks[0][0];
     const mid    = (bidPx + askPx) / 2;
@@ -1370,7 +1372,8 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
     const vol5m = calcRealizedVol(priceBuf);
 
     // c) deep book depth → raw LaR
-    const deepBk = await fetchJSON(`/books/${symbol}?depth=${depthParam * 2}`);
+    const deepBk = await getBook(symbol, depthParam * 2);
+    if (!deepBk) return;        // skipped due to cool-down
     let depth10bps = 0;
     const lower = mid * (1 - P.DEPTH_BPS),
       upper = mid * (1 + P.DEPTH_BPS);
@@ -1411,9 +1414,8 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
   /* 6.  Multi‑Level Liquidity Shock (uses dynamic P.FULL_SCALE_SLOPE) */
   try {
 
-    const deepBk2 = await fetchJSON(
-      `/books/${symbol}?depth=${depthParam * 5}`
-    );
+    const deepBk2 = await getBook(symbol, depthParam * 5);
+    if (!deepBk2) return;        // skipped due to cool-down
     const totalBid = deepBk2.bids.reduce((s, [px, sz]) => s + px * sz, 0);
     const totalAsk = deepBk2.asks.reduce((s, [px, sz]) => s + px * sz, 0);
 
@@ -1900,6 +1902,7 @@ $('update-conn-btn').onclick = ()=>{
 
 $('obi-coin').addEventListener('change', async (e) => {
   const sym = e.target.value;             // "ETH-PERP", …
+  abortBookFetch();
   stopPriceFeed();                        // close old socket
   startPriceFeed(sym);                    // open a new one
 });
