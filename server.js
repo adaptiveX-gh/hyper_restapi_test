@@ -11,6 +11,7 @@ import { WebSocket } from 'ws';   // or:  import { WebSocket, WebSocketServer } 
 import pLimit from 'p-limit';
 import { Transform, PassThrough } from 'stream';
 import { slowStatsCache } from './public/js/core/slowStatsCache.js';
+import { startTopTraderService, getTopTrades, topFlowBus } from './src/topTraderFlow.js';
 
 slowStatsCache.start();
 const __filename = fileURLToPath(import.meta.url);
@@ -194,6 +195,15 @@ app.get('/flow', (req, res) => {
   });
   flowBus.pipe(res);
   req.on('close', () => flowBus.unpipe(res));
+});
+
+// ---- Top-Trader Flow SSE -------------------------------------
+app.get('/top-trader-stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type':'text/event-stream', 'Cache-Control':'no-cache', Connection:'keep-alive'
+  });
+  topFlowBus.pipe(res);
+  req.on('close', () => topFlowBus.unpipe(res));
 });
 app.post('/startFlow', _json(), (req, res) => {
   const coinParam = (req.body.coin || 'BTC-PERP').toUpperCase();
@@ -1143,11 +1153,17 @@ app.get('/api/24hMetrics', async (req,res)=>{
 
 app.get('/api/slow-stats', (_, res) => res.json(slowStatsCache.current));
 
+// recent top-trader trades (JSON array)
+app.get('/top-trader-trades', (_, res) => {
+  res.json(getTopTrades());
+});
+
 const thisFile = resolve(fileURLToPath(import.meta.url));
 
 // -- Start Server ---------------------------------------------------------
 if (resolve(process.argv[1] || '') === thisFile) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () =>
+  const server = app.listen(PORT, () =>
     console.log(`🚀  Server listening on http://localhost:${PORT}`));
+  startTopTraderService();
 }
