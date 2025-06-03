@@ -10,7 +10,7 @@ import { SignalRadar } from './signalRadar.js';
 import { updateSpectrumBar } from './spectrumBar.js';
 import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
-import { logMiss } from './missLogger.js';
+import { logMiss, flushQueue } from './missLogger.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1966,6 +1966,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       };
 
       logMiss(entry);
+      flushQueue(true);
       setTimeout(() => { recordBtn.disabled = false; }, 200);
     });
   }
