@@ -2025,6 +2025,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.groupEnd();
     });
   }
+  const top10Btn = document.getElementById('top-trader-top10');
+  if (top10Btn) {
+    top10Btn.addEventListener('click', () => {
+      const weights = window.topTraderFeed?.addrWeights;
+      if (!weights || weights.size === 0) {
+        console.log('No top trader weights loaded.');
+        return;
+      }
+
+      const top = Array.from(weights.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      console.groupCollapsed('Top 10 Traders');
+      top.forEach(([addr, weight], idx) => {
+        console.log(`${idx + 1}. ${addr} - weight: ${Number(weight).toFixed(1)}`);
+      });
+      console.groupEnd();
+    });
+  }
   initCFDChart();
   start();
   biasTimer.start();
