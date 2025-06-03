@@ -40,8 +40,9 @@ export class PongGame {
     this.bear = 0;
     this.midPrice = 0;
 
+    this.running = false;
     this.resize();
-    requestAnimationFrame(() => this.loop());
+    this.start();
   }
 
   resize() {
@@ -79,9 +80,25 @@ export class PongGame {
       this.vx = Math.sign(this.vx || 1) * this.speed;
     }
     if (midPrice != null) this.midPrice = midPrice;
+
+    // auto-restart if stopped
+    this.start();
+  }
+
+  start() {
+    if (!this.running) {
+      this.running = true;
+      requestAnimationFrame(() => this.loop());
+    }
+  }
+
+  stop() {
+    this.running = false;
   }
 
   loop() {
+    if (!this.running) return;
+
     if (this.canvas.width !== this.chart.plotWidth ||
         this.canvas.height !== this.chart.plotHeight) {
       this.resize();
@@ -185,7 +202,10 @@ export class PongGame {
       } catch {}
       console.log(entry);
     }
+    // flag the loop as stopped so start() schedules a new frame
+    this.stop();
     this.resetBall(dir === 'LONG' ? 1 : -1);
+    this.start();
   }
 
   randomiseVy() {
