@@ -40,6 +40,16 @@ export class PongGame {
     this.bear = 0;
     this.midPrice = 0;
 
+    this.bullScore = 0;
+    this.bearScore = 0;
+    this.timerStart = Date.now();
+    this.scoreEls = {
+      bull: document.getElementById('score-bull'),
+      bear: document.getElementById('score-bear'),
+      timer: document.getElementById('score-timer')
+    };
+    this.timerHandle = setInterval(() => this.updateTimer(), 1000);
+
     this.running = false;
     this.resize();
     if (autoStart) this.start();
@@ -206,6 +216,11 @@ export class PongGame {
     this.stop();
     this.resetBall(dir === 'LONG' ? 1 : -1);
     this.start();
+    if (side === 'left') this.bullScore += 1;
+    if (side === 'right') this.bearScore += 1;
+    this.timerStart = Date.now();
+    this.updateScores();
+    this.updateTimer();
   }
 
   randomiseVy() {
@@ -219,5 +234,17 @@ export class PongGame {
     this.ballY = Math.random() * (h - this.ballRadius * 2) + this.ballRadius;
     this.vx = direction * this.speed;
     this.randomiseVy();
+  }
+
+  updateScores() {
+    if (this.scoreEls.bull) this.scoreEls.bull.textContent = String(this.bullScore);
+    if (this.scoreEls.bear) this.scoreEls.bear.textContent = String(this.bearScore);
+  }
+
+  updateTimer() {
+    if (!this.scoreEls.timer) return;
+    const s = Math.floor((Date.now() - this.timerStart) / 1000);
+    this.scoreEls.timer.textContent =
+      String((s / 60) | 0).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
   }
 }
