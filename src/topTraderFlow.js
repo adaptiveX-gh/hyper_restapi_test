@@ -60,15 +60,16 @@ export function extractRowsFromTrade(t) {
   const notional = px * sz;
   const ts = new Date(t.time);
   const [buyer, seller] = t.users.map(a => a.toLowerCase());
-  const rows = [];
-  if (addrWeights.has(buyer)) rows.push(makeRow(buyer, 'LONG', +1));
-  if (addrWeights.has(seller)) rows.push(makeRow(seller, 'SHORT', -1));
+  const rows = [
+    makeRow(buyer, 'LONG', +1),
+    makeRow(seller, 'SHORT', -1)
+  ];
   return rows;
 
   function makeRow(addr, side, bias) {
     return {
       trader: addr,
-      weight: addrWeights.get(addr),
+      weight: addrWeights.get(addr) || 0,
       side,
       notional,
       price: px,
@@ -86,7 +87,7 @@ function recordRow(row) {
   if (topTrades.length > MAX_ROWS) topTrades.pop();
   push(row);
   const shortAddr = row.trader.slice(0,3) + '…' + row.trader.slice(-2);
-  console.log(`[TopFlow] ${row.time} ${shortAddr} ${row.side} $${row.notional.toLocaleString()} weight ${row.weight} bias ${row.bias > 0 ? '+1' : '-1'}`);
+  console.log(`[TopFlow] ${row.time} ${shortAddr} ${row.side} $${row.notional.toLocaleString()} weight ${row.weight} ${row.top ? 'TOP' : ''} bias ${row.bias > 0 ? '+1' : '-1'}`);
 }
 
 setEmitHandler(recordRow);

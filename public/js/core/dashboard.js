@@ -799,7 +799,7 @@ window.topTraderFeed = { buffer: topTraderData, socket: null, addrWeights: null 
   /* ─── Top-Trader grid helpers ─────────────────────────────── */
   function renderTopTraderGridSync() {
     const cols = {};
-    ['trader','side','notional','weight','price','time','bias'].forEach(k => {
+    ['trader','side','notional','weight','top','price','time','bias'].forEach(k => {
       cols[k] = topTraderData.map(r => r[k]);
     });
     Grid.grid('topTraderGrid', {
@@ -812,6 +812,8 @@ window.topTraderFeed = { buffer: topTraderData, socket: null, addrWeights: null 
           cells:{ className:'{#if eq value \"LONG\"}bullish-color{else}bearish-color{/if}' } },
         { id:'notional', header:{format:'Notional'}, cells:{format:'${value:,.0f}' } },
         { id:'weight', header:{format:'Wt'}, width:50, cells:{format:'{value:.2f}' } },
+        { id:'top', header:{format:'Top?'}, width:55,
+          cells:{ format:'{#if value}\u2713{else}\u2014{/if}' } },
         { id:'price', header:{format:'Price'} },
         { id:'time', header:{format:'Time'} },
         { id:'bias', header:{format:'Bias'}, width:55, cells:{format:'{value:+.0f}' } }

@@ -19,15 +19,17 @@ describe('topTraderFlow helpers', () => {
     expect(map.get('0xdef')).toBeCloseTo(1.2);
   });
 
-  test('extractRowsFromTrade filters by address', () => {
+  test('extractRowsFromTrade includes both sides', () => {
     const csv = 'address,weight\n0xaaa,0.7';
     addrWeights.clear();
     addrWeights = parseWeightsCsv(csv);
     const trade = { users:['0xAaA','0xbbb'], px:'100', sz:'2', time:0 };
     const rows = extractRowsFromTrade(trade);
-    expect(rows.length).toBe(1);
+    expect(rows.length).toBe(2);
     expect(rows[0].trader).toBe('0xaaa');
     expect(rows[0].side).toBe('LONG');
+    expect(rows[1].trader).toBe('0xbbb');
+    expect(rows[1].weight).toBe(0);
   });
 
   test('bias +1 for buyer, -1 for seller', () => {
@@ -39,13 +41,15 @@ describe('topTraderFlow helpers', () => {
     expect(m['0xbbb']).toBe(-1);
   });
 
-  test('injectTopTrade records rows', () => {
+  test('injectTopTrade returns both traders', () => {
     addrWeights = new Map([['0xabc', 1]]);
     topTrades.length = 0;
     const trade = { users:['0xAbC','0xdef'], px:'10', sz:'2', time:0 };
     const rows = injectTopTrade(trade);
-    expect(rows.length).toBe(1);
-    expect(topTrades[0].trader).toBe('0xabc');
+    expect(rows.length).toBe(2);
+    const traders = rows.map(r => r.trader);
+    expect(traders).toContain('0xabc');
+    expect(traders).toContain('0xdef');
   });
 
   test('loadWeights uses JSON from env variable', async () => {
