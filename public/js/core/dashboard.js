@@ -2035,7 +2035,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const top = Array.from(weights.entries())
-        .sort((a, b) => b[1] - a[1])
+        .filter(([, w]) => !Number.isNaN(Number(w)))
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
         .slice(0, 10);
 
       console.groupCollapsed('Top 10 Traders');
@@ -2081,9 +2082,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const wres = await fetch('/weights.json');
     const obj  = await wres.json();
-    window.topTraderFeed.addrWeights = new Map(Object.entries(obj));
+    if (!wres.ok || obj.error) throw new Error(obj.error || wres.statusText);
+    const entries = Object.entries(obj)
+      .map(([addr, w]) => [addr, Number(w)])
+      .filter(([, w]) => !Number.isNaN(w));
+    window.topTraderFeed.addrWeights = new Map(entries);
   } catch (err) {
     console.warn('[weights]', err);
+    window.topTraderFeed.addrWeights = new Map();
   }
   try {
     const res = await fetch('/top-trader-trades');
