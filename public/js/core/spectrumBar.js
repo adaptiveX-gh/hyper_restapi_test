@@ -1,3 +1,4 @@
+let barsReady = false;
 export function updateSpectrumBar(bearPct, bullPct) {
   const bar = document.getElementById('bullBearBar');
   if (!bar) return;
@@ -12,6 +13,12 @@ export function updateSpectrumBar(bearPct, bullPct) {
   if (bullFill) bullFill.style.width = `${bull / 2}%`;
   if (bearText) bearText.textContent = `${Math.round(bear)}%`;
   if (bullText) bullText.textContent = `${Math.round(bull)}%`;
+  if (!barsReady && (bear > 0 || bull > 0)) {
+    barsReady = true;
+    if (window.radar && typeof window.radar.startPong === 'function') {
+      window.radar.startPong();
+    }
+  }
   if (window.radar && typeof window.radar.updatePong === 'function') {
     window.radar.updatePong({ bearPct: bear, bullPct: bull });
   }
