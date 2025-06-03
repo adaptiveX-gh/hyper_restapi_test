@@ -114,12 +114,16 @@ export class SignalRadar {
       exporting: { enabled: false },
       custom: { radar: this, regimes }
     });
-    this.pong = new PongGame(this.chart);
+    this.pong = new PongGame(this.chart, false);
     this.timer = setInterval(() => this.tick(), 1000);
   }
 
   updatePong(data) {
     if (this.pong) this.pong.update(data);
+  }
+
+  startPong() {
+    if (this.pong) this.pong.start();
   }
 
   calcZoneRange(cfg = {}, fallbackZone = 0) {
