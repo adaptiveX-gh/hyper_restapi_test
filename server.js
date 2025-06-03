@@ -11,7 +11,13 @@ import { WebSocket } from 'ws';   // or:  import { WebSocket, WebSocketServer } 
 import pLimit from 'p-limit';
 import { Transform, PassThrough } from 'stream';
 import { slowStatsCache } from './public/js/core/slowStatsCache.js';
-import { startTopTraderService, getTopTrades, topFlowBus } from './src/topTraderFlow.js';
+import {
+  startTopTraderService,
+  getTopTrades,
+  topFlowBus,
+  addrWeights,
+  weightsRoute
+} from './src/topTraderFlow.js';
 
 slowStatsCache.start();
 const __filename = fileURLToPath(import.meta.url);
@@ -122,6 +128,7 @@ const app = express();
 app.use(_json({ limit:'5mb' }));
 app.use(cors());
 app.use(expressStatic(join(__dirname,'public')));
+weightsRoute(app, addrWeights);
 app.get('/env.js', (_, res) => {
   res.type('application/javascript');
   res.send(`window.GS_LOG_URL = ${JSON.stringify(GS_LOG_URL)};`);
@@ -1166,4 +1173,5 @@ if (resolve(process.argv[1] || '') === thisFile) {
   const server = app.listen(PORT, () =>
     console.log(`🚀  Server listening on http://localhost:${PORT}`));
   startTopTraderService();
+  global.topTraderAddrWeights = addrWeights;
 }
