@@ -302,6 +302,9 @@ section.hidden { display: none; }
 }
 .toast.bull { border-left: 4px solid #28c76f; }
 .toast.bear { border-left: 4px solid #ff5252; }
+.toast.strong { border-top: 2px solid #17c964; }
+.toast.caution { border-top: 2px solid #ff9f0a; }
+.toast.vetoed { border-top: 2px solid #ff3b30; }
 .toast-header {
   display: flex;
   justify-content: space-between;
