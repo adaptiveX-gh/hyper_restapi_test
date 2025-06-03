@@ -241,6 +241,16 @@ export class PongGame {
     this.randomiseVy();
   }
 
+  resetScores() {
+    this.bullScore = 0;
+    this.bearScore = 0;
+    this.timerStart = Date.now();
+    this.resetBall(Math.sign(this.vx || 1));
+    this.updateScores();
+    this.updateTimer();
+    this.start();
+  }
+
   updateScores() {
     if (this.scoreEls.bull) this.scoreEls.bull.textContent = String(this.bullScore);
     if (this.scoreEls.bear) this.scoreEls.bear.textContent = String(this.bearScore);

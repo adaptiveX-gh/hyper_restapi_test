@@ -83,3 +83,27 @@ describe('PongGame collision detection', () => {
     expect(game.vx).toBeGreaterThan(0);
   });
 });
+
+describe('PongGame resetScores', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(0);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('scores and timer reset to zero', () => {
+    const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
+    const game = new PongGame(chart, true);
+    game.bullScore = 3;
+    game.bearScore = 2;
+    game.timerStart = 1000;
+    jest.setSystemTime(5000);
+    game.resetScores();
+    expect(game.bullScore).toBe(0);
+    expect(game.bearScore).toBe(0);
+    expect(game.timerStart).toBe(5000);
+  });
+});
