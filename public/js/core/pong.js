@@ -198,13 +198,13 @@ export class PongGame {
 
   registerMiss(side) {
     const dir = side === 'left' ? 'LONG' : 'SHORT';
-    const allow = (dir === 'LONG' && this.bull > 45) ||
-                  (dir === 'SHORT' && this.bear > 45);
-    if (allow && this.midPrice) {
+    const allow = (dir === 'LONG' && this.bull >= 45) ||
+                  (dir === 'SHORT' && this.bear >= 45);
+    if (allow) {
       const entry = {
         side : side === 'left' ? 'bull' : 'bear',
         dir,
-        price : this.midPrice,
+        price : this.midPrice || null,
         timer : Math.round((Date.now() - this.timerStart) / 1000),
         obi   : window.__lastObiRatio ?? this.obi,
         lar   : window.__LaR ?? null,
