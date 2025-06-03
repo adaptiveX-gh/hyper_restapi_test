@@ -26,14 +26,16 @@ export async function logMiss(entry){
   const q = load();
   q.push(row);
   save(q);
-  flushQueue();
+  if (!entry.test) flushQueue();
 }
 
-export async function flushQueue(){
+export async function flushQueue(includeTest = false){
   const url = '/gs-journal';
   let q = load();
-  while(q.length){
-    const item = q[0];
+  let i = 0;
+  while (i < q.length) {
+    const item = q[i];
+    if (item.test && !includeTest) { i++; continue; }
     try{
       const resp = await fetch(url, {
         method:'POST',
@@ -43,7 +45,7 @@ export async function flushQueue(){
       const text = await resp.text();
       console.log('[SHEET RESP]', resp.status, text);
       if(!resp.ok || text.includes('Upstream failed')) throw new Error(text);
-      q.shift();
+      q.splice(i, 1);
       failStreak = 0;
     }catch(e){
       console.warn('[GS LOG ERROR]', e);
