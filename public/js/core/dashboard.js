@@ -1897,7 +1897,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (recordBtn) {
     recordBtn.addEventListener('click', () => {
       recordBtn.disabled = true;
-      logMiss({ side:'test', dir:'TEST', note:'manual conditions test' });
+
+      /* gather the current market snapshot */
+      const ctx  = window.contextMetrics || {};
+      const pong = window.radar?.pong;
+      const entry = {
+        side       : 'test',
+        dir        : 'TEST',
+        price      : pong?.midPrice ?? null,
+        timer      : pong ? Math.round((Date.now() - pong.timerStart) / 1000) : null,
+        obi        : window.__lastObiRatio ?? pong?.obi,
+        lar        : window.__LaR ?? null,
+        oi         : window.__prevOi ?? null,
+        confirm    : ctx.confirm,
+        earlyWarn  : ctx.earlyWarn,
+        resilience : ctx.resilience,
+        grade      : 'Manual',
+        warnings   : []
+      };
+
+      logMiss(entry);
       setTimeout(() => { recordBtn.disabled = false; }, 200);
     });
   }
