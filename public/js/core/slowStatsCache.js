@@ -7,7 +7,7 @@
  *      + robust mapper that matches BTC in any payload shape.   *
  *───────────────────────────────────────────────────────────────*/
 import axios         from 'axios';
-import EventEmitter  from 'events';
+import { EventEmitter }  from './eventBus.js';
 
 class SlowStatsCache extends EventEmitter {
   #stats = { ts: 0, oi: 0, oiContracts: 0, funding: 0, vol24h: 0 };
