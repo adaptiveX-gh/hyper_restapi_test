@@ -21,6 +21,10 @@ let hlWs = null;          // keep a reference so we can close / restart
   const priceProbeBuf = [];
   const squeezeMetricBuf = [];
 
+  // keep latest Order Book Imbalance ratio for other streams
+  let lastObiRatio = 1.0;
+  window.__lastObiRatio = lastObiRatio;
+
     // put near the top of dashboard.js – before updateBigTiles is ever called
     let LIQ_MEDIAN = NaN;     // <- will be filled once slow-stats arrives
     let VOL_MEDIAN = NaN;
@@ -1231,6 +1235,8 @@ obiSSE.onmessage = async (e) => {
 /* 3.  Update KPIs – OBI ratio, liquidity */
 const r = Number(d.ratio);
 if (!Number.isFinite(r)) return;          // guard against NaN
+lastObiRatio = r;
+window.__lastObiRatio = r;
 
 setHtml('obiRatio', r.toFixed(2));        // 🔴  put the number back
 
@@ -1758,6 +1764,22 @@ flowSSE.onmessage = (e) => {
         raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100);
 
   updateSpectrumBar(bearVal, bullVal);
+
+  const r = Number.isFinite(lastObiRatio) ? lastObiRatio : 1.0;
+  const priceNow = priceProbeBuf.length ?
+        priceProbeBuf[priceProbeBuf.length - 1].px : null;
+  const sigmaBps = (() => {
+    if (priceProbeBuf.length < 2) return 0;
+    let sum = 0, sumSq = 0;
+    for (let i = 1; i < priceProbeBuf.length; i++) {
+      const rLog = Math.log(priceProbeBuf[i].px / priceProbeBuf[i-1].px);
+      sum += rLog; sumSq += rLog * rLog;
+    }
+    const n = priceProbeBuf.length - 1;
+    const mean = sum / n;
+    const variance = sumSq / n - mean * mean;
+    return Math.sqrt(Math.max(variance, 0)) * 10000;
+  })();
 
   if (window.radar && typeof window.radar.updatePong === 'function') {
     window.radar.updatePong({
