@@ -14,6 +14,18 @@ describe('Pong helpers', () => {
   });
 });
 
+describe('PongGame update', () => {
+  beforeEach(() => {
+    global.requestAnimationFrame = fn => 1;
+  });
+
+  test('updatePong survives missing obi', () => {
+    const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
+    const game = new PongGame(chart);
+    expect(() => game.update({ bearPct:10, bullPct:20 })).not.toThrow();
+  });
+});
+
 describe('PongGame miss logging', () => {
   beforeEach(() => {
     global.requestAnimationFrame = fn => 1; // stub
