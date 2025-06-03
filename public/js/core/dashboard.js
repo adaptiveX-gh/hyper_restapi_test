@@ -10,6 +10,7 @@ import { SignalRadar } from './signalRadar.js';
 import { updateSpectrumBar } from './spectrumBar.js';
 import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
+import { logMiss } from './missLogger.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1890,6 +1891,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       bearBtn.disabled = true;
       window.radar?.pong?.registerMiss('right', { force: true });
       setTimeout(() => { bearBtn.disabled = false; }, 200);
+    });
+  }
+  const recordBtn = document.getElementById('test-record');
+  if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+      recordBtn.disabled = true;
+      logMiss({ side:'test', dir:'TEST', note:'manual conditions test' });
+      setTimeout(() => { recordBtn.disabled = false; }, 200);
     });
   }
   const testBtn = document.getElementById('test-trade');
