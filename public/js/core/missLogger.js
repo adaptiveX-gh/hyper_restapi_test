@@ -2,6 +2,7 @@
 
 const QUEUE_KEY = 'missLogQueue';
 const FLUSH_MS  = 10000; // 10 s
+let failStreak = 0;
 
 /** Persist queue to localStorage */
 function save(q){
@@ -17,7 +18,11 @@ function load(){
 
 export async function logMiss(entry){
   const row = { timestamp:new Date().toISOString(), ...entry };
-  console.log('[TEST TRADE EVENT]', row, 'URL:', window.GS_LOG_URL);
+  console.log('[TEST TRADE EVENT]', row);
+  if (localStorage.getItem('missLogQueueV') !== 'v2') {
+    localStorage.removeItem('missLogQueue');
+    localStorage.setItem('missLogQueueV', 'v2');
+  }
   const q = load();
   q.push(row);
   save(q);
@@ -25,11 +30,7 @@ export async function logMiss(entry){
 }
 
 export async function flushQueue(){
-  const url = window.GS_LOG_URL;
-  if(!url){
-    console.warn('[missLogger] GS_LOG_URL not set');
-    return;
-  }
+  const url = '/gs-journal';
   let q = load();
   while(q.length){
     const item = q[0];
@@ -42,8 +43,13 @@ export async function flushQueue(){
       const text = await resp.text();
       console.log('[SHEET RESP]', resp.status, text);
       q.shift();
+      failStreak = 0;
     }catch(e){
       console.warn('[GS LOG ERROR]', e);
+      failStreak++;
+      if(failStreak >= 3 && typeof window !== 'undefined') {
+        console.warn('Could not log trades – retrying…');
+      }
       break;
     }
   }
