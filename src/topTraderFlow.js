@@ -26,6 +26,12 @@ export async function loadWeights(url = SHEET_CSV) {
   return addrWeights;
 }
 
+export function weightsRoute(app, map = addrWeights) {
+  app.get('/weights.json', (_, res) => {
+    res.json(Object.fromEntries(map));
+  });
+}
+
 function throttle(fn, ms) {
   let last = 0, t;
   return (...args) => {

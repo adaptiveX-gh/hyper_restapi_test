@@ -2010,6 +2010,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   biasTimer.start();
   startPriceFeed('BTC');          // 👉 starts the live price stream
   try {
+    const wres = await fetch('/weights.json');
+    const obj  = await wres.json();
+    window.topTraderFeed.addrWeights = new Map(Object.entries(obj));
+  } catch (err) {
+    console.warn('[weights]', err);
+  }
+  try {
     const res = await fetch('/top-trader-trades');
     topTraderData = await res.json();
     renderTopTraderGrid();
