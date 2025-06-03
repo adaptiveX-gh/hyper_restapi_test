@@ -749,6 +749,8 @@ let   flowData      = [];
 
 const MAX_TOP_ROWS = 300;
 let   topTraderData = [];
+// expose a tiny global so diagnostics button can inspect the feed
+window.topTraderFeed = { buffer: topTraderData, socket: null, addrWeights: null };
 
   function _renderFlowGridSync () {
   const cols = {};
@@ -1458,6 +1460,8 @@ flowSSE = new EventSource(
 );
 
 topSSE = new EventSource('/top-trader-stream');
+// keep a reference for diagnostics
+window.topTraderFeed.socket = topSSE;
 topSSE.onmessage = (e) => {
   if (e.data.trim().endsWith('heartbeat')) return;
   let row; try { row = JSON.parse(e.data); } catch { return; }
@@ -1973,6 +1977,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       window.radar?.pong?.registerMiss(side, { force: true });
       setTimeout(() => { testBtn.disabled = false; }, 200);
 
+    });
+  }
+  const dbgBtn = document.getElementById('top-trader-dbg');
+  if (dbgBtn) {
+    dbgBtn.addEventListener('click', () => {
+      const feed = window.topTraderFeed;
+      if (!feed) {
+        console.warn('[TopTrader] feed object not found – feature off?');
+        return;
+      }
+
+      const { buffer = [], socket, addrWeights } = feed;
+      const longCnt  = buffer.filter(r => r.side === 'LONG').length;
+      const shortCnt = buffer.length - longCnt;
+
+      console.groupCollapsed(
+        `%cTop-Trader feed OK ▸ ${buffer.length} rows`,
+        'color:#28c76f;font-weight:600'
+      );
+      console.log('WebSocket state :',
+        ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][socket?.readyState ?? 3]);
+      console.log('# addresses     :', addrWeights?.size ?? 0);
+      console.log('# longs / shorts:', longCnt, '/', shortCnt);
+      console.log('Last 3 trades:');
+      console.table(buffer.slice(0, 3));
+      console.groupEnd();
     });
   }
   initCFDChart();
