@@ -1880,7 +1880,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (bullBtn) {
     bullBtn.addEventListener('click', () => {
       bullBtn.disabled = true;
-      window.radar?.pong?.registerMiss('left');
+      window.radar?.pong?.registerMiss('left', { force: true });
       setTimeout(() => { bullBtn.disabled = false; }, 200);
     });
   }
@@ -1888,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (bearBtn) {
     bearBtn.addEventListener('click', () => {
       bearBtn.disabled = true;
-      window.radar?.pong?.registerMiss('right');
+      window.radar?.pong?.registerMiss('right', { force: true });
       setTimeout(() => { bearBtn.disabled = false; }, 200);
     });
   }
@@ -1897,7 +1897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     testBtn.addEventListener('click', () => {
       testBtn.disabled = true;
       const side = Math.random() < 0.5 ? 'left' : 'right';
-      window.radar?.pong?.registerMiss(side);
+      window.radar?.pong?.registerMiss(side, { force: true });
       setTimeout(() => { testBtn.disabled = false; }, 200);
 
     });

@@ -1,4 +1,4 @@
-export function passesContextGuards(direction, ctx = {}) {
+export function passesContextGuards(direction, ctx = {}, opts = {}) {
   const {
     bullPct = 0,
     bearPct = 0,
@@ -9,12 +9,14 @@ export function passesContextGuards(direction, ctx = {}) {
     shock = 0,
     biasSlope15m = 0
   } = ctx;
+  const { skipComposite = false } = opts;
 
   const reasons = [];
   const isLong = direction === 'LONG';
 
-  const basicPass = isLong ? bullPct >= 45 : bearPct >= 45;
-  if (!basicPass) {
+  const basicPassActual = isLong ? bullPct >= 45 : bearPct >= 45;
+  const basicPass = skipComposite ? true : basicPassActual;
+  if (!basicPassActual && !skipComposite) {
     reasons.push('Composite below 45%');
   }
 
@@ -38,7 +40,7 @@ export function passesContextGuards(direction, ctx = {}) {
   if (Math.abs(biasSlope15m) > 0.5) reasons.push('Bias slope adverse');
 
   let grade = 'Strong';
-  if (!basicPass || reasons.includes('Confirmation weak')) {
+  if ((!basicPassActual && !skipComposite) || reasons.includes('Confirmation weak')) {
     grade = 'Vetoed';
   } else if (reasons.length) {
     grade = 'Caution';

@@ -198,9 +198,11 @@ export class PongGame {
     requestAnimationFrame(() => this.loop());
   }
 
-  registerMiss(side) {
+  registerMiss(side, opts = {}) {
+    const { force = false } = opts;
     const dir = side === 'left' ? 'LONG' : 'SHORT';
-    const allow = (dir === 'LONG' && this.bull >= 45) ||
+    const allow = force ||
+                  (dir === 'LONG' && this.bull >= 45) ||
                   (dir === 'SHORT' && this.bear >= 45);
 
     const ctx = window.contextMetrics || {};
@@ -213,7 +215,7 @@ export class PongGame {
       LaR: ctx.LaR,
       shock: ctx.shock,
       biasSlope15m: ctx.biasSlope15m
-    });
+    }, { skipComposite: force });
 
     const entry = {
       side : side === 'left' ? 'bull' : 'bear',
