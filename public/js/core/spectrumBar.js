@@ -15,6 +15,11 @@ export function updateSpectrumBar(bearPct, bullPct) {
   if (bullText) bullText.textContent = `${Math.round(bull)}%`;
   if (!barsReady && (bear > 0 || bull > 0)) {
     barsReady = true;
+    window.barsReady = true;
+    const dot = document.getElementById('connection-dot');
+    if (dot) dot.className = 'status-dot green';
+    const banner = document.getElementById('ticker-inner');
+    if (banner) banner.textContent = 'Connected';
     if (window.radar && typeof window.radar.startPong === 'function') {
       window.radar.startPong();
     }
