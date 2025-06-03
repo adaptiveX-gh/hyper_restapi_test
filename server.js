@@ -20,6 +20,7 @@ const __dirname  = dirname(__filename);
 const WS_URL       = 'wss://api.hyperliquid.xyz/ws';
 const COIN         = (process.env.FLOW_COIN ?? 'BTC').toUpperCase();
 const DEPTH_LEVELS = 50;
+const GS_LOG_URL   = process.env.GS_LOG_URL || '';
 
 const { post: _post, get } = axios;        // same variables you had before
 
@@ -120,6 +121,10 @@ const app = express();
 app.use(_json({ limit:'5mb' }));
 app.use(cors());
 app.use(expressStatic(join(__dirname,'public')));
+app.get('/env.js', (_, res) => {
+  res.type('application/javascript');
+  res.send(`window.GS_LOG_URL = ${JSON.stringify(GS_LOG_URL)};`);
+});
 app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'dashboard.html'));
 });
