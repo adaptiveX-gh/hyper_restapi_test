@@ -281,3 +281,48 @@ section.hidden { display: none; }
   margin-top: 8px;
 }
 
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+}
+.toast {
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  padding: 8px 12px;
+  min-width: 220px;
+  font-size: 14px;
+}
+.toast.bull { border-left: 4px solid #28c76f; }
+.toast.bear { border-left: 4px solid #ff5252; }
+.toast-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.toast-time {
+  font-size: 12px;
+  margin-left: 8px;
+  color: #555;
+}
+.toast-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.toast-details {
+  font-size: 12px;
+  color: #333;
+  margin-top: 2px;
+}
