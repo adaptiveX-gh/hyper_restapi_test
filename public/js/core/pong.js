@@ -1,4 +1,5 @@
 import { logMiss } from './missLogger.js';
+import { showWinToast } from './toast.js';
 
 export function vFromSigma (sigmaBps = 0) {
   const capped = Math.min(3, Math.max(0, sigmaBps));
@@ -216,6 +217,7 @@ export class PongGame {
         localStorage.setItem('tradeLog', JSON.stringify(log));
       } catch {}
       logMiss(entry);
+      showWinToast(entry);
     }
     // flag the loop as stopped so start() schedules a new frame
     this.stop();
