@@ -1,3 +1,5 @@
+import { logMiss } from './missLogger.js';
+
 export function vFromSigma (sigmaBps = 0) {
   const capped = Math.min(3, Math.max(0, sigmaBps));
   // 0 bps  → 0.6   3 bps → 2.5  (px / frame)
@@ -200,17 +202,20 @@ export class PongGame {
                   (dir === 'SHORT' && this.bear > 45);
     if (allow && this.midPrice) {
       const entry = {
+        side : side === 'left' ? 'bull' : 'bear',
         dir,
-        price: this.midPrice,
-        ts: Date.now(),
-        ctx: { obi: this.obi, sigma: this.sigma }
+        price : this.midPrice,
+        timer : Math.round((Date.now() - this.timerStart) / 1000),
+        obi   : window.__lastObiRatio ?? this.obi,
+        lar   : window.__LaR ?? null,
+        oi    : window.__prevOi ?? null
       };
       try {
         const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
-        log.push(entry);
+        log.push({ ts: Date.now(), ...entry });
         localStorage.setItem('tradeLog', JSON.stringify(log));
       } catch {}
-      console.log(entry);
+      logMiss(entry);
     }
     // flag the loop as stopped so start() schedules a new frame
     this.stop();
