@@ -15,9 +15,9 @@ import {
   startTopTraderService,
   getTopTrades,
   topFlowBus,
-  addrWeights,
-  weightsRoute
+  addrWeights
 } from './src/topTraderFlow.js';
+import { relayRoute } from './server/topTraderRelay.js';
 
 slowStatsCache.start();
 const __filename = fileURLToPath(import.meta.url);
@@ -128,7 +128,7 @@ const app = express();
 app.use(_json({ limit:'5mb' }));
 app.use(cors());
 app.use(expressStatic(join(__dirname,'public')));
-weightsRoute(app, addrWeights);
+relayRoute(app);
 app.get('/env.js', (_, res) => {
   res.type('application/javascript');
   res.send(`window.GS_LOG_URL = ${JSON.stringify(GS_LOG_URL)};`);
