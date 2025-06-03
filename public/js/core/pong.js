@@ -95,8 +95,8 @@ export class PongGame {
     }
     if (midPrice != null) this.midPrice = midPrice;
 
-    // auto-restart if stopped
-    this.start();
+    // NOTE: don't auto-start here. The game should be started explicitly once
+    // the bull/bear progress bar signals it's ready.
   }
 
   start() {
