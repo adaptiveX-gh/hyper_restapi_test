@@ -744,8 +744,11 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 
 
 
-  const MAX_FLOW_ROWS = 300;
-  let   flowData      = [];
+const MAX_FLOW_ROWS = 300;
+let   flowData      = [];
+
+const MAX_TOP_ROWS = 300;
+let   topTraderData = [];
 
   function _renderFlowGridSync () {
   const cols = {};
@@ -788,6 +791,38 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
       _renderFlowGridSync();
       gridQueued = false;
     });
+  }
+
+  /* ─── Top-Trader grid helpers ─────────────────────────────── */
+  function renderTopTraderGridSync() {
+    const cols = {};
+    ['trader','side','notional','weight','price','time','bias'].forEach(k => {
+      cols[k] = topTraderData.map(r => r[k]);
+    });
+    Grid.grid('topTraderGrid', {
+      dataTable:{ columns:cols },
+      columnDefaults:{ header:{className:'hcg-center'}, cells:{className:'hcg-right'} },
+      columns:[
+        { id:'trader', header:{format:'Trader \u26A1'}, width:140,
+          cells:{ className:'hcg-left' } },
+        { id:'side', header:{format:'Side'},
+          cells:{ className:'{#if eq value \"LONG\"}bullish-color{else}bearish-color{/if}' } },
+        { id:'notional', header:{format:'Notional'}, cells:{format:'${value:,.0f}' } },
+        { id:'weight', header:{format:'Wt'}, width:50, cells:{format:'{value:.2f}' } },
+        { id:'price', header:{format:'Price'} },
+        { id:'time', header:{format:'Time'} },
+        { id:'bias', header:{format:'Bias'}, width:55, cells:{format:'{value:+.0f}' } }
+      ],
+      height:260,
+      paging:{ enabled:true, pageLength:10 },
+      sorting:true
+    });
+  }
+  let topGridQueued = false;
+  function renderTopTraderGrid() {
+    if (topGridQueued) return;
+    topGridQueued = true;
+    requestAnimationFrame(() => { renderTopTraderGridSync(); topGridQueued = false; });
   }
 
 function initCFDChart () {
@@ -1187,7 +1222,7 @@ if (ts) setTxt('card-upd', new Date(asNum(ts)).toLocaleTimeString());
 // ─────────────────────────────────────────────────────────────────────
 // STREAM START / STOP
 // ─────────────────────────────────────────────────────────────────────
-let obiSSE, flowSSE, running=false;
+let obiSSE, flowSSE, topSSE, running=false;
 async function start () {
     P.startStreams       = start;
     if (running) return;
@@ -1421,6 +1456,15 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
 flowSSE = new EventSource(
   `/api/flowStream?coin=${$('obi-coin').value}`
 );
+
+topSSE = new EventSource('/top-trader-stream');
+topSSE.onmessage = (e) => {
+  if (e.data.trim().endsWith('heartbeat')) return;
+  let row; try { row = JSON.parse(e.data); } catch { return; }
+  topTraderData.unshift(row);
+  if (topTraderData.length > MAX_TOP_ROWS) topTraderData.pop();
+  renderTopTraderGrid();
+};
 
 flowSSE.onerror = () => {
   recordError(502, '/api/flowStream');
@@ -1831,6 +1875,7 @@ function stop () {
     $('stream-btn').textContent = 'Start Streams';
     obiSSE  && obiSSE.close();
     flowSSE && flowSSE.close();
+    topSSE  && topSSE.close();
   }
 
 
@@ -1934,6 +1979,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   start();
   biasTimer.start();
   startPriceFeed('BTC');          // 👉 starts the live price stream
+  try {
+    const res = await fetch('/top-trader-trades');
+    topTraderData = await res.json();
+    renderTopTraderGrid();
+  } catch (err) {
+    console.warn('[top-trader]', err);
+  }
   try {
     const res = await fetch('/api/slow-stats');
     const data = await res.json();       // { oi, funding, vol24h, ts }
