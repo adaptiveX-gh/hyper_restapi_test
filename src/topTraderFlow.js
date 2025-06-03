@@ -112,3 +112,9 @@ export async function startTopTraderService() {
 export function getTopTrades() {
   return topTrades;
 }
+
+export function injectTopTrade(trade) {
+  const rows = extractRowsFromTrade(trade);
+  rows.forEach(recordRow);
+  return rows;
+}

@@ -2045,6 +2045,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.groupEnd();
     });
   }
+  const injectBtn = document.getElementById('top-trader-inject');
+  if (injectBtn) {
+    injectBtn.addEventListener('click', async () => {
+      injectBtn.disabled = true;
+      const trade = {
+        px: 100,
+        sz: 1,
+        time: Date.now(),
+        users: ['0x41206f8efb51e5039e5b46e04e7866a4849f72d2', '0xFAKEADDRESS']
+      };
+      try {
+        const res = await fetch('/api/inject-top-trader', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(trade)
+        });
+        if (res.ok) {
+          console.log('Injected test trade for 0x41206f8efb51e5039e5b46e04e7866a4849f72d2');
+        } else {
+          const { error } = await res.json().catch(() => ({ error: res.statusText }));
+          console.error('[top-trader-inject]', error);
+        }
+      } catch (err) {
+        console.error('[top-trader-inject]', err);
+      } finally {
+        setTimeout(() => { injectBtn.disabled = false; }, 200);
+      }
+    });
+  }
   initCFDChart();
   start();
   biasTimer.start();
