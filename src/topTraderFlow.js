@@ -21,8 +21,20 @@ export function parseWeightsCsv(csv) {
 }
 
 export async function loadWeights(url = SHEET_CSV) {
-  const { data } = await axios.get(url, { responseType: 'text', timeout: 10000 });
-  addrWeights = parseWeightsCsv(data);
+  const jsonUrl = process.env.GS_TOP_TRADER_WEIGHTS_URL;
+  if (jsonUrl) {
+    const { data } = await axios.get(jsonUrl, { timeout: 10000 });
+    const obj = typeof data === 'string' ? JSON.parse(data) : data;
+    addrWeights = new Map(
+      Object.entries(obj).map(([addr, weight]) => [
+        addr.trim().toLowerCase(),
+        Number(weight) || 0
+      ])
+    );
+  } else {
+    const { data } = await axios.get(url, { responseType: 'text', timeout: 10000 });
+    addrWeights = parseWeightsCsv(data);
+  }
   return addrWeights;
 }
 
@@ -105,7 +117,12 @@ function startWs() {
 }
 
 export async function startTopTraderService() {
-  await loadWeights();
+  try {
+    await loadWeights();
+  } catch (err) {
+    console.error('[top-trader] failed to load weights', err);
+    addrWeights = new Map();
+  }
   startWs();
 }
 

@@ -1,4 +1,14 @@
-import { parseWeightsCsv, extractRowsFromTrade, injectTopTrade, addrWeights, topTrades } from '../src/topTraderFlow.js';
+import axios from 'axios';
+import {
+  parseWeightsCsv,
+  extractRowsFromTrade,
+  injectTopTrade,
+  addrWeights,
+  topTrades,
+  loadWeights
+} from '../src/topTraderFlow.js';
+
+jest.mock('axios');
 
 describe('topTraderFlow helpers', () => {
   test('parseWeightsCsv builds map', () => {
@@ -36,5 +46,24 @@ describe('topTraderFlow helpers', () => {
     const rows = injectTopTrade(trade);
     expect(rows.length).toBe(1);
     expect(topTrades[0].trader).toBe('0xabc');
+  });
+
+  test('loadWeights uses JSON from env variable', async () => {
+    axios.get.mockResolvedValueOnce({ data: { '0xABC': '1', '0xdef': 0.4 } });
+    process.env.GS_TOP_TRADER_WEIGHTS_URL = 'http://example.com/json';
+    addrWeights.clear();
+    await loadWeights();
+    expect(axios.get).toHaveBeenCalledWith('http://example.com/json', { timeout: 10000 });
+    expect(addrWeights.get('0xabc')).toBeCloseTo(1);
+    expect(addrWeights.get('0xdef')).toBeCloseTo(0.4);
+    delete process.env.GS_TOP_TRADER_WEIGHTS_URL;
+  });
+
+  test('loadWeights falls back to CSV', async () => {
+    axios.get.mockResolvedValueOnce({ data: 'address,weight\n0xaaa,2' });
+    addrWeights.clear();
+    await loadWeights('http://csv.test');
+    expect(axios.get).toHaveBeenCalledWith('http://csv.test', { responseType: 'text', timeout: 10000 });
+    expect(addrWeights.get('0xaaa')).toBeCloseTo(2);
   });
 });
