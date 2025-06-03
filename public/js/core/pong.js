@@ -230,26 +230,31 @@ export class PongGame {
       test: force
     };
 
+    const postLog = () => {
+      showWinToast(entry);
+      if (result.grade !== 'Vetoed') {
+        if (side === 'left') this.bullScore += 1;
+        if (side === 'right') this.bearScore += 1;
+      }
+      // flag the loop as stopped so start() schedules a new frame
+      this.stop();
+      this.resetBall(dir === 'LONG' ? 1 : -1);
+      this.start();
+      this.timerStart = Date.now();
+      this.updateScores();
+      this.updateTimer();
+    };
+
     if (result.grade !== 'Vetoed') {
       try {
         const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
         log.push({ ts: Date.now(), ...entry });
         localStorage.setItem('tradeLog', JSON.stringify(log));
       } catch {}
-      logMiss(entry);
-      showWinToast(entry);
-      if (side === 'left') this.bullScore += 1;
-      if (side === 'right') this.bearScore += 1;
+      Promise.resolve(logMiss(entry)).finally(postLog);
     } else {
-      showWinToast(entry);
+      postLog();
     }
-    // flag the loop as stopped so start() schedules a new frame
-    this.stop();
-    this.resetBall(dir === 'LONG' ? 1 : -1);
-    this.start();
-    this.timerStart = Date.now();
-    this.updateScores();
-    this.updateTimer();
   }
 
   randomiseVy() {
