@@ -47,6 +47,25 @@ describe('PongGame miss logging', () => {
     expect(log.length).toBe(1);
     expect(log[0].dir).toBe('LONG');
   });
+
+  test('registerMiss force logs trade below composite threshold', () => {
+    const chart = { plotLeft:0, plotTop:0, plotWidth:200, plotHeight:200, renderTo: document.createElement('div') };
+    const game = new PongGame(chart, true);
+    game.update({ bullPct:20, bearPct:80, midPrice:50 });
+    window.contextMetrics = {
+      confirm: 0.2,
+      earlyWarn: 0,
+      resilience: 0,
+      LaR: 0.5,
+      shock: 0,
+      biasSlope15m: 0
+    };
+    game.registerMiss('left', { force: true });
+    const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
+    expect(log.length).toBe(1);
+    expect(log[0].dir).toBe('LONG');
+    window.contextMetrics = undefined;
+  });
 });
 
 describe('PongGame collision detection', () => {
