@@ -4,7 +4,9 @@ import { logMiss } from '../public/js/core/missLogger.js';
 describe('missLogger', () => {
   beforeEach(() => {
     localStorage.clear();
-    window.GS_LOG_URL = '';
+    global.fetch = jest.fn(() =>
+      Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('ok') })
+    );
   });
 
   test('logMiss stores entry when no URL', () => {
