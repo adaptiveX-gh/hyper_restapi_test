@@ -1890,7 +1890,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       bearBtn.disabled = true;
       window.radar?.pong?.registerMiss('right');
       setTimeout(() => { bearBtn.disabled = false; }, 200);
-
+    });
+  }
   const testBtn = document.getElementById('test-trade');
   if (testBtn) {
     testBtn.addEventListener('click', () => {
