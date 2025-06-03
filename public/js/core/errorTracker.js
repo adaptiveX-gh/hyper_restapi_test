@@ -1,4 +1,5 @@
 const banner = () => document.getElementById('ticker-inner');
+const dot    = () => document.getElementById('connection-dot');
 
 let lastLog = 0;
 let consecutive = 0;
@@ -12,6 +13,10 @@ export function recordSuccess(){
     const el = banner();
     if(el) el.textContent = 'Connection restored';
     bannerShown = false;
+  }
+  if (window.barsReady) {
+    const d = dot();
+    if (d) d.className = 'status-dot green';
   }
 }
 
@@ -29,6 +34,8 @@ export function recordError(status, url){
     if(el) el.textContent = 'Realtime data unavailable (HTTP 502). Reconnecting...';
     bannerShown = true;
   }
+  const d = dot();
+  if (d) d.className = 'status-dot red';
 }
 
 export function getBackoff(){ return backoff; }
