@@ -215,6 +215,7 @@ export class PongGame {
     }, { skipComposite: force });
 
     const entry = {
+      type : force ? 'Test' : 'Pong',
       side : side === 'left' ? 'bull' : 'bear',
       dir,
       price : this.midPrice || null,
