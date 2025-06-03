@@ -1876,6 +1876,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { resetBtn.disabled = false; }, 200);
     });
   }
+  const testBtn = document.getElementById('test-trade');
+  if (testBtn) {
+    testBtn.addEventListener('click', () => {
+      testBtn.disabled = true;
+      const side = Math.random() < 0.5 ? 'left' : 'right';
+      window.radar?.pong?.registerMiss(side);
+      setTimeout(() => { testBtn.disabled = false; }, 200);
+    });
+  }
   initCFDChart();
   start();
   biasTimer.start();

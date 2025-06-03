@@ -276,6 +276,13 @@ section.hidden { display: none; }
   min-width: 90px;
 }
 
+/* Wrap Reset and Test buttons */
+.score-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* Reset Score button below game */
 .score-reset-btn {
   margin-top: 8px;
