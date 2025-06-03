@@ -1749,10 +1749,12 @@ flowSSE.onmessage = (e) => {
   
 
   /* ─── 11.  Bull / Bear composite meters  ───────────────────── */
+  const avgRes   = SAFE(fastAvg(buf.r));
+  const avgShock = SAFE(fastAvg(buf.shock));
   const raw = [
     SAFE(c), SAFE(w), SAFE(s), SAFE(f),
-    SAFE(lastLaR), SAFE(fastAvg(buf.r)),
-    SAFE(fastAvg(buf.shock)), SAFE(momVal)
+    SAFE(lastLaR), avgRes,
+    avgShock, SAFE(momVal)
   ];
   const W      = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6];
   const sumW   = W.reduce((a,b)=>a+b,0);
@@ -1764,6 +1766,17 @@ flowSSE.onmessage = (e) => {
         raw.reduce((s,v,i)=>s + Math.max(0, -v)*W[i], 0) / sumW * 100);
 
   updateSpectrumBar(bearVal, bullVal);
+
+  window.contextMetrics = {
+    confirm: c,
+    earlyWarn: w,
+    resilience: avgRes,
+    LaR: lastLaR,
+    shock: avgShock,
+    bullPct: bullVal,
+    bearPct: bearVal,
+    biasSlope15m: 0
+  };
 
   const r = Number.isFinite(lastObiRatio) ? lastObiRatio : 1.0;
   const priceNow = priceProbeBuf.length ?
@@ -1877,6 +1890,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       bearBtn.disabled = true;
       window.radar?.pong?.registerMiss('right');
       setTimeout(() => { bearBtn.disabled = false; }, 200);
+
+  const testBtn = document.getElementById('test-trade');
+  if (testBtn) {
+    testBtn.addEventListener('click', () => {
+      testBtn.disabled = true;
+      const side = Math.random() < 0.5 ? 'left' : 'right';
+      window.radar?.pong?.registerMiss(side);
+      setTimeout(() => { testBtn.disabled = false; }, 200);
+
     });
   }
   initCFDChart();

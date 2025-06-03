@@ -1,5 +1,6 @@
 import { logMiss } from './missLogger.js';
 import { showWinToast } from './toast.js';
+import { passesContextGuards } from './contextGuard.js';
 
 export function vFromSigma (sigmaBps = 0) {
   const capped = Math.min(3, Math.max(0, sigmaBps));
@@ -201,16 +202,35 @@ export class PongGame {
     const dir = side === 'left' ? 'LONG' : 'SHORT';
     const allow = (dir === 'LONG' && this.bull >= 45) ||
                   (dir === 'SHORT' && this.bear >= 45);
-    if (allow) {
-      const entry = {
-        side : side === 'left' ? 'bull' : 'bear',
-        dir,
-        price : this.midPrice || null,
-        timer : Math.round((Date.now() - this.timerStart) / 1000),
-        obi   : window.__lastObiRatio ?? this.obi,
-        lar   : window.__LaR ?? null,
-        oi    : window.__prevOi ?? null
-      };
+
+    const ctx = window.contextMetrics || {};
+    const result = passesContextGuards(dir, {
+      bullPct: this.bull,
+      bearPct: this.bear,
+      confirm: ctx.confirm,
+      earlyWarn: ctx.earlyWarn,
+      resilience: ctx.resilience,
+      LaR: ctx.LaR,
+      shock: ctx.shock,
+      biasSlope15m: ctx.biasSlope15m
+    });
+
+    const entry = {
+      side : side === 'left' ? 'bull' : 'bear',
+      dir,
+      price : this.midPrice || null,
+      timer : Math.round((Date.now() - this.timerStart) / 1000),
+      obi   : window.__lastObiRatio ?? this.obi,
+      lar   : window.__LaR ?? null,
+      oi    : window.__prevOi ?? null,
+      confirm : ctx.confirm,
+      earlyWarn: ctx.earlyWarn,
+      resilience: ctx.resilience,
+      grade : result.grade,
+      warnings: result.reasons
+    };
+
+    if (allow && result.grade !== 'Vetoed') {
       try {
         const log = JSON.parse(localStorage.getItem('tradeLog') || '[]');
         log.push({ ts: Date.now(), ...entry });
@@ -218,13 +238,15 @@ export class PongGame {
       } catch {}
       logMiss(entry);
       showWinToast(entry);
+      if (side === 'left') this.bullScore += 1;
+      if (side === 'right') this.bearScore += 1;
+    } else {
+      showWinToast(entry);
     }
     // flag the loop as stopped so start() schedules a new frame
     this.stop();
     this.resetBall(dir === 'LONG' ? 1 : -1);
     this.start();
-    if (side === 'left') this.bullScore += 1;
-    if (side === 'right') this.bearScore += 1;
     this.timerStart = Date.now();
     this.updateScores();
     this.updateTimer();
