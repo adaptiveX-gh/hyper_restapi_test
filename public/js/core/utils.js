@@ -20,3 +20,20 @@ export function classifyBias (val) {
   if (typeof val !== 'number' || Number.isNaN(val) || val === 0) return 'flat';
   return val > 0 ? 'bull' : 'bear';
 }
+
+/**
+ * Compute the Over-Extension gauge value.
+ *
+ * @param {object} ctx
+ * @param {number} ctx.zPrice       Price distance from VWAP in σ
+ * @param {number} ctx.biasSlope15m 15‑min bias-line slope (−1…+1)
+ * @param {number} ctx.rsi15m       15‑min RSI (0…100)
+ * @returns {number} Normalised gauge reading (−1…+1)
+ */
+export function computeOverExt({ zPrice = 0, biasSlope15m = 0, rsi15m = 50 } = {}) {
+  const z   = zPrice / 2;              // scale 2 σ → 1.0
+  const sl  = biasSlope15m;            // already −1…+1
+  const rsi = (rsi15m - 50) / 30;      // RSI 80 → +1, 20 → −1
+  const v   = (z + sl + rsi) / 3;
+  return Math.max(-1, Math.min(1, v));
+}
