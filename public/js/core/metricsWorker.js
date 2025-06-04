@@ -93,7 +93,8 @@ function routeMegaWhale(t) {
 }
 
 function routeBabyWhale(t) {
-  const notional = t.notional ?? (t.price * t.size);
+  const notional = Number(t.notional ?? (t.price * t.size));
+  if (!Number.isFinite(notional)) return;
   const isTop = t.kind === 'top';
   if (!isTop && notional < BABY_WHALE_USD) return;
 
