@@ -295,7 +295,7 @@ export default {
     color: '#28c76f',
     shape: 'star',
     normalize: { max: 1 },
-    tooltip: 'All bounce gauges green (Confirm, EW, LaR, Momentum)',
+    tooltip: 'All bounce gauges green (Confirm, EW, LaR, Momentum, MPD)',
     meta: { side: 'bull', category: 'forward-call' }
   }
 };
