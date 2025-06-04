@@ -1535,6 +1535,13 @@ topSSE.onmessage = (e) => {
   topTraderData.unshift(row);
   if (topTraderData.length > MAX_TOP_ROWS) topTraderData.pop();
   renderTopTraderGrid();
+  if (worker && typeof worker.postMessage === 'function') {
+    const side = row.side === 'LONG' ? 'buy' : 'sell';
+    worker.postMessage({
+      type: 'trade',
+      payload: { side, notional: row.notional, kind: 'top' }
+    });
+  }
   const entry = {
     type: 'Top Trader',
     side: row.side === 'LONG' ? 'bull' : 'bear',
