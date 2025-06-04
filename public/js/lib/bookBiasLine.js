@@ -110,7 +110,7 @@ export class BookBiasLine {
 
   /* ---- Highcharts bootstrap (once) --------------------------- */
   #initChart () {
-    this.#chart = Highcharts.chart(
+    this.#chart = Highcharts.stockChart(
       this.#containerSelector.replace(/^[#\.]/, ''),   // id only
       {
         chart : {
@@ -137,6 +137,19 @@ export class BookBiasLine {
 
         legend  : { enabled:false },
         credits : { enabled:false },
+
+        // Enable navigator and range selector just like the CFD chart
+        navigator: { enabled: true },
+        rangeSelector: {
+          enabled: true,
+          inputEnabled: false,
+          buttons: [
+            { type: 'minute', count: 1, text: '1m' },
+            { type: 'minute', count: 5, text: '5m' },
+            { type: 'all', text: 'All' }
+          ],
+          selected: 1
+        },
 
         series : [
           /* ① smooth bias line */
