@@ -1,5 +1,19 @@
 export const BUCKET_MS = 1000;
 export const TOP_WEIGHT_THRESHOLD = 0.6;
+export const BASE_NOTIONAL_THRESHOLD = 25_000;
+
+import { RollingStats } from '../public/js/lib/rollingStats.js';
+
+const notionalStats = new RollingStats(100);
+
+function adaptiveThreshold() {
+  const p90 = notionalStats.pct(0.9);
+  return Math.max(BASE_NOTIONAL_THRESHOLD, p90 || 0);
+}
+
+export function getAdaptiveThreshold() {
+  return adaptiveThreshold();
+}
 
 let hiddenCount = 0;
 const buckets = new Map();
@@ -17,6 +31,7 @@ export function resetAggregator() {
   for (const b of buckets.values()) clearTimeout(b.timer);
   buckets.clear();
   hiddenCount = 0;
+  notionalStats.clear();
 }
 
 function flush(key) {
@@ -26,7 +41,8 @@ function flush(key) {
   clearTimeout(b.timer);
 
   const notional = b.total;
-  if (notional >= 25_000) {
+  notionalStats.push(notional);
+  if (notional >= adaptiveThreshold()) {
     const price = b.vwapNumer / b.total;
     const row = {
       trader: b.trader,

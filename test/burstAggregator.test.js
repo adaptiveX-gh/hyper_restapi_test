@@ -5,7 +5,9 @@ import {
   setEmitHandler,
   BUCKET_MS,
   getHiddenCount,
-  TOP_WEIGHT_THRESHOLD
+  TOP_WEIGHT_THRESHOLD,
+  getAdaptiveThreshold,
+  BASE_NOTIONAL_THRESHOLD
 } from '../src/burstAggregator.js';
 
 describe('burstAggregator', () => {
@@ -59,5 +61,21 @@ describe('burstAggregator', () => {
     flushAll();
     const row2 = emitted.mock.calls[0][0];
     expect(row2.top).toBe(false);
+  });
+
+  test('adaptive threshold scales up after large burst', () => {
+    const emitted = jest.fn();
+    setEmitHandler(emitted);
+    handleFill({ trader: '0xa', side: 'LONG', notional:100000, price:1, weight:0.5, bias:1 });
+    jest.advanceTimersByTime(BUCKET_MS);
+    flushAll();
+    expect(emitted).toHaveBeenCalledTimes(1);
+    emitted.mockClear();
+
+    handleFill({ trader: '0xa', side: 'LONG', notional:26000, price:1, weight:0.5, bias:1 });
+    jest.advanceTimersByTime(BUCKET_MS);
+    flushAll();
+    expect(getAdaptiveThreshold()).toBeGreaterThan(BASE_NOTIONAL_THRESHOLD);
+    expect(emitted).not.toHaveBeenCalled();
   });
 });
