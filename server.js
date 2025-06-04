@@ -208,11 +208,27 @@ app.get('/flow', (req, res) => {
 
 // ---- Top-Trader Flow SSE -------------------------------------
 app.get('/top-trader-stream', (req, res) => {
-  res.writeHead(200, {
-    'Content-Type':'text/event-stream', 'Cache-Control':'no-cache', Connection:'keep-alive'
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  res.write(':ok\n\n');
+
+  const sseify = new Transform({
+    transform(chunk, _enc, cb) {
+      const str = chunk.toString().trim();
+      cb(null,
+         str.startsWith('data:') ? str + '\n\n'
+                                 : 'data: ' + str + '\n\n');
+    }
   });
-  topFlowBus.pipe(res);
-  req.on('close', () => topFlowBus.unpipe(res));
+
+  topFlowBus.pipe(sseify).pipe(res);
+
+  req.on('close', () => {
+    topFlowBus.unpipe(sseify);
+  });
 });
 app.post('/startFlow', _json(), (req, res) => {
   const coinParam = (req.body.coin || 'BTC-PERP').toUpperCase();
