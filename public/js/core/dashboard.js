@@ -13,7 +13,7 @@ import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
 import { getBook, abortBookFetch } from './bookCache.js';
 import { handleWhaleAnomaly } from './whaleHandler.js';
-import { handleStrongBounce } from './minorityTicker.js';
+import { handleStrongBounce, handleLiquidityVacuum } from './minorityTicker.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1951,6 +1951,13 @@ flowSSE.onmessage = (e) => {
     earlyWarn: w,
     confirm: c,
     LaR: lastLaR,
+    momentum: momVal
+  }, now);
+
+  handleLiquidityVacuum(radar, {
+    LaR: lastLaR,
+    resilience: avgRes,
+    confirm: c,
     momentum: momVal
   }, now);
 
