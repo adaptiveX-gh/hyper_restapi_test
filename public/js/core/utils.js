@@ -37,3 +37,27 @@ export function computeOverExt({ zPrice = 0, biasSlope15m = 0, rsi15m = 50 } = {
   const v   = (z + sl + rsi) / 3;
   return Math.max(-1, Math.min(1, v));
 }
+
+/**
+ * Compute Trap meter value signalling exit-liquidity situations.
+ *
+ * @param {object} ctx
+ * @param {number} ctx.confirm    Confirmation gauge value
+ * @param {number} ctx.LaR        Liquidity-at-Risk gauge value
+ * @param {number} ctx.earlyWarn  Early-Warn gauge value
+ * @param {number} ctx.resilience Resilience gauge value
+ * @returns {number} Trap score (−1…+1)
+ */
+export function computeTrap({ confirm = 0, LaR = 1, earlyWarn = 0, resilience = 0 } = {}) {
+  const bull = (confirm > 0.25) &&
+               (LaR < 0.30) &&
+               (earlyWarn < 0) &&
+               (resilience < 0);
+
+  const bear = (confirm < -0.25) &&
+               (LaR < 0.30) &&
+               (earlyWarn > 0) &&
+               (resilience > 0);
+
+  return bull ? 1 : bear ? -1 : 0;
+}

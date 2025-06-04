@@ -1,7 +1,7 @@
 
 import { onCtx, onCandle } from './perpDataFeed.js';
 import { BookBiasLine } from '../lib/bookBiasLine.js';
-import { classifyObi, classifyBias, computeOverExt } from "./utils.js";
+import { classifyObi, classifyBias, computeOverExt, computeTrap } from "./utils.js";
 import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
@@ -483,7 +483,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
     /*****************************************************************
       * 4.  Gauges, charts, buffers  (original logic, but use P.*)     *
       *****************************************************************/
-      const buf = { c: [], w: [], s: [], f: [], r: [], shock: [], bias: [] };
+      const buf = { c: [], w: [], s: [], f: [], trap: [], r: [], shock: [], bias: [] };
       const pushBuf = (a, v, maxLen = P.WINDOW) => {
         a.push(v);
         if (a.length > maxLen) a.shift();
@@ -564,6 +564,9 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
       gFake    : `<b>Fake-Out</b><br>
                   Oversized absorption OUTSIDE normal bias window.<br>
                   Spike → likely false break; fade the flow.`,
+      gTrap    : `<b>Trap</b><br>
+                  Aggressive prints into a thin or exhausted book.<br>
+                  > +0.50 Bull-Trap, < −0.50 Bear-Trap.`,
       gLaR     : `<b>Liquidity-at-Risk (5 min)</b><br>
                   Depth within ±10 bps ÷ realised-vol.<br>
                   0 → fragile book, 1 → very resilient.`,
@@ -671,6 +674,7 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
           gW = makeGauge('gWarn'),
           gS = makeGauge('gSqueeze'),
           gF = makeGauge('gFake'),
+          gT = makeGauge('gTrap'),
           gR = makeGauge('gRes'),
           gL = makeGauge('gLaR'),
           gShock = makeGauge('gShock'),
@@ -681,7 +685,8 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
     const updC= v=>upd(gC,v),
           updW= v=>upd(gW,v),
           updS= v=>upd(gS,v),
-          updF= v=>upd(gF,v);
+          updF= v=>upd(gF,v),
+          updT= v=>upd(gT,v);
 
     
     const updR       = makeUpd(gR);                                 // no clamp
@@ -1731,6 +1736,11 @@ flowSSE.onmessage = (e) => {
   updW(w); setGaugeStatus('statusWarn',     w);
   updS(s); setGaugeStatus('statusSqueeze',  s);
   updF(f); setGaugeStatus('statusFake',     f);
+  const trapInstant = computeTrap({ confirm: c, LaR: lastLaR, earlyWarn: w, resilience: SAFE(fastAvg(buf.r)) });
+  pushBuf(buf.trap, trapInstant, 15);
+  const trapVal = fastAvg(buf.trap);
+  updT(trapVal); setGaugeStatus('statusTrap', trapVal);
+  window.trapValue = trapVal;
 
   if (c > HIDDEN_THRESH) {
     hiddenBuf.push({ value: c, ts: now });
@@ -1896,6 +1906,7 @@ flowSSE.onmessage = (e) => {
   window.contextMetrics = {
     confirm: c,
     earlyWarn: w,
+    trap: trapVal,
     resilience: avgRes,
     LaR: lastLaR,
     shock: avgShock,
