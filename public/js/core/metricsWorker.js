@@ -96,6 +96,7 @@ function routeBabyWhale(t) {
   if (notional < BABY_WHALE_USD) return;
 
   const strength = Math.min(1, notional / 300_000);
+  console.debug('[worker] baby whale', { side: t.side, notional, strength });
   self.postMessage({
     type: 'anomaly',
     payload: {
