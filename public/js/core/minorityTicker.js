@@ -36,15 +36,25 @@ export function handleStrongBounce(radar, ctx = {}, now = Date.now()) {
   }
 }
 
-export function handleLiquidityVacuum(radar, ctx = {}, now = Date.now()) {
-  const { LaR = 1, resilience = 0, confirm = 0, momentum = 0 } = ctx;
-  if (
+export function computeFlush({
+  LaR = 1,
+  resilience = 0,
+  confirm = 0,
+  momentum = 0,
+  MPD = 0,
+  sweepHit = false
+} = {}) {
+  return (
     LaR < 0.25 &&
     resilience < 0 &&
     confirm < -0.20 &&
     momentum <= -0.10 &&
-    now - lastVacuum > LIQUIDITY_VACUUM_DEDUP_MS
-  ) {
+    (MPD < -0.5 || sweepHit)
+  );
+}
+
+export function handleLiquidityVacuum(radar, ctx = {}, now = Date.now()) {
+  if (computeFlush(ctx) && now - lastVacuum > LIQUIDITY_VACUUM_DEDUP_MS) {
     showTicker('🩸 Liquidity Vacuum — Expect Flush', 'bear');
     if (radar && typeof radar.addBubble === 'function') {
       radar.addBubble('liquidity_vacuum_flush', { ts: now, strength: 1 });

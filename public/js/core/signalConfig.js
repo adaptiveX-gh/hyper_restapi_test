@@ -278,6 +278,17 @@ export default {
     meta      : { side:'bear', category:'whale' },
     implementationTip : 'notional \u2265 150000'
   },
+
+  sweep_sell: {
+    id    : 'sweep_sell',
+    label : 'Sweep Sell',
+    zone  : -0.85,
+    color : '#ff4d4d',
+    shape : 'triangle-down',
+    normalize : { max: 1 },
+    tooltip   : 'Aggressive sell sweep across \u2265 5 levels',
+    meta      : { side:'bear', category:'forward-call' }
+  },
   liquidity_vacuum_flush: {
     id    : 'liquidity_vacuum_flush',
     label : 'Vacuum \u25BC',
