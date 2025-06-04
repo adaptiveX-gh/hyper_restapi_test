@@ -33,6 +33,9 @@ let hlWs = null;          // keep a reference so we can close / restart
   let lastObiRatio = 1.0;
   window.__lastObiRatio = lastObiRatio;
 
+  let lastTradePx = null;
+  let lastMPD = 0;
+
     // put near the top of dashboard.js – before updateBigTiles is ever called
     let LIQ_MEDIAN = NaN;     // <- will be filled once slow-stats arrives
     let VOL_MEDIAN = NaN;
@@ -583,10 +586,13 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
                   > 0 → expanding buying or selling frenzy.`,
       gOverExt : `<b>Over-Extension</b><br>
                   Distance from VWAP in σ and 15‑min bias slope.<br>
-                  Fade extremes above +0.70 or below −0.70.`
+                  Fade extremes above +0.70 or below −0.70.`,
+      gMPD    : `<b>Micro-Price Divergence</b><br>
+                  Depth-weighted mid-price vs last trade.<br>
+                  + value → bullish skew.`
     };
 
-    function makeGauge(id){
+    function makeGauge(id, min=-1, max=1){
       return Highcharts.chart(id,{
         chart:{type:'solidgauge'},
         title:null,
@@ -603,7 +609,7 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
           startAngle:-105,endAngle:105,
           background:{innerRadius:'85%',outerRadius:'100%',shape:'arc',backgroundColor:'#eee'}
         },
-        yAxis:{min:-1,max:1,
+        yAxis:{min,max,
           stops:[[0,'#ff4d4d'],[0.5,'#999'],[1,'#4dff88']],
           lineWidth:0,tickWidth:0,labels:{enabled:false}
         },
@@ -681,7 +687,8 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
           gL = makeGauge('gLaR'),
           gShock = makeGauge('gShock'),
           gMom = makeGauge('gMom'),
-          gOverExt = makeGauge('gOverExt');
+          gOverExt = makeGauge('gOverExt'),
+          gMPD = makeGauge('gMPD', -2, 2);
 
     const upd = (g,v)=>g.series[0].points[0].update(Math.max(-1,Math.min(1,v)));
     const updC= v=>upd(gC,v),
@@ -695,6 +702,7 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
     const updShock   = makeUpd(gShock, v => Math.max(-1, Math.min(1, v)));
     const updMom     = makeUpd(gMom,   v => Math.max(-1, Math.min(1, v)));
     const updOverExt = makeUpd(gOverExt, v => Math.max(-1, Math.min(1, v)));
+    const updMPD     = makeUpd(gMPD,   v => Math.max(-2, Math.min(2, v)));
 
 
 
@@ -1388,6 +1396,16 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
   depthStats.push(totalDepthSnap);
 
+  if (Number.isFinite(lastTradePx) && totalDepthSnap > 0) {
+    const microPx = (
+      d.topBid * d.askDepth +
+      d.topAsk * d.bidDepth
+    ) / totalDepthSnap;
+    lastMPD = ((microPx / lastTradePx) - 1) * 1e4;
+    updMPD(lastMPD);
+    setGaugeStatus('statusMPD', lastMPD / 2);
+  }
+
   setHtml('liqVal', formatCompact(totalDepthSnap));
 
   
@@ -1569,8 +1587,10 @@ flowSSE.onmessage = (e) => {
   /* ─── 0.  Parse & filter ───────────────────────────────────── */
   if (e.data.trim().endsWith('heartbeat')) return;
 
-  let t;
+  let t; 
   try { t = JSON.parse(e.data); } catch { return; }
+
+  lastTradePx = +t.price || lastTradePx;
 
   /* ─── 1.  Forward to the Web-Worker  (cheap, non-blocking) ─── */
   worker.postMessage({
@@ -1919,6 +1939,7 @@ flowSSE.onmessage = (e) => {
     trap: trapVal,
     resilience: avgRes,
     LaR: lastLaR,
+    MPD: lastMPD,
     shock: avgShock,
     bullPct: bullVal,
     bearPct: bearVal,
@@ -1958,7 +1979,8 @@ flowSSE.onmessage = (e) => {
     earlyWarn: w,
     confirm: c,
     LaR: lastLaR,
-    momentum: momVal
+    momentum: momVal,
+    MPD: lastMPD
   }, now);
 
   handleLiquidityVacuum(radar, {

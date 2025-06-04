@@ -13,13 +13,19 @@ export function showTicker(msg, side = 'bull') {
   }, 120000);
 }
 
-export function handleStrongBounce(radar, ctx = {}, now = Date.now()) {
-  const { earlyWarn = 0, confirm = 0, LaR = 0, momentum = 0 } = ctx;
-  if (
+export function computeBounce({ earlyWarn = 0, confirm = 0, LaR = 0, momentum = 0, MPD = 0 } = {}) {
+  return (
     earlyWarn > 0.05 &&
     confirm > 0.25 &&
     LaR >= 0.35 &&
     momentum > 0.10 &&
+    MPD > 0.5
+  );
+}
+
+export function handleStrongBounce(radar, ctx = {}, now = Date.now()) {
+  if (
+    computeBounce(ctx) &&
     now - lastBounce > STRONG_BOUNCE_DEDUP_MS
   ) {
     showTicker('⚡ Strong Bounce Incoming', 'bull');
