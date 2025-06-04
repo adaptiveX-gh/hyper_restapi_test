@@ -13,6 +13,7 @@ import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
 import { getBook, abortBookFetch } from './bookCache.js';
 import { handleWhaleAnomaly } from './whaleHandler.js';
+import { handleStrongBounce } from './minorityTicker.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1945,6 +1946,13 @@ flowSSE.onmessage = (e) => {
   }
 
   window.stateScore = (bullVal - bearVal) / 100;
+
+  handleStrongBounce(radar, {
+    earlyWarn: w,
+    confirm: c,
+    LaR: lastLaR,
+    momentum: momVal
+  }, now);
 
   /* ─── 12.  Donut charts & grid  ────────────────────────────── */
   absChart.series[0].setData([
