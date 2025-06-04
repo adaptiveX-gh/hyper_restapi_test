@@ -255,7 +255,29 @@ export default {
     meta: { side: 'bear', category: 'whale' },
     implementationTip: 'notional \u2265 5 * FALSE_ABS'
   },
+  baby_whale_up: {
+    id    : 'baby_whale_up',
+    label : 'Baby Whale \u25B2',
+    zone  : 0.88,
+    color : '#3399ff',
+    shape : 'diamond',
+    normalize : { max: 1 },
+    tooltip   : 'Single BUY print \u2265 $150 k',
+    meta      : { side:'bull', category:'whale' },
+    implementationTip : 'notional \u2265 150000'
+  },
 
+  baby_whale_down: {
+    id    : 'baby_whale_down',
+    label : 'Baby Whale \u25BC',
+    zone  : -0.88,
+    color : '#ff9933',
+    shape : 'diamond',
+    normalize : { max: 1 },
+    tooltip   : 'Single SELL print \u2265 $150 k',
+    meta      : { side:'bear', category:'whale' },
+    implementationTip : 'notional \u2265 150000'
+  },
   liquidity_vacuum_flush: {
     id    : 'liquidity_vacuum_flush',
     label : 'Vacuum \u25BC',
@@ -266,7 +288,6 @@ export default {
     tooltip: 'Thin book + net sells + downward ignition',
     meta  : { side: 'bear', category: 'forward-call' }
   },
-
   strong_bounce_incoming: {
     id: 'strong_bounce_incoming',
     label: 'Bounce \u25B2',
