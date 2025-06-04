@@ -230,5 +230,29 @@ export default {
     normalize: { max: 1 },
     tooltip: 'Hidden ask absorption: successive prints with <10% shown',
     meta: { side: 'bear', category: 'stealth' }
+  },
+
+  mega_whale_up: {
+    id: 'mega_whale_up',
+    label: 'Whale Print \u25B2',
+    zone: 0.95,
+    color: '#00d19d',
+    shape: 'diamond',
+    normalize: { max: 3 },
+    tooltip: '\u2265 5\u00D7 adaptive big-print threshold (BUY)',
+    meta: { side: 'bull', category: 'whale' },
+    implementationTip: 'notional \u2265 5 * FALSE_ABS'
+  },
+
+  mega_whale_down: {
+    id: 'mega_whale_down',
+    label: 'Whale Print \u25BC',
+    zone: -0.95,
+    color: '#ff3b5b',
+    shape: 'diamond',
+    normalize: { max: 3 },
+    tooltip: '\u2265 5\u00D7 adaptive big-print threshold (SELL)',
+    meta: { side: 'bear', category: 'whale' },
+    implementationTip: 'notional \u2265 5 * FALSE_ABS'
   }
 };

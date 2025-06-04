@@ -69,6 +69,26 @@ const fastAvg = (arr, lookBack = 25) => {
 
 const BIG_MULT = 3;                                  // “3 × normal” flag
 
+const MULT = 5;         // 5× adaptive threshold
+
+function routeMegaWhale(t) {
+  const notional = t.notional ?? (t.price * t.size);
+  const big = cfg.FALSE_ABS;
+  if (notional < MULT * big) return;
+
+  const strength = Math.min(3, notional / (MULT * big));
+  self.postMessage({
+    type: 'anomaly',
+    payload: {
+      ts: t.ts,
+      side: t.side,
+      size: notional,
+      kind: t.side === 'buy' ? 'mega_whale_up' : 'mega_whale_down',
+      strength
+    }
+  });
+}
+
 function bigPrintThreshold () {
   /* rolling 90-th pct × multiplier → adaptive “huge print” threshold */
   const p90 = sizeStats.pct(0.9) || 20_000;
@@ -100,6 +120,7 @@ self.onmessage = ({ data }) => {
     case 'trade': {
       const t = data.payload;
       sizeStats.push(t.notional);
+      routeMegaWhale(t);
 
       /* 3-a  Scenario sign buffers (only the quick ones the worker owns) */
       if (t.kind === 'absorption')

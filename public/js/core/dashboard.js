@@ -12,6 +12,7 @@ import { detectControlledPullback } from '../lib/detectControlledPullback.js';
 import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
 import { getBook, abortBookFetch } from './bookCache.js';
+import { handleWhaleAnomaly } from './whaleHandler.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let price24hAgo = null;     // fetched once per coin switch
@@ -1082,6 +1083,7 @@ function ensureViewport (fcEndTs) {
           else
             radar.addSqueezeWarnDown({ strength, ts });
         }
+        handleWhaleAnomaly(radar, data);
         biasChart.addAnomalyPoint(data.payload);
       }
     });

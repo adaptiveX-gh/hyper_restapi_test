@@ -782,6 +782,41 @@ export class SignalRadar {
     }
   }
 
+  addBubble(id, { strength = 0.1, ts = Date.now(), meta = {}, startY = 0 } = {}) {
+    const cfg = this.config[id];
+    if (!cfg) {
+      console.warn('Missing config for', id);
+      return;
+    }
+    const bullish = id.endsWith('_up');
+    const val = bullish ? 1 : -1;
+    const max = cfg.normalize?.max ?? cfg.normalization?.max ?? 1;
+    const scale = 40;
+    const point = {
+      x: this.jitterX(cfg, cfg.zone ?? (bullish ? 0.9 : -0.9)),
+      y: startY,
+      z: Math.min(Math.abs(strength) / max, 1) * scale,
+      colorValue: val,
+      color: cfg.color,
+      marker: { symbol: cfg.shape || 'circle' },
+      tag: cfg.label || id,
+      xRaw: ts,
+      strength: Math.abs(strength),
+      meta: { ...cfg.meta, value: strength, ...meta }
+    };
+    if (point.strength <= 0) return;
+    const idx = bullish ? 1 : 0;
+    this.chart.series[idx].addPoint(point, true, false, { duration: 300 });
+    const hcPoint = this.chart.series[idx].data[this.chart.series[idx].data.length - 1];
+    this.points.push({ born: ts, startY, elapsed: startY, strength: point.strength, point: hcPoint });
+    if (this.points.length > 400) {
+      this.points.sort((a, b) => a.strength - b.strength);
+      const excess = this.points.splice(0, this.points.length - 400);
+      excess.forEach(p => { if (p.point.remove) p.point.remove(false); });
+      this.chart.redraw(false);
+    }
+  }
+
   tick() {
     const now = Date.now();
     const dt = (now - this.lastTick) / 1000;
