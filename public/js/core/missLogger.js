@@ -18,6 +18,7 @@ function load(){
 }
 
 export async function logMiss(entry){
+  if (entry?.type === 'Top Trader') return;
   const row = { timestamp:new Date().toISOString(), ...entry };
   console.log('[TEST TRADE EVENT]', row);
   if (localStorage.getItem('missLogQueueV') !== 'v2') {
