@@ -74,8 +74,9 @@ const MULT = 5;         // 5× adaptive threshold
 const BABY_WHALE_USD = 150_000;
 
 function routeMegaWhale(t) {
-  const notional = t.notional ?? (t.price * t.size);
-  const big = cfg.FALSE_ABS;
+  const notional = Number(t.notional ?? (t.price * t.size));
+  const big = Number(cfg.FALSE_ABS);
+  if (!Number.isFinite(notional) || !Number.isFinite(big)) return;
   if (notional < MULT * big) return;
 
   const strength = Math.min(3, notional / (MULT * big));
