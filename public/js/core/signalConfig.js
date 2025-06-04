@@ -254,5 +254,16 @@ export default {
     tooltip: '\u2265 5\u00D7 adaptive big-print threshold (SELL)',
     meta: { side: 'bear', category: 'whale' },
     implementationTip: 'notional \u2265 5 * FALSE_ABS'
+  },
+
+  strong_bounce_incoming: {
+    id: 'strong_bounce_incoming',
+    label: 'Bounce \u25B2',
+    zone: 0.90,
+    color: '#28c76f',
+    shape: 'star',
+    normalize: { max: 1 },
+    tooltip: 'All bounce gauges green (Confirm, EW, LaR, Momentum)',
+    meta: { side: 'bull', category: 'forward-call' }
   }
 };
