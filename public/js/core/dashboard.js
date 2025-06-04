@@ -50,6 +50,7 @@ let hlWs = null;          // keep a reference so we can close / restart
       VOL_WINDOW      : 60_000,
       FALSE_ABS       : 200_000,
       FALSE_NEUTRAL   : 1_200,   // ms
+      TICK_SIZE       : 0.1,
       MOM_COUNT_THRESH: 30,
       FULL_SCALE_LAR  : 5e5,
       FULL_SCALE_SLOPE: 1e8
@@ -469,7 +470,9 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         lastSqueezeGauge = 0,
         lastSqueezeSignal = 0,
         lastSqueezeWarnGauge = 0,
-        lastSqueezeWarnSignal = 0;
+        lastSqueezeWarnSignal = 0,
+        lastSweepTs = 0,
+        sweepSell = false;
 
     const BUY_DIP_DEDUP_MS = 30_000;
     const SELL_RALLY_DEDUP_MS = 30_000;
@@ -1587,7 +1590,7 @@ flowSSE.onmessage = (e) => {
   /* ─── 0.  Parse & filter ───────────────────────────────────── */
   if (e.data.trim().endsWith('heartbeat')) return;
 
-  let t; 
+  let t;
   try { t = JSON.parse(e.data); } catch { return; }
 
   lastTradePx = +t.price || lastTradePx;
@@ -1599,6 +1602,14 @@ flowSSE.onmessage = (e) => {
   });
 
   const now      = Date.now();
+  const levelsCrossed = lastTradePx
+    ? Math.round(Math.abs(+t.price - lastTradePx) / P.TICK_SIZE)
+    : 0;
+  if (levelsCrossed >= 5 && t.notional >= 3 * P.FALSE_ABS) {
+    sweepSell = t.side === 'sell';
+    lastSweepTs = now;
+    radar.addBubble('sweep_sell', { ts: now, strength: 1 });
+  }
   const isAbs    = t.type === 'absorption';
   const isExh    = t.type === 'exhaustion';
 
@@ -1987,7 +1998,9 @@ flowSSE.onmessage = (e) => {
     LaR: lastLaR,
     resilience: avgRes,
     confirm: c,
-    momentum: momVal
+    momentum: momVal,
+    MPD: lastMPD,
+    sweepHit: sweepSell && now - lastSweepTs < 1000
   }, now);
 
   /* ─── 12.  Donut charts & grid  ────────────────────────────── */
