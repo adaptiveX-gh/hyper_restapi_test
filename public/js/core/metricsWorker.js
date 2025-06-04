@@ -94,10 +94,11 @@ function routeMegaWhale(t) {
 
 function routeBabyWhale(t) {
   const notional = t.notional ?? (t.price * t.size);
-  if (notional < BABY_WHALE_USD) return;
+  const isTop = t.kind === 'top';
+  if (!isTop && notional < BABY_WHALE_USD) return;
 
   const strength = Math.min(1, notional / 300_000);
-  console.debug('[worker] baby whale', { side: t.side, notional, strength });
+  console.debug('[worker] baby whale', { side: t.side, notional, strength, top: isTop });
   self.postMessage({
     type: 'anomaly',
     payload: {
@@ -248,3 +249,5 @@ function forecastAndPost () {
     payload : { base: pts, up: upper, lo: lower }
   });
 }
+
+export { routeBabyWhale }; // make testable
