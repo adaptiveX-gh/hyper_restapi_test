@@ -8,6 +8,7 @@ let prevBull = 0;
 let prevBear = 0;
 let bullArmed = true;
 let bearArmed = true;
+let lastTrap = 0;
 
 export function setWarmupMs(ms) {
   warmupMs = ms;
@@ -18,10 +19,12 @@ export function resetTrigger() {
   prevBear = 0;
   bullArmed = true;
   bearArmed = true;
+  lastTrap = 0;
   startTime = Date.now();
 }
 
-export function onGaugeUpdate({ bullPct = 0, bearPct = 0, midPrice = null } = {}) {
+export function onGaugeUpdate({ bullPct = 0, bearPct = 0, midPrice = null, trapValue = null } = {}) {
+  if (typeof trapValue === 'number') lastTrap = trapValue;
   if (Date.now() - startTime < warmupMs) return;
   if (bullArmed && bullPct >= 45 && prevBull < 45) {
     fire('LONG', 'bull', bullPct, midPrice);
@@ -43,6 +46,9 @@ export function onGaugeUpdate({ bullPct = 0, bearPct = 0, midPrice = null } = {}
 
 function fire(dir, side, pct, midPrice) {
   const ctx = window.contextMetrics || {};
+  const trap = typeof lastTrap === 'number' ? lastTrap : 0;
+  const vetoLong = dir === 'LONG' && trap > 0.50;
+  const vetoShort = dir === 'SHORT' && trap < -0.50;
   const entry = {
     type: 'Top Trader',
     side,
@@ -54,9 +60,14 @@ function fire(dir, side, pct, midPrice) {
     confirm: ctx.confirm,
     earlyWarn: ctx.earlyWarn,
     resilience: ctx.resilience,
+    trap,
     grade: 'Edge',
     warnings: [`${pct.toFixed(1)} % gauge`]
   };
+  if (vetoLong || vetoShort) {
+    entry.grade = 'Vetoed';
+    entry.warnings.push('Trap');
+  }
   logMiss(entry).then(() => bus.emit('trade:acked', entry));
   bus.emit('trade:fire', entry);
 }

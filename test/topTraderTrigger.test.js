@@ -53,4 +53,20 @@ describe('topTraderTrigger', () => {
     expect(logMiss).not.toHaveBeenCalled();
     expect(events.length).toBe(0);
   });
+
+  test('vetoes LONG when trap meter high', () => {
+    const events = [];
+    bus.on('trade:fire', e => events.push(e));
+    onGaugeUpdate({ bullPct: 44, bearPct: 0, trapValue: 0.6 });
+    onGaugeUpdate({ bullPct: 46, bearPct: 0, trapValue: 0.6 });
+    expect(events[0].grade).toBe('Vetoed');
+  });
+
+  test('vetoes SHORT when bear trap', () => {
+    const events = [];
+    bus.on('trade:fire', e => events.push(e));
+    onGaugeUpdate({ bearPct: 44, bullPct: 0, trapValue: -0.7 });
+    onGaugeUpdate({ bearPct: 46, bullPct: 0, trapValue: -0.7 });
+    expect(events[0].grade).toBe('Vetoed');
+  });
 });
