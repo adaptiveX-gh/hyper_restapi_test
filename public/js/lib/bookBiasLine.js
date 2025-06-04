@@ -1,5 +1,5 @@
 /*───────────────────────────────────────────────────────────────*\
-  bookBiasLine.js  –  Book-bias history + anomaly scatter overlay
+  bookBiasLine.js  –  Book-bias history line chart
   ▸ Pure ES-module (no global pollution)
   ▸ Depends only on   window.Highcharts
   ▸ Usage:
@@ -11,15 +11,7 @@
         // 1️⃣  feed regular bias values
         biasChart.pushBias(Date.now(), +0.12);        // ts(ms), value(-1…+1)
 
-        // 2️⃣  add “huge print” events
-        biasChart.addAnomalyPoint({
-          ts   : Date.now(),
-          side : 'buy',               // or 'sell'
-          size : 850_000,             // raw notional for tooltip
-          kind : 'abs'                // 'abs' | 'exh'
-        });
-
-        // 3️⃣  replace the full series (rare)
+        // 2️⃣  replace the full series (rare)
         biasChart.resetBiasSeries(myArrayOf [ts, value] );
 \*───────────────────────────────────────────────────────────────*/
 
@@ -28,9 +20,8 @@ export class BookBiasLine {
    *  PRIVATE FIELDS
    ****************************************************************/
   #containerSelector;
-  #chart          = null;
-  #biasSeriesId   = 'bias';
-  #eventSeriesId  = 'events';
+  #chart        = null;
+  #biasSeriesId = 'bias';
 
   /* ── redraw throttle (max ≈12 fps) ────────────────────────── */
   #lastDraw       = 0;
@@ -62,47 +53,7 @@ export class BookBiasLine {
     this.#chart.redraw(false);
   }
 
-  /** Drop an anomaly icon */
-  addAnomalyPoint ({ ts, side, size = 0, kind }) {
-    const bullish = side === 'buy';
-    let symbol    = 'circle';
-    let fill      = bullish ? '#4dff88' : '#ff4d4d';
-    let label     = '';
-    let anm       = '';
 
-    if (kind === 'abs' || kind === 'exh') {
-      symbol = kind === 'abs' ? 'triangle' : 'square';
-      anm    = kind === 'abs' ? 'Big ABS' : 'Big EXH';
-    } else if (kind === 'ice') {
-      label  = '🧊';
-      anm    = 'Iceberg';
-    } else if (kind === 'sq') {
-      label  = '🚨';
-      anm    = 'Squeeze';
-    }
-
-    this.#chart.get(this.#eventSeriesId).addPoint({
-      x       : ts,
-      y       : this.#currentBiasValue(),
-      anm,
-      sideStr : bullish ? 'Bullish' : 'Bearish',
-      size,
-      marker  : {
-        symbol,
-        fillColor : fill,
-        lineColor : '#000',
-        radius    : label ? 10 : 7
-      },
-      dataLabels: label ? {
-        enabled: true,
-        useHTML: true,
-        y: -8,
-        formatter () { return label; }
-      } : undefined
-    }, false, false);
-
-    this.#maybeRedraw();
-  }
 
   /****************************************************************
    *  I N T E R N A L S
@@ -144,9 +95,11 @@ export class BookBiasLine {
           enabled: true,
           inputEnabled: false,
           buttons: [
-            { type: 'minute', count: 1, text: '1m' },
-            { type: 'minute', count: 5, text: '5m' },
-            { type: 'all', text: 'All' }
+            { type: 'minute', count: 1,  text: '1m' },
+            { type: 'minute', count: 5,  text: '5m' },
+            { type: 'minute', count: 15, text: '15m' },
+            { type: 'minute', count: 60, text: '60m' },
+            { type: 'all',    text: 'All' }
           ],
           selected: 1
         },
@@ -159,31 +112,9 @@ export class BookBiasLine {
             data : [],
             color: '#41967c',
             tooltip: { valueDecimals: 2 }
-          },
-
-          /* ② separate scatter for anomalies */
-          {
-            id   : this.#eventSeriesId,
-            name : 'Anomalies',
-            type : 'scatter',
-            data : [],
-            yAxis: 0,
-            marker : {
-              symbol   : 'circle',
-              radius   : 6,
-              lineWidth: 1,
-              lineColor: '#000'
-            },
-            tooltip : {
-              pointFormatter () {
-                return `<span style="color:${this.color}">●</span> ` +
-                       `<b>${this.anm}</b><br>` +
-                       `${this.sideStr}, ${Highcharts.numberFormat(this.size,0)} notional<br>` +
-                       `${Highcharts.dateFormat('%H:%M:%S', this.x)}`;
-              }
-            },
-            zIndex : 5
           }
+
+          /* ② placeholder for historical events removed */
         ]
       }
     );

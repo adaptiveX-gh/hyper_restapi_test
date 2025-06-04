@@ -877,12 +877,14 @@ function initCFDChart () {
       enabled: true,
       inputEnabled: false,
       buttons: [
-        { type: 'minute', count: 1, text: '1m' },
-        { type: 'minute', count: 5, text: '5m' },
-        { type: 'all', text: 'All' }
+        { type: 'minute', count: 1,  text: '1m' },
+        { type: 'minute', count: 5,  text: '5m' },
+        { type: 'minute', count: 15, text: '15m' },
+        { type: 'minute', count: 60, text: '60m' },
+        { type: 'all',    text: 'All' }
       ],
       selected: 1 // Default to 5m view
-    },      
+    },
 
       // ⬇⬇⬇  NOTICE the added 'id' for EVERY SERIES  ⬇⬇⬇
       series  : [
@@ -1096,7 +1098,6 @@ function ensureViewport (fcEndTs) {
             radar.addSqueezeWarnDown({ strength, ts });
         }
         handleWhaleAnomaly(radar, data);
-        biasChart.addAnomalyPoint(data.payload);
       }
     });
 
@@ -1666,12 +1667,6 @@ flowSSE.onmessage = (e) => {
         radar.addIcebergEventUp({ strength, ts: t.ts || now });
       else
         radar.addIcebergEventDown({ strength, ts: t.ts || now });
-      biasChart.addAnomalyPoint({
-        ts   : t.ts || now,
-        side : t.side,
-        size : t.notional,
-        kind : 'ice'
-      });
     }
   }
 
@@ -1697,12 +1692,6 @@ flowSSE.onmessage = (e) => {
         radar.addSqueezeWarnUp({ strength, ts: t.ts || now });
       else
         radar.addSqueezeWarnDown({ strength, ts: t.ts || now });
-      biasChart.addAnomalyPoint({
-        ts   : t.ts || now,
-        side : t.side,
-        size : t.notional,
-        kind : 'sq'
-      });
     }
   }
 
