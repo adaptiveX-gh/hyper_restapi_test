@@ -2142,9 +2142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(trade)
         });
-        if (res.ok) {
-          console.log('Injected test trade for 0x41206f8efb51e5039e5b46e04e7866a4849f72d2');
-        } else {
+        if (!res.ok) {
           const { error } = await res.json().catch(() => ({ error: res.statusText }));
           console.error('[top-trader-inject]', error);
         }
