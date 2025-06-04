@@ -71,6 +71,8 @@ const BIG_MULT = 3;                                  // “3 × normal” flag
 
 const MULT = 5;         // 5× adaptive threshold
 
+const BABY_WHALE_USD = 150_000;
+
 function routeMegaWhale(t) {
   const notional = t.notional ?? (t.price * t.size);
   const big = cfg.FALSE_ABS;
@@ -84,6 +86,23 @@ function routeMegaWhale(t) {
       side: t.side,
       size: notional,
       kind: t.side === 'buy' ? 'mega_whale_up' : 'mega_whale_down',
+      strength
+    }
+  });
+}
+
+function routeBabyWhale(t) {
+  const notional = t.notional ?? (t.price * t.size);
+  if (notional < BABY_WHALE_USD) return;
+
+  const strength = Math.min(1, notional / 300_000);
+  self.postMessage({
+    type: 'anomaly',
+    payload: {
+      ts: t.ts,
+      side: t.side,
+      size: notional,
+      kind: t.side === 'buy' ? 'baby_whale_up' : 'baby_whale_down',
       strength
     }
   });
@@ -121,6 +140,7 @@ self.onmessage = ({ data }) => {
       const t = data.payload;
       sizeStats.push(t.notional);
       routeMegaWhale(t);
+      routeBabyWhale(t);
 
       /* 3-a  Scenario sign buffers (only the quick ones the worker owns) */
       if (t.kind === 'absorption')
