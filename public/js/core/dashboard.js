@@ -1,7 +1,7 @@
 
 import { onCtx, onCandle } from './perpDataFeed.js';
 import { BookBiasLine } from '../lib/bookBiasLine.js';
-import { classifyObi, classifyBias } from "./utils.js";
+import { classifyObi, classifyBias, computeOverExt } from "./utils.js";
 import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
@@ -21,7 +21,11 @@ let hlWs = null;          // keep a reference so we can close / restart
   let radar;
   const depthBufProbe = [];
   const priceProbeBuf = [];
+  const priceBuf15m   = [];
+  const biasSlopeBuf  = [];
   const squeezeMetricBuf = [];
+  let lastBiasVal  = 0;
+  let lastBiasSlope = 0;
 
   // keep latest Order Book Imbalance ratio for other streams
   let lastObiRatio = 1.0;
@@ -571,7 +575,10 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
                   Negative = bid shock, Positive = ask shock.`,
       gMom     : `<b>Momentum-Ignition</b><br>
                   # of aggressive prints in 2 s vs adaptive threshold.<br>
-                  > 0 → expanding buying or selling frenzy.`
+                  > 0 → expanding buying or selling frenzy.`,
+      gOverExt : `<b>Over-Extension</b><br>
+                  Distance from VWAP in σ and 15‑min bias slope.<br>
+                  Fade extremes above +0.70 or below −0.70.`
     };
 
     function makeGauge(id){
@@ -667,7 +674,8 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
           gR = makeGauge('gRes'),
           gL = makeGauge('gLaR'),
           gShock = makeGauge('gShock'),
-          gMom = makeGauge('gMom');
+          gMom = makeGauge('gMom'),
+          gOverExt = makeGauge('gOverExt');
 
     const upd = (g,v)=>g.series[0].points[0].update(Math.max(-1,Math.min(1,v)));
     const updC= v=>upd(gC,v),
@@ -676,9 +684,10 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
           updF= v=>upd(gF,v);
 
     
-    const updR     = makeUpd(gR);                                 // no clamp
-    const updShock = makeUpd(gShock, v => Math.max(-1, Math.min(1, v)));
-    const updMom   = makeUpd(gMom,   v => Math.max(-1, Math.min(1, v)));
+    const updR       = makeUpd(gR);                                 // no clamp
+    const updShock   = makeUpd(gShock, v => Math.max(-1, Math.min(1, v)));
+    const updMom     = makeUpd(gMom,   v => Math.max(-1, Math.min(1, v)));
+    const updOverExt = makeUpd(gOverExt, v => Math.max(-1, Math.min(1, v)));
 
 
 
@@ -1106,6 +1115,15 @@ function ensureViewport (fcEndTs) {
       while (priceProbeBuf.length && Date.now() - priceProbeBuf[0].ts > 30000)
         priceProbeBuf.shift();
 
+      /* store for 15-min VWAP & RSI */
+      const now = Date.now();
+      priceBuf15m.push({ ts: now, px });
+      while (priceBuf15m.length && now - priceBuf15m[0].ts > 900000)
+        priceBuf15m.shift();
+      biasSlopeBuf.push({ ts: now, val: lastBiasVal });
+      while (biasSlopeBuf.length && now - biasSlopeBuf[0].ts > 900000)
+        biasSlopeBuf.shift();
+
       /* 2️⃣  live price */
       setHtml('priceLive',
               '$' + px.toLocaleString(undefined, { maximumFractionDigits: 2 }));
@@ -1126,6 +1144,43 @@ function ensureViewport (fcEndTs) {
         const el = document.getElementById('price24h');
         el.textContent = (pct >= 0 ? '+' : '') + (pct * 100).toFixed(2) + '%';
         el.style.color = pct >= 0 ? '#28c76f' : '#ff5252';     // green ↑, red ↓
+      }
+
+      /* Over-Extension gauge update */
+      if (priceBuf15m.length > 5) {
+        const prices = priceBuf15m.map(p => p.px);
+        const mean = prices.reduce((s, v) => s + v, 0) / prices.length;
+        const variance = prices.reduce((s, v) => s + (v - mean) ** 2, 0) / prices.length;
+        const sigma = Math.sqrt(variance) || 1;
+        const z = (px - mean) / sigma;
+        const rsi = (() => {
+          let up = 0, down = 0;
+          for (let i = 1; i < prices.length; i++) {
+            const diff = prices[i] - prices[i - 1];
+            if (diff > 0) up += diff; else down -= diff;
+          }
+          const n = prices.length - 1 || 1;
+          const avgUp = up / n, avgDown = down / n;
+          if (!avgDown) return 100;
+          const rs = avgUp / avgDown;
+          return 100 - 100 / (1 + rs);
+        })();
+        const slope = (() => {
+          if (biasSlopeBuf.length < 2) return 0;
+          const t0 = biasSlopeBuf[0].ts;
+          let Sx=0,Sy=0,Sxx=0,Sxy=0,n=biasSlopeBuf.length;
+          for (const {ts,val} of biasSlopeBuf){
+            const x=(ts - t0)/1000;
+            Sx+=x;Sy+=val;Sxx+=x*x;Sxy+=x*val;
+          }
+          const denom = n*Sxx - Sx*Sx;
+          return denom ? (n*Sxy - Sx*Sy)/denom : 0;
+        })();
+        lastBiasSlope = slope;
+        const val = computeOverExt({ zPrice: z, biasSlope15m: slope, rsi15m: rsi });
+        updOverExt(val);
+        setGaugeStatus('statusOverExt', val);
+        window.contextMetrics.overExt = val;
       }
     });
 
@@ -1536,6 +1591,7 @@ flowSSE.onmessage = (e) => {
   }
   const biasVal = biasCalc.value();
   biasChart.pushBias(now, biasVal);
+  lastBiasVal = biasVal;
 
   const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
@@ -1823,9 +1879,10 @@ flowSSE.onmessage = (e) => {
   const raw = [
     SAFE(c), SAFE(w), SAFE(s), SAFE(f),
     SAFE(lastLaR), avgRes,
-    avgShock, SAFE(momVal)
+    avgShock, SAFE(momVal),
+    SAFE(window.contextMetrics?.overExt)
   ];
-  const W      = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6];
+  const W      = [1.4,1.2,1.0,1.0,0.7,0.7,0.8,0.6,0.6];
   const sumW   = W.reduce((a,b)=>a+b,0);
   const amplify= 1.5;
 
@@ -1844,7 +1901,8 @@ flowSSE.onmessage = (e) => {
     shock: avgShock,
     bullPct: bullVal,
     bearPct: bearVal,
-    biasSlope15m: 0
+    biasSlope15m: lastBiasSlope,
+    overExt: window.contextMetrics?.overExt ?? 0
   };
 
     const r = Number.isFinite(lastObiRatio) ? lastObiRatio : 1.0;

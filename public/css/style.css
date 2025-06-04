@@ -336,3 +336,8 @@ section.hidden { display: none; }
   color: #333;
   margin-top: 2px;
 }
+
+/* Highlight for over-extension fade alert */
+.overext-warn {
+  box-shadow: 0 0 0 3px #ff4d4d inset;
+}
