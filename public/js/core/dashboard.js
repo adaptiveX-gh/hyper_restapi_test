@@ -1399,8 +1399,16 @@ setTxt('card-vol24h',  formatCompact(asNum(vol24h)));
 /* 4️⃣  Last-updated stamp ------------------------------ */
 if (ts) setTxt('card-upd', new Date(asNum(ts)).toLocaleTimeString());
 
-
 }
+
+function paint(snap){
+  if(!snap) return;
+  updateSpectrumBar(snap.bearPct, snap.bullPct);
+  updateBigTiles(snap);
+  document.querySelectorAll('.skel').forEach(el=>el.classList.remove('skel'));
+  if(window.NProgress) window.NProgress.done();
+}
+window.paint = paint;
 
 
 
@@ -2184,6 +2192,9 @@ $('liqTxt').title = () =>
   `Thick >  ${fmtUsd(LIQ_THICK)}`;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (window.__WARM_SNAP) {
+    paint(window.__WARM_SNAP);
+  }
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
   connect(firstSym);
   radar = new SignalRadar('signalRadar');
