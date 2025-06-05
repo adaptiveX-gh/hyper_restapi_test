@@ -28,3 +28,16 @@
   --brand-green: var(--up);
   --brand-red  : var(--down);
 }
+
+.theme-row {
+  margin-bottom: 12px;
+}
+.theme-switch {
+  color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.theme-switch input:focus-visible {
+  outline: 2px solid var(--up);
+}
