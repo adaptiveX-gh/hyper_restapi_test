@@ -332,7 +332,7 @@
 
   <!-- ─── Bull / Bear spectrum meters + Signal Radar ─────────────── -->
   <div class="obi-spectrum-row">
-    <div class="glass-card p-6 flex flex-col gap-4 flex-1 items-center min-w-[320px] min-h-[520px]">
+    <div class="obi-block" style="flex:1; display:flex; flex-direction:column; align-items:center; min-width:320px; min-height:520px;">
       <h4 class="obi-block-title">Flow Signals &amp; Market Spectrum</h4>
       <div id="signalRadar"></div>
       <div class="score-row">
@@ -350,8 +350,8 @@
         </div>
       </div>
       <div id="bullBearBar" class="center-spectrum">
-        <div class="bear-fill skeleton"><span id="bearPct">0%</span></div>
-        <div class="bull-fill skeleton"><span id="bullPct">0%</span></div>
+        <div class="bear-fill skel"><span id="bearPct">0%</span></div>
+        <div class="bull-fill skel"><span id="bullPct">0%</span></div>
       </div>
       <div class="score-buttons">
         <button id="score-reset" class="score-reset-btn">Reset Score</button>

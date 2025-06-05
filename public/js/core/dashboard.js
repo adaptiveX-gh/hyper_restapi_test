@@ -1439,7 +1439,7 @@ function paint(snap){
   if(!snap) return;
   updateSpectrumBar(snap.bearPct, snap.bullPct);
   updateBigTiles(snap);
-  document.querySelectorAll('.skeleton').forEach(el=>el.classList.remove('skeleton'));
+  document.querySelectorAll('.skel').forEach(el=>el.classList.remove('skel'));
   if(window.NProgress) window.NProgress.done();
 }
 window.paint = paint;
