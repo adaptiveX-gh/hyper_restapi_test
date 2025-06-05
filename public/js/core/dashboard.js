@@ -15,6 +15,12 @@ import { getBook, abortBookFetch } from './bookCache.js';
 import { handleWhaleAnomaly } from './whaleHandler.js';
 import { handleStrongBounce, handleLiquidityVacuum } from './minorityTicker.js';
 import './bubbleStream.js';
+import './themeToggle.js';
+import { darkTheme } from './themes/highchartsThemes.js';
+
+if (document.body.classList.contains('theme-dark') && window.Highcharts) {
+  window.Highcharts.setOptions(darkTheme);
+}
 
     let obCFD = null;          // ← visible to every function in the module
     let macroChart = null;

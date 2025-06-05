@@ -1,3 +1,3 @@
-.obi-bull { color: #28c76f; transition: color 0.2s ease-in-out; }
-.obi-bear { color: #ff5252; transition: color 0.2s ease-in-out; }
+.obi-bull { color: var(--brand-green); transition: color 0.2s ease-in-out; }
+.obi-bear { color: var(--brand-red); transition: color 0.2s ease-in-out; }
 .obi-flat { color: #888;    transition: color 0.2s ease-in-out; }

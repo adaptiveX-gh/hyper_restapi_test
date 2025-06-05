@@ -1,6 +1,7 @@
 import { registerNav, showSection } from './core/sections.js';
 import './core/dom.js';                       // sets up global logging
 import './core/api.js';                        // sets up global fetch
+import './core/themeToggle.js';
 
 /* -------- import the strategy modules (they self-register) ---- */
 import './strategies/delta.js';

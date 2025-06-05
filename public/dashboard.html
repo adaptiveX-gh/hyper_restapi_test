@@ -14,10 +14,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highcharts/grid-lite/css/grid.css"/>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/dashboard.css"/>
+  <link rel="stylesheet" href="css/theme.css"/>
 
   <style>
     /* ─── Global & Sidebar ───────────────────────────────────────────────── */
-    html,body{margin:0;padding:0;background:#f6f7fa;font-family:'Segoe UI',Arial,sans-serif;color:#222;height:100%;width:100%}
+    html,body{margin:0;padding:0;background:#f6f7fa;font-family:'Segoe UI',Arial,sans-serif;color:var(--text-main);height:100%;width:100%}
     #obi-alert-ticker{position:sticky;top:0;left:0;width:100vw;height:35px;line-height:35px;background:#10161c;color:#ffbe55;font-size:1.08rem;font-weight:600;letter-spacing:.14em;border-bottom:1px solid #23272e;overflow:hidden;padding-left:9px;z-index:1001}
     #ticker-inner{display:inline-block;padding-left:100vw;animation:obi-ticker 20s linear infinite}
     @keyframes obi-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
@@ -45,11 +46,11 @@
     .yellow{background:#ffbe55}
     .red{background:#ff4d4d}
     /* status classes used by dashboard.js */
-    .bull{background:#28c76f}
-    .bear{background:#ff5252}
+    .bull{background:var(--brand-green)}
+    .bear{background:var(--brand-red)}
     .flat{background:#9e9e9e}
-    .strong{background:#28c76f}
-    .weak{background:#ff5252}
+    .strong{background:var(--brand-green)}
+    .weak{background:var(--brand-red)}
     .normal{background:#9e9e9e}
 
     /* ─── Gauges Row ───────────────────────────────────────────────────── */
@@ -84,7 +85,7 @@
     #flowGrid{height:300px}
     #flowGrid table{width:100%;border-collapse:collapse;background:none!important;color:#293d49!important}
     #flowGrid thead tr{background:#fff!important}
-    #flowGrid thead th{color:#000!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
+    #flowGrid thead th{color:var(--text-main)!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
     #flowGrid th,#flowGrid td{border:1px solid #e2e5eb!important}
     #flowGrid td{padding:8px;color:#293d49!important}
     #flowGrid tbody tr:nth-child(odd) td{background:#fff!important}
@@ -95,7 +96,7 @@
     #topTraderGrid{height:300px}
     #topTraderGrid table{width:100%;border-collapse:collapse;background:none!important;color:#293d49!important}
     #topTraderGrid thead tr{background:#fff!important}
-    #topTraderGrid thead th{color:#000!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
+    #topTraderGrid thead th{color:var(--text-main)!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
     #topTraderGrid th,#topTraderGrid td{border:1px solid #e2e5eb!important}
     #topTraderGrid td{padding:8px;color:#293d49!important}
     #topTraderGrid tbody tr:nth-child(odd) td{background:#fff!important}
@@ -112,12 +113,12 @@
       margin-left:4px;
       line-height:0;
     }
-    .info-icon:hover{ color:#000; }
+    .info-icon:hover{ color:var(--text-main); }
     .row-flex { display:flex; gap:16px; width:100%; }
     .flex-1   { flex:1 1 0;  }        /* equal halves */
 
-  .obi-bull { color:#28c76f; transition:color .15s ease-in; }
-  .obi-bear { color:#ff5252; transition:color .15s ease-in; }
+  .obi-bull { color:var(--brand-green); transition:color .15s ease-in; }
+  .obi-bear { color:var(--brand-red); transition:color .15s ease-in; }
   .obi-flat { color:#888; transition:color .15s ease-in; }
 
   /* tiny 8 px circle */
@@ -151,8 +152,8 @@
 }
 
 /* optional colour helpers – already in your CSS but here for clarity */
-.obi-gauge-status.bull{  color:#28c76f; }
-.obi-gauge-status.bear{  color:#ff5252; }
+.obi-gauge-status.bull{  color:var(--brand-green); }
+.obi-gauge-status.bear{  color:var(--brand-red); }
 .obi-gauge-status.flat{  color:#999;    }
 
 /* small header helper so all blocks look alike */
@@ -228,6 +229,11 @@
 
         <label for="toggle-macro">Show VWAP/ATR Overlay:</label>
         <input id="toggle-macro" type="checkbox" checked>
+
+        <label class="theme-switch">
+          <input type="checkbox" id="themeToggle">
+          <span>🌙 Dark&nbsp;mode</span>
+        </label>
 
         <!-- ─── TUNABLE PARAMS ─────────────────────────────────────────────────── -->
       </div>
