@@ -2,6 +2,8 @@
 body {
   font-family: sans-serif;
   margin: 2rem;
+  background: var(--bg-0);
+  color: var(--text-main);
 }
 textarea,
 input[type="number"],
@@ -23,6 +25,9 @@ button {
   margin: .25rem 0;
   cursor: pointer;
 }
+.card{ background:var(--bg-1); border:1px solid var(--border); }
+button.primary{ background:var(--brand-green); }
+button.danger{  background:var(--brand-red);  }
 section {
   margin-bottom: 2rem;
   border-bottom: 1px solid #ccc;
