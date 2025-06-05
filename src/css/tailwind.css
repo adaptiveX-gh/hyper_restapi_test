@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+}
+
 @layer components {
   .glass-card {
     @apply backdrop-blur-sm bg-surface-1/40 border border-border/50 rounded-3xl;
