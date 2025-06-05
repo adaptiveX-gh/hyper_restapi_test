@@ -16,26 +16,48 @@ export function calcBands(candles){
 
 import { WebSocket } from 'ws';
 
-export function startMacroBandsService(broadcast, coin='BTC'){
+export function startMacroBandsService(broadcast, coin = 'BTC') {
   const ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
   const buf = [];
-  ws.on('open', ()=>{
-    ws.send(JSON.stringify({
-      method:'subscribe',
-      subscription:{ type:'candle', coin, interval:'1m' }
-    }));
+  let lastMid = null;
+
+  ws.on('open', () => {
+    ws.send(
+      JSON.stringify({
+        method: 'subscribe',
+        subscription: { type: 'candle', coin, interval: '1m' }
+      })
+    );
   });
-  ws.on('message', raw=>{
-    let msg; try{ msg=JSON.parse(raw);}catch{return;}
-    if(msg.channel!=='candle') return;
-    const c = Array.isArray(msg.data)?msg.data.at(-1):msg.data;
-    if(!c) return;
-    buf.push({o:+c.o,h:+c.h,l:+c.l,c:+c.c,v:+c.v});
-    if(buf.length>60) buf.shift();
+
+  ws.on('message', raw => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (msg.channel !== 'candle') return;
+    const c = Array.isArray(msg.data) ? msg.data.at(-1) : msg.data;
+    if (!c) return;
+    buf.push({ o: +c.o, h: +c.h, l: +c.l, c: +c.c, v: +c.v });
+    if (buf.length > 60) buf.shift();
+    lastMid = +c.c;
   });
-  const timer = setInterval(()=>{
+
+  const timer = setInterval(() => {
     const b = calcBands(buf);
-    if(b) broadcast({type:'macroBands', vwap:b.vwap, up1:b.up1, up2:b.up2, dn1:b.dn1, dn2:b.dn2});
-  },60_000);
-  return { stop:()=>{clearInterval(timer); ws.close();} };
+    if (!b) return;
+    broadcast({
+      type: 'macroBands',
+      payload: {
+        ts: Date.now(),
+        midPrice: lastMid,
+        vwap: b.vwap,
+        atr: b.atr,
+        up1: b.up1,
+        up2: b.up2,
+        dn1: b.dn1,
+        dn2: b.dn2
+      }
+    });
+  }, 60_000);
+
+  return { stop: () => { clearInterval(timer); ws.close(); } };
 }

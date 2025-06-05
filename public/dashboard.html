@@ -74,10 +74,11 @@
     .obi-row{display:flex;gap:24px}
     .obi-block{background:#fff;padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
     .obi-legend{position:absolute;bottom:6px;right:8px;font-size:12px;color:#555}
-    #macroBlock.stretch1 .band-line{stroke:#ffa500!important}
-    #macroBlock.stretch2 .band-line{stroke:#ff4d4d!important}
-    #macroBlock.stretchNeg1 .band-line{stroke:#3399ff!important}
-    #macroBlock.stretchNeg2 .band-line{stroke:#0033cc!important}
+    #macroBands.stretch-up  .highcharts-background{background-color:rgba(255,190,0,0.05);}
+    #macroBands.extreme-up  .highcharts-background{background-color:rgba(255,80,80,0.08);}
+    #macroBands.stretch-dn  .highcharts-background{background-color:rgba(50,150,255,0.05);}
+    #macroBands.extreme-dn  .highcharts-background{background-color:rgba(50,120,255,0.08);}
+    .warmup-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:#666;background:rgba(255,255,255,0.8);z-index:10}
 
     /* ─── Grid Styling ─────────────────────────────────────────────────── */
     #flowGrid{height:300px}
@@ -470,6 +471,7 @@
     <div class="obi-block" style="flex:2; min-height:260px" id="macroBlock">
       <h4 class="obi-block-title">60‑min VWAP ± ATR</h4>
       <div id="macroBands" style="height:260px;"></div>
+      <div id="macroWarmup" class="warmup-msg">Warming up… need 60 bars</div>
       <div id="macroLegend" class="obi-legend"></div>
     </div>
 

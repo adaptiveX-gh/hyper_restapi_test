@@ -1021,66 +1021,75 @@ function updateForecastSeries(base, up, lo) {
 }
 
 const MACRO_CAP = 480;
-function initMacroChart(){
-  if(macroChart) return;
+function initMacroChart() {
+  if (macroChart) return;
   macroChart = Highcharts.stockChart('macroBands', {
-    chart:{height:260,spacing:[10,10,25,10]},
-    title:{text:null},
-    xAxis:{type:'datetime',labels:{format:'{value:%H:%M'}},
-    yAxis:{title:{text:'Price'}},
-    tooltip:{shared:true,xDateFormat:'%H:%M'},
-    legend:{enabled:false},
-    navigator:{enabled:true},
-    rangeSelector:{enabled:true,inputEnabled:false,buttons:[{type:'minute',count:60,text:'60m'},{type:'all',text:'All'}],selected:0},
-    series:[
-      {id:'price',name:'Price',type:'line',data:[],color:'#555'},
-      {id:'vwap', name:'VWAP', type:'line',data:[],color:'#888',lineWidth:1.5,className:'band-line'},
-      {id:'up1',  name:'+1 ATR',type:'line',data:[],color:'#bbb',dashStyle:'Dot',className:'band-line'},
-      {id:'up2',  name:'+2 ATR',type:'line',data:[],color:'#999',dashStyle:'Dash',className:'band-line'},
-      {id:'dn1',  name:'-1 ATR',type:'line',data:[],color:'#bbb',dashStyle:'Dot',className:'band-line'},
-      {id:'dn2',  name:'-2 ATR',type:'line',data:[],color:'#999',dashStyle:'Dash',className:'band-line'}
+    chart: { height: 260, spacing: [10, 10, 25, 10] },
+    title: { text: null },
+    xAxis: { type: 'datetime' },
+    yAxis: { title: { text: 'Price' } },
+    tooltip: { shared: true, xDateFormat: '%H:%M' },
+    legend: { enabled: false },
+    navigator: { enabled: true },
+    rangeSelector: {
+      enabled: true,
+      inputEnabled: false,
+      buttons: [
+        { type: 'minute', count: 60, text: '60m' },
+        { type: 'all', text: 'All' }
+      ],
+      selected: 0
+    },
+    series: [
+      { id: 'price', name: 'Price', type: 'line', data: [], color: '#1e90ff' },
+      { id: 'vwap', name: 'VWAP', type: 'line', data: [], color: '#666' },
+      {
+        id: 'band1',
+        type: 'arearange',
+        linkedTo: 'vwap',
+        color: 'rgba(100,100,100,.15)',
+        lineWidth: 0,
+        data: []
+      },
+      {
+        id: 'band2',
+        type: 'arearange',
+        linkedTo: 'vwap',
+        color: 'rgba(100,100,100,.05)',
+        lineWidth: 0,
+        data: []
+      }
     ],
-    credits:{enabled:false}
+    credits: { enabled: false }
   });
 }
 
-function updateMacroSeries(b){
-  if(!macroChart) return;
-  const ts = Date.now();
+function updateMacroSeries(b) {
+  if (!macroChart) return;
+  const { ts, midPrice, vwap, up1, up2, dn1, dn2 } = b.payload || b;
   const shift = macroChart.series[0].data.length >= MACRO_CAP;
-  ['vwap','up1','up2','dn1','dn2'].forEach(id=>{
-    macroChart.get(id).addPoint([ts,b[id]],false,shift);
-  });
+  macroChart.get('price').addPoint([ts, midPrice], false, shift);
+  macroChart.get('vwap').addPoint([ts, vwap], false, shift);
+  macroChart.get('band1').addPoint([ts, dn1, up1], false, shift);
+  macroChart.get('band2').addPoint([ts, dn2, up2], false, shift);
   macroChart.redraw(false);
   document.getElementById('macroLegend').textContent =
-    `VWAP 60 m: ${b.vwap.toFixed(0)} · ATR: ${b.up1-b.vwap|0}`;
-  colourBands();
+    `VWAP 60 m: ${vwap.toFixed(0)} · ATR: ${(up1 - vwap) | 0}`;
+  colourBands(midPrice, { up1, up2, dn1, dn2 });
+  const warm = document.getElementById('macroWarmup');
+  if (warm) warm.classList.toggle('hidden', macroChart.series[0].data.length >= 60);
 }
 
-function colourBands(){
-  if(!macroChart) return;
-  const pSeries = macroChart.get('price');
-  const up1Series = macroChart.get('up1');
-  const up2Series = macroChart.get('up2');
-  const dn1Series = macroChart.get('dn1');
-  const dn2Series = macroChart.get('dn2');
-
-  if(!pSeries || !up1Series || !up2Series || !dn1Series || !dn2Series) return;
-  if(!Array.isArray(pSeries.yData) || !Array.isArray(up1Series.yData)) return;
-
-  const price = pSeries.yData[pSeries.yData.length - 1];
-  const b = {
-    up1: up1Series.yData[up1Series.yData.length - 1],
-    up2: up2Series.yData[up2Series.yData.length - 1],
-    dn1: dn1Series.yData[dn1Series.yData.length - 1],
-    dn2: dn2Series.yData[dn2Series.yData.length - 1]
-  };
-  const block=document.getElementById('macroBlock');
-  block.className='obi-block';
-  if(price>b.up2) block.classList.add('stretch2');
-  else if(price>b.up1) block.classList.add('stretch1');
-  else if(price<b.dn2) block.classList.add('stretchNeg2');
-  else if(price<b.dn1) block.classList.add('stretchNeg1');
+function colourBands(price, b){
+  if (!macroChart) return;
+  const el = document.getElementById('macroBands');
+  el.classList.remove('stretch-up','extreme-up','stretch-dn','extreme-dn');
+  const zone =
+    price > b.up2 ? 'extreme-up' :
+    price > b.up1 ? 'stretch-up' :
+    price < b.dn2 ? 'extreme-dn' :
+    price < b.dn1 ? 'stretch-dn' : '';
+  if(zone) el.classList.add(zone);
 }
 
 let macroWs=null;
