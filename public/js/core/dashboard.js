@@ -2137,9 +2137,17 @@ $('update-conn-btn').onclick = ()=>{
 $('obi-coin').addEventListener('change', async (e) => {
   const sym = e.target.value;             // "ETH-PERP", …
   abortBookFetch();
-  stopPriceFeed();                        // close old socket
-  startPriceFeed(sym);                    // open a new one
-  setCoin(sym);
+
+  // 1 ░ close existing streams ---------------------------------------
+  stop();               // close SSE streams & reset running flag
+  stopPriceFeed();      // close old HL price WebSocket
+
+  // 2 ░ switch underlying coin in the data feed ----------------------
+  setCoin(sym);         // updates the perpDataFeed WebSocket
+
+  // 3 ░ relaunch fresh streams for the new symbol --------------------
+  startPriceFeed(sym);  // live price and context
+  start();              // SSE streams & watchers
 });
 
 $('toggle-advanced').onclick = function(){
