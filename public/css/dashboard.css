@@ -6,3 +6,10 @@
 .center-spectrum .bear-fill.skeleton,
 .center-spectrum .bull-fill.skeleton { width: 50%; }
 .center-spectrum .skeleton span { visibility: hidden; }
+
+/* ensure Highcharts layout unaffected by Tailwind preflight */
+.highcharts-container *,
+.highcharts-container *::before,
+.highcharts-container *::after {
+  box-sizing: content-box;
+}
