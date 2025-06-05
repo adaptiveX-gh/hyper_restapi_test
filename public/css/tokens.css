@@ -2,18 +2,29 @@
 :root {
   --bg-0: #ffffff;      /* page */
   --bg-1: #f7f7f7;      /* card */
-  --text-main: #222222;
-  --brand-green: #28c76f;
-  --brand-red  : #ff5252;
-  --border     : #e5e7eb;
+  --bg-2: #e9ebef;      /* subtle surfaces */
+  --text-main  : #222222;
+  --text-muted : #555555;
+  --accent : #2196f3;
+  --up   : #28c76f;
+  --down : #ff5252;
+  --border     : #d0d5da;
+  /* legacy aliases */
+  --brand-green: var(--up);
+  --brand-red  : var(--down);
 }
 
 /* ----  Dark override ---- */
 .theme-dark {
   --bg-0: #0f1114;
   --bg-1: #171a1f;
-  --text-main: #e5e5e5;
-  --brand-green: #00d19d;
-  --brand-red  : #ff3b5b;
+  --bg-2: #202429;
+  --text-main  : #e5e5e5;
+  --text-muted : #8a8a8a;
+  --up   : #00d19d;
+  --down : #ff3b5b;
+  --accent : #2196f3;
   --border     : #2b2f36;
+  --brand-green: var(--up);
+  --brand-red  : var(--down);
 }

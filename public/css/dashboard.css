@@ -1,9 +1,9 @@
 .obi-bull { color: var(--brand-green); transition: color 0.2s ease-in-out; }
 .obi-bear { color: var(--brand-red); transition: color 0.2s ease-in-out; }
-.obi-flat { color: #888;    transition: color 0.2s ease-in-out; }
+.obi-flat { color: var(--text-muted);    transition: color 0.2s ease-in-out; }
 
 /* skeleton placeholders for warm-start */
-.skel { background: #ddd; color: transparent; }
+.skel { background: var(--bg-2); color: transparent; }
 .center-spectrum .bear-fill.skel,
-.center-spectrum .bull-fill.skel { width: 50%; background: #ddd; }
+.center-spectrum .bull-fill.skel { width: 50%; background: var(--bg-2); }
 .center-spectrum .skel span { visibility: hidden; }

@@ -15,7 +15,7 @@ textarea {
   height: 80px;
 }
 pre {
-  background: #f0f0f0;
+  background: var(--bg-1);
   padding: 1rem;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -30,7 +30,7 @@ button.primary{ background:var(--brand-green); }
 button.danger{  background:var(--brand-red);  }
 section {
   margin-bottom: 2rem;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 1rem;
 }
 .inline {
@@ -51,7 +51,7 @@ section {
 .progress-track {
   width: 100%;
   height: 6px;
-  background: #e0e0e0;
+  background: var(--bg-2);
   border-radius: 3px;
   margin: 4px 0 10px;
   overflow: hidden;
@@ -59,7 +59,7 @@ section {
 .progress-bar {
   height: 100%;
   width: 0; /* JS drives this */
-  background: #2196f3;
+  background: var(--accent);
   transition: width .25s linear;
 }
 
@@ -70,7 +70,7 @@ section.hidden { display: none; }
   flex-direction: column;
   /* adjust height as needed */
   height: 70vh;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 8px;
   box-sizing: border-box;
 }
@@ -79,7 +79,7 @@ section.hidden { display: none; }
 #flow-oi-header {
   position: sticky;
   top: 0;
-  background: #f0f0f0;
+  background: var(--bg-1);
   padding: 4px 8px;
   font: 600 12px/18px monospace;
   z-index: 10;
@@ -94,7 +94,7 @@ section.hidden { display: none; }
   height: 20px;
   margin-bottom: 6px;
   border-radius: 10px;
-  background: #e6e6e6;
+  background: var(--bg-2);
   overflow: hidden;
 }
 #flow-bias-line {
@@ -103,7 +103,7 @@ section.hidden { display: none; }
   left: 50%;
   width: 2px;
   height: 100%;
-  background: #333;        /* single solid colour */
+  background: var(--text-main);        /* single solid colour */
   transform: translateX(-50%);
   transition: left 0.2s ease;
 }
@@ -127,7 +127,7 @@ section.hidden { display: none; }
 #flow-output {
   flex: 1 1 auto;
   overflow-y: auto;
-  background: #f9f9f9;
+  background: var(--bg-1);
   padding: 8px;
   margin: 0;
   box-sizing: border-box;
@@ -141,11 +141,11 @@ section.hidden { display: none; }
   font:600 14px/1;
 }
 .trend-icon { margin-right: .5ex; transition: transform .2s; }
-.trend-bullish    { color: #4dff88; }
+.trend-bullish    { color: var(--up); }
 .trend-bullish .trend-icon { transform: rotate(-45deg); } /* ▲ */
-.trend-bearish    { color: #ff4d4d; }
+.trend-bearish    { color: var(--down); }
 .trend-bearish .trend-icon { transform: rotate(135deg); }  /* ▼ */
-.trend-neutral    { color: #aaa; }
+.trend-neutral    { color: var(--text-muted); }
 
 #flow-tape { font-family: monospace, sans-serif; }
 
@@ -172,7 +172,7 @@ section.hidden { display: none; }
   flex: 0 0 120px;      /* fixed-width column for meters */
   position: relative;
   height: 6px;
-  background: #333;
+  background: var(--text-main);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -212,14 +212,14 @@ section.hidden { display: none; }
 
 
 .thin-liq .meter,
-.thin-liq #flow-tape { background:#222 !important; }
+.thin-liq #flow-tape { background:var(--bg-2) !important; }
 
 /* Center-out bull/bear spectrum bar */
 .center-spectrum {
   position: relative;
   width: 100%;
   height: 14px;
-  background: #e6e6e6;
+  background: var(--bg-2);
   border-radius: 7px;
   overflow: hidden;
 }
@@ -232,11 +232,11 @@ section.hidden { display: none; }
 }
 .center-spectrum .bear-fill {
   right: 50%;
-  background: #ea4d5c;
+  background: var(--down);
 }
 .center-spectrum .bull-fill {
   left: 50%;
-  background: #41e084;
+  background: var(--up);
 }
 .center-spectrum span {
   position: absolute;
@@ -314,9 +314,9 @@ section.hidden { display: none; }
 }
 .toast.bull { border-left: 4px solid var(--brand-green); }
 .toast.bear { border-left: 4px solid var(--brand-red); }
-.toast.strong { border-top: 2px solid #17c964; }
-.toast.caution { border-top: 2px solid #ff9f0a; }
-.toast.vetoed { border-top: 2px solid #ff3b30; }
+.toast.strong { border-top: 2px solid var(--up); }
+.toast.caution { border-top: 2px solid var(--accent); }
+.toast.vetoed { border-top: 2px solid var(--down); }
 .toast-header {
   display: flex;
   justify-content: space-between;
@@ -326,7 +326,7 @@ section.hidden { display: none; }
 .toast-time {
   font-size: 12px;
   margin-left: 8px;
-  color: #555;
+  color: var(--text-muted);
 }
 .toast-close {
   background: none;
@@ -338,11 +338,23 @@ section.hidden { display: none; }
 }
 .toast-details {
   font-size: 12px;
-  color: #333;
+  color: var(--text-main);
   margin-top: 2px;
 }
 
 /* Highlight for over-extension fade alert */
 .overext-warn {
-  box-shadow: 0 0 0 3px #ff4d4d inset;
+  box-shadow: 0 0 0 3px var(--down) inset;
+}
+
+/* NProgress */
+#nprogress .bar {
+  background: var(--up);
+}
+#nprogress .peg {
+  box-shadow: 0 0 10px var(--up);
+}
+#nprogress .spinner-icon {
+  border-top-color: var(--up);
+  border-left-color: var(--up);
 }
