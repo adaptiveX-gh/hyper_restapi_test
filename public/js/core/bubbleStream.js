@@ -3,7 +3,8 @@ import bus from './eventBus.js';
 const show = new Set([
   'whale','top_trader','absorption','exhaustion',
   'sweep','iceberg','liquidity_flush','bounce',
-  'strong_bounce_incoming','liquidity_vacuum_flush'
+  'strong_bounce_incoming','liquidity_vacuum_flush',
+  'flow_flip_squeeze_up','flow_flip_squeeze_down'
 ]);
 
 bus.on('qr:event', ev => {
