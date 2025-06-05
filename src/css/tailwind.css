@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .glass-card {
+    @apply backdrop-blur-sm bg-surface-1/40 border border-border/50 rounded-3xl;
+  }
+}
+
+@layer utilities {
+  .skeleton {
+    @apply animate-pulse bg-surface-2/50 text-transparent;
+  }
+}
