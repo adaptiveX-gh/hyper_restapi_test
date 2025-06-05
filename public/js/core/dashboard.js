@@ -1059,12 +1059,21 @@ function updateMacroSeries(b){
 
 function colourBands(){
   if(!macroChart) return;
-  const price = macroChart.get('price').yData.at(-1);
+  const pSeries = macroChart.get('price');
+  const up1Series = macroChart.get('up1');
+  const up2Series = macroChart.get('up2');
+  const dn1Series = macroChart.get('dn1');
+  const dn2Series = macroChart.get('dn2');
+
+  if(!pSeries || !up1Series || !up2Series || !dn1Series || !dn2Series) return;
+  if(!Array.isArray(pSeries.yData) || !Array.isArray(up1Series.yData)) return;
+
+  const price = pSeries.yData.at(-1);
   const b = {
-    up1:macroChart.get('up1').yData.at(-1),
-    up2:macroChart.get('up2').yData.at(-1),
-    dn1:macroChart.get('dn1').yData.at(-1),
-    dn2:macroChart.get('dn2').yData.at(-1)
+    up1: up1Series.yData.at(-1),
+    up2: up2Series.yData.at(-1),
+    dn1: dn1Series.yData.at(-1),
+    dn2: dn2Series.yData.at(-1)
   };
   const block=document.getElementById('macroBlock');
   block.className='obi-block';
