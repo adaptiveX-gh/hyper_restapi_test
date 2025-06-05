@@ -25,7 +25,7 @@
 
   <style>
     /* ─── Global & Sidebar ───────────────────────────────────────────────── */
-    html,body{margin:0;padding:0;background:#f6f7fa;font-family:'Segoe UI',Arial,sans-serif;color:var(--text-main);height:100%;width:100%}
+    html,body{margin:0;padding:0;background:var(--bg-0);font-family:'Segoe UI',Arial,sans-serif;color:var(--text-main);height:100%;width:100%}
     #obi-alert-ticker{position:sticky;top:0;left:0;width:100vw;height:35px;line-height:35px;background:#10161c;color:#ffbe55;font-size:1.08rem;font-weight:600;letter-spacing:.14em;border-bottom:1px solid #23272e;overflow:hidden;padding-left:9px;z-index:1001}
     #ticker-inner{display:inline-block;padding-left:100vw;animation:obi-ticker 20s linear infinite}
     @keyframes obi-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
@@ -38,11 +38,11 @@
     #toggle-advanced{background:none;border:none;color:#7ac0ee;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:3px}
     #advanced-settings{display:none;background:#16284d;padding:15px 13px 5px;border-radius:10px;margin-top:2px}
     #advanced-settings label{color:#74bbf2;margin-bottom:2px;font-size:13px;font-weight:500}
-    #advanced-settings input{background:#fff;border:none;border-radius:4px;color:#191b1c;padding:5px 8px;margin-bottom:12px;font-size:13px}
+    #advanced-settings input{background:var(--bg-1);border:none;border-radius:4px;color:#191b1c;padding:5px 8px;margin-bottom:12px;font-size:13px}
 
     /* ─── Main Content ─────────────────────────────────────────────────── */
     .obi-maincontent{flex:1;display:flex;flex-direction:column;gap:18px;box-sizing:border-box;padding:18px 30px 38px 24px;min-width:0}
-    .obi-headline-bar,.obi-indicator-row{display:flex;gap:32px;border-radius:12px;background:#fff;box-shadow:0 1px 8px rgba(226,229,236,0.6);padding:18px 30px}
+    .obi-headline-bar,.obi-indicator-row{display:flex;gap:32px;border-radius:12px;background:var(--bg-1);box-shadow:0 1px 8px rgba(226,229,236,0.6);padding:18px 30px}
     .obi-kpi,.big-indicator-card{flex:1;display:flex;flex-direction:column;align-items:center;min-width:130px}
     .obi-kpi-label,.big-label{font-size:13px;color:#777;letter-spacing:.5px;text-transform:uppercase;font-weight:600;margin-bottom:3px}
     .obi-kpi-value,.big-value{font-size:2.1rem;font-weight:700;color:#293d49;margin-bottom:4px;text-align:center}
@@ -62,7 +62,7 @@
 
     /* ─── Gauges Row ───────────────────────────────────────────────────── */
     .obi-gauges-row{display:flex;gap:32px}
-    .obi-gauge-col{flex:1;background:#fff;padding:18px 9px 0;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);text-align:center;position:relative;min-width:140px}
+    .obi-gauge-col{flex:1;background:var(--bg-1);padding:18px 9px 0;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);text-align:center;position:relative;min-width:140px}
     .obi-gauge-label{margin-top:8px;font-size:13px;font-weight:600;color:#2e5a85;text-transform:uppercase;letter-spacing:.5px}
     .obi-gauge-status{margin-top:4px;font-size:.85rem;color:#777;text-transform:uppercase;letter-spacing:.05em}
     .obi-gauge-status.bull{color:#4dff88}
@@ -80,7 +80,7 @@
     .hidden { display:none !important; }
     /* ─── Book Bias + Donuts Row ───────────────────────────────────────── */
     .obi-row{display:flex;gap:24px}
-    .obi-block{background:#fff;padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
+    .obi-block{background:var(--bg-1);padding:18px 14px 12px;border-radius:10px;box-shadow:0 1px 8px rgba(229,230,233,0.5);flex:1;position:relative;min-height:240px}
     .obi-legend{position:absolute;bottom:6px;right:8px;font-size:12px;color:#555}
     #macroBands.stretch-up  .highcharts-background{background-color:rgba(255,190,0,0.05);}
     #macroBands.extreme-up  .highcharts-background{background-color:rgba(255,80,80,0.08);}
@@ -91,24 +91,24 @@
     /* ─── Grid Styling ─────────────────────────────────────────────────── */
     #flowGrid{height:300px}
     #flowGrid table{width:100%;border-collapse:collapse;background:none!important;color:#293d49!important}
-    #flowGrid thead tr{background:#fff!important}
-    #flowGrid thead th{color:var(--text-main)!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
-    #flowGrid th,#flowGrid td{border:1px solid #e2e5eb!important}
+    #flowGrid thead tr{background:var(--bg-1)!important}
+    #flowGrid thead th{color:var(--text-main)!important;font-weight:600;background:var(--bg-1)!important;border-bottom:2px solid var(--border)!important;padding:12px 8px}
+    #flowGrid th,#flowGrid td{border:1px solid var(--border)!important}
     #flowGrid td{padding:8px;color:#293d49!important}
-    #flowGrid tbody tr:nth-child(odd) td{background:#fff!important}
-    #flowGrid tbody tr:nth-child(even) td{background:#fbfcfd!important}
-    #flowGrid tbody tr:hover td{background:#f0f4f8!important}
+    #flowGrid tbody tr:nth-child(odd) td{background:var(--bg-1)!important}
+    #flowGrid tbody tr:nth-child(even) td{background:var(--bg-2)!important}
+    #flowGrid tbody tr:hover td{background:var(--bg-2)!important}
     #flowGrid .hc-pagination,#flowGrid .hc-gridinfo{color:#293d49!important}
     /* Top-Trader grid styled same as Big Flows */
     #topTraderGrid{height:300px}
     #topTraderGrid table{width:100%;border-collapse:collapse;background:none!important;color:#293d49!important}
-    #topTraderGrid thead tr{background:#fff!important}
-    #topTraderGrid thead th{color:var(--text-main)!important;font-weight:600;background:#fff!important;border-bottom:2px solid #e2e5eb!important;padding:12px 8px}
-    #topTraderGrid th,#topTraderGrid td{border:1px solid #e2e5eb!important}
+    #topTraderGrid thead tr{background:var(--bg-1)!important}
+    #topTraderGrid thead th{color:var(--text-main)!important;font-weight:600;background:var(--bg-1)!important;border-bottom:2px solid var(--border)!important;padding:12px 8px}
+    #topTraderGrid th,#topTraderGrid td{border:1px solid var(--border)!important}
     #topTraderGrid td{padding:8px;color:#293d49!important}
-    #topTraderGrid tbody tr:nth-child(odd) td{background:#fff!important}
-    #topTraderGrid tbody tr:nth-child(even) td{background:#fbfcfd!important}
-    #topTraderGrid tbody tr:hover td{background:#f0f4f8!important}
+    #topTraderGrid tbody tr:nth-child(odd) td{background:var(--bg-1)!important}
+    #topTraderGrid tbody tr:nth-child(even) td{background:var(--bg-2)!important}
+    #topTraderGrid tbody tr:hover td{background:var(--bg-2)!important}
     #topTraderGrid .hc-pagination,#topTraderGrid .hc-gridinfo{color:#293d49!important}
     .bullish-color { color:#17c964; font-weight:600; }  /* green */
     .bearish-color { color:#ff4d4d; font-weight:600; }  /* red   */
@@ -173,13 +173,13 @@
 
 /* Grid-Lite tweaks (keeps it on-brand) */
   #flowGrid table      { background:none!important; }
-  #flowGrid thead th   { background:#fff!important; font-weight:600; }
+  #flowGrid thead th   { background:var(--bg-1)!important; font-weight:600; }
   #flowGrid tbody td   { padding:6px 8px; }
-  #flowGrid tbody tr:hover td { background:#f3f5f9!important; }
+  #flowGrid tbody tr:hover td { background:var(--bg-2)!important; }
   #topTraderGrid table      { background:none!important; }
-  #topTraderGrid thead th   { background:#fff!important; font-weight:600; }
+  #topTraderGrid thead th   { background:var(--bg-1)!important; font-weight:600; }
   #topTraderGrid tbody td   { padding:6px 8px; }
-  #topTraderGrid tbody tr:hover td { background:#f3f5f9!important; }
+  #topTraderGrid tbody tr:hover td { background:var(--bg-2)!important; }
   .bullish-color{ color:#18b76e; font-weight:600; }
   .bearish-color{ color:#ff4d4d; font-weight:600; }
 
