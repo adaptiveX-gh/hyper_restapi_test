@@ -26,5 +26,22 @@ describe('GET /api/dashboardBootstrap', () => {
 
     server.close();
   });
+
+  test('returns 204 when snapshot is missing', async () => {
+    const client = new MockRedis();
+    app.locals.redis = client;
+
+    const server = createServer(app);
+    await new Promise(res => server.listen(0, res));
+    const { port } = server.address();
+
+    const res = await fetch(`http://localhost:${port}/api/dashboardBootstrap?coin=BTC`);
+    const body = await res.text();
+
+    expect(res.status).toBe(204);
+    expect(body).toBe('');
+
+    server.close();
+  });
 });
 

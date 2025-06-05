@@ -10,7 +10,7 @@
   async function fetchSnap() {
     try {
       const res = await fetch('/api/dashboardBootstrap');
-      if (!res.ok) return;
+      if (!res.ok || res.status === 204) return;
       const snap = await res.json();
       localStorage.setItem(KEY, JSON.stringify(snap));
       window.__WARM_SNAP = snap;
