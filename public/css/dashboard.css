@@ -3,9 +3,10 @@
 .obi-flat { color: var(--text-muted);    transition: color 0.2s ease-in-out; }
 
 /* skeleton placeholders for warm-start */
-.center-spectrum .bear-fill.skeleton,
-.center-spectrum .bull-fill.skeleton { width: 50%; }
-.center-spectrum .skeleton span { visibility: hidden; }
+.skel { background: var(--bg-2); color: transparent; }
+.center-spectrum .bear-fill.skel,
+.center-spectrum .bull-fill.skel { width: 50%; background: var(--bg-2); }
+.center-spectrum .skel span { visibility: hidden; }
 
 /* ensure Highcharts layout unaffected by Tailwind preflight */
 .highcharts-container *,
