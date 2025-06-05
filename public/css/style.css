@@ -239,7 +239,7 @@ section.hidden { display: none; }
   transform: translateY(-50%);
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-main);
   pointer-events: none;
 }
 .center-spectrum .bear-fill span { right: 4px; }
@@ -251,7 +251,7 @@ section.hidden { display: none; }
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #fff;
+  background: var(--bg-0);
   transform: translateX(-50%);
 }
 
@@ -300,7 +300,7 @@ section.hidden { display: none; }
   z-index: 9999;
 }
 .toast {
-  background: #fff;
+  background: var(--bg-1);
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   padding: 8px 12px;
