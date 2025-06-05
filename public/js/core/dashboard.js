@@ -16,6 +16,7 @@ import { handleWhaleAnomaly } from './whaleHandler.js';
 import { handleStrongBounce, handleLiquidityVacuum } from './minorityTicker.js';
 
     let obCFD = null;          // ← visible to every function in the module
+    let macroChart = null;
     let price24hAgo = null;     // fetched once per coin switch
 let hlWs = null;          // keep a reference so we can close / restart
 
@@ -1019,6 +1020,71 @@ function updateForecastSeries(base, up, lo) {
   obCFD.redraw(false);
 }
 
+const MACRO_CAP = 480;
+function initMacroChart(){
+  if(macroChart) return;
+  macroChart = Highcharts.stockChart('macroBands', {
+    chart:{height:260,spacing:[10,10,25,10]},
+    title:{text:null},
+    xAxis:{type:'datetime',labels:{format:'{value:%H:%M'}},
+    yAxis:{title:{text:'Price'}},
+    tooltip:{shared:true,xDateFormat:'%H:%M'},
+    legend:{enabled:false},
+    navigator:{enabled:true},
+    rangeSelector:{enabled:true,inputEnabled:false,buttons:[{type:'minute',count:60,text:'60m'},{type:'all',text:'All'}],selected:0},
+    series:[
+      {id:'price',name:'Price',type:'line',data:[],color:'#555'},
+      {id:'vwap', name:'VWAP', type:'line',data:[],color:'#888',lineWidth:1.5,className:'band-line'},
+      {id:'up1',  name:'+1 ATR',type:'line',data:[],color:'#bbb',dashStyle:'Dot',className:'band-line'},
+      {id:'up2',  name:'+2 ATR',type:'line',data:[],color:'#999',dashStyle:'Dash',className:'band-line'},
+      {id:'dn1',  name:'-1 ATR',type:'line',data:[],color:'#bbb',dashStyle:'Dot',className:'band-line'},
+      {id:'dn2',  name:'-2 ATR',type:'line',data:[],color:'#999',dashStyle:'Dash',className:'band-line'}
+    ],
+    credits:{enabled:false}
+  });
+}
+
+function updateMacroSeries(b){
+  if(!macroChart) return;
+  const ts = Date.now();
+  const shift = macroChart.series[0].data.length >= MACRO_CAP;
+  ['vwap','up1','up2','dn1','dn2'].forEach(id=>{
+    macroChart.get(id).addPoint([ts,b[id]],false,shift);
+  });
+  macroChart.redraw(false);
+  document.getElementById('macroLegend').textContent =
+    `VWAP 60 m: ${b.vwap.toFixed(0)} · ATR: ${b.up1-b.vwap|0}`;
+  colourBands();
+}
+
+function colourBands(){
+  if(!macroChart) return;
+  const price = macroChart.get('price').yData.at(-1);
+  const b = {
+    up1:macroChart.get('up1').yData.at(-1),
+    up2:macroChart.get('up2').yData.at(-1),
+    dn1:macroChart.get('dn1').yData.at(-1),
+    dn2:macroChart.get('dn2').yData.at(-1)
+  };
+  const block=document.getElementById('macroBlock');
+  block.className='obi-block';
+  if(price>b.up2) block.classList.add('stretch2');
+  else if(price>b.up1) block.classList.add('stretch1');
+  else if(price<b.dn2) block.classList.add('stretchNeg2');
+  else if(price<b.dn1) block.classList.add('stretchNeg1');
+}
+
+let macroWs=null;
+function startMacroWs(){
+  if(macroWs) return;
+  macroWs=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/macro');
+  macroWs.onmessage=e=>{
+    const m=JSON.parse(e.data);if(m.type==='macroBands') updateMacroSeries(m);
+  };
+  macroWs.onclose=()=>{macroWs=null;};
+}
+function stopMacroWs(){ if(macroWs){ macroWs.close(); macroWs=null; } }
+
 /**
  * Ensure the x-axis always shows the entire forecast horizon.
  * Called once after every forecast refresh.
@@ -1143,6 +1209,16 @@ function ensureViewport (fcEndTs) {
       biasSlopeBuf.push({ ts: now, val: lastBiasVal });
       while (biasSlopeBuf.length && now - biasSlopeBuf[0].ts > 900000)
         biasSlopeBuf.shift();
+
+      if(macroChart){
+        const shift = macroChart.series[0].data.length >= MACRO_CAP;
+        macroChart.get('price').addPoint([now, px], false, shift);
+        if(!onCtx.lastDraw || now - onCtx.lastDraw > 1000){
+          macroChart.redraw(false);
+          onCtx.lastDraw = now;
+        }
+        colourBands();
+      }
 
       /* 2️⃣  live price */
       setHtml('priceLive',
@@ -2047,6 +2123,11 @@ $('toggle-advanced').onclick = function(){
   this.textContent = '⚙ Advanced '+(open?'▾':'▴');
 };
 $('min-notional').onchange = e=> P.MIN_NOTIONAL=+e.target.value;
+$('toggle-macro').onchange = e=>{
+  const show = e.target.checked;
+  document.getElementById('macroBlock').style.display = show ? '' : 'none';
+  if(show) startMacroWs(); else stopMacroWs();
+};
 $('liqTxt').title = () =>
   `Thin  <  ${fmtUsd(LIQ_THIN)}\n` +
   `Normal between\n` +
@@ -2202,9 +2283,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   initCFDChart();
+  initMacroChart();
   start();
   biasTimer.start();
   startPriceFeed('BTC');          // 👉 starts the live price stream
+  startMacroWs();
   try {
     const wres = await fetch('/weights.json');
     const obj  = await wres.json();
