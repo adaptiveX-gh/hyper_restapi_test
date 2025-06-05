@@ -7,7 +7,8 @@ import cors from 'cors';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';                 // default export
-import { WebSocket } from 'ws';   // or:  import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+import { createServer } from 'http';
 import pLimit from 'p-limit';
 import { Transform, PassThrough } from 'stream';
 import { slowStatsCache } from './public/js/core/slowStatsCache.js';
@@ -18,6 +19,7 @@ import {
   addrWeights,
   injectTopTrade
 } from './src/topTraderFlow.js';
+import { startMacroBandsService } from './src/macroBands.js';
 import { relayRoute } from './server/topTraderRelay.js';
 import { mountGsRelay } from './server/gsRelay.js';
 
@@ -1200,8 +1202,28 @@ const thisFile = resolve(fileURLToPath(import.meta.url));
 // -- Start Server ---------------------------------------------------------
 if (resolve(process.argv[1] || '') === thisFile) {
   const PORT = process.env.PORT || 3000;
-  const server = app.listen(PORT, () =>
+  const httpServer = createServer(app);
+  const wss = new WebSocketServer({ server: httpServer });
+  const macroClients = new Set();
+
+  wss.on('connection', (ws, req) => {
+    if (req.url === '/macro') {
+      macroClients.add(ws);
+      ws.on('close', () => macroClients.delete(ws));
+    }
+  });
+
+  const broadcast = obj => {
+    const msg = JSON.stringify(obj);
+    for (const c of macroClients)
+      if (c.readyState === WebSocket.OPEN) c.send(msg);
+  };
+
+  startMacroBandsService(broadcast);
+
+  httpServer.listen(PORT, () =>
     console.log(`🚀  Server listening on http://localhost:${PORT}`));
+
   startTopTraderService();
   global.topTraderAddrWeights = addrWeights;
 }
