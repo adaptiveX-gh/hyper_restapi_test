@@ -1,4 +1,5 @@
 import { darkTheme, lightTheme } from './themes/highchartsThemes.js';
+import { applyThemeToCharts } from './themes/chartUtils.js';
 
 const KEY  = 'qr-theme';
 const body = document.body;
@@ -22,10 +23,7 @@ function applyTheme(dark) {
   if (window.Highcharts) {
     const theme = dark ? darkTheme : lightTheme;
     window.Highcharts.setOptions(theme);
-    if (Array.isArray(window.Highcharts.charts)) {
-      window.Highcharts.charts.forEach(c => c && c.update(theme.chart, false));
-      window.Highcharts.charts.forEach(c => c && c.redraw(false));
-    }
+    applyThemeToCharts(theme);
   }
   if (chk) chk.disabled = false;
   body.style.cursor = '';
