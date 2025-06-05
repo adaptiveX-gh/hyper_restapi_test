@@ -22,5 +22,5 @@
     }
   }
 
-  fetchSnap();
+  document.addEventListener('DOMContentLoaded', fetchSnap);
 })();
