@@ -10,6 +10,8 @@
  *  Export:  startLiquidityWatcher(options)     →  stop() fn
  *───────────────────────────────────────────────────────────────*/
 
+import { getL2BookThrottled as getL2Book } from '../lib/throttledBook.js';
+
 const DEPTH_WINDOW_BPS = 10;            // ±10 bps around mid
 const BASE_POLL_MS     = 2_000;         // normal cadence
 const BACKOFF_MAX_MS   = 60_000;        // cap when proxy sick
@@ -66,12 +68,7 @@ export function startLiquidityWatcher({
 
     try {
       /* 1 ░ snapshot top 40 levels ------------------------ */
-      const r = await fetch(
-        `/books/${encodeURIComponent(sym)}?depth=40`,
-        { cache: 'no-store' }
-      );
-      if (!r.ok) throw new Error('proxy ' + r.status);
-      const { bids, asks } = await r.json();
+      const { bids, asks } = await getL2Book(sym, 40);
 
       /* 2 ░ mid-price & depth inside ±10 bps -------------- */
       const mid  = (+bids[0][0] + +asks[0][0]) / 2;
