@@ -997,6 +997,11 @@ function updateForecastSeries(base, up, lo) {
     return;
   }
 
+  // 1a️⃣ Ensure forecast arrays are chronologically sorted
+  base.sort((a, b) => a[0] - b[0]);
+  up.sort((a, b) => a[0] - b[0]);
+  lo.sort((a, b) => a[0] - b[0]);
+
   /* 2️⃣ Series handles */
   const fore  = obCFD.get('imb-fore');      // dashed centre line
   const upper = obCFD.get('imb-up');        // dotted upper band

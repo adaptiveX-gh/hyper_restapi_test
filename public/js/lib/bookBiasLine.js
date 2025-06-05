@@ -49,7 +49,8 @@ export class BookBiasLine {
 
   /** Replace the whole bias line (only use when you *must*) */
   resetBiasSeries (arr /* [[ts,val], …] */) {
-    this.#chart.get(this.#biasSeriesId).setData(arr, false);
+    const sorted = Array.isArray(arr) ? [...arr].sort((a, b) => a[0] - b[0]) : [];
+    this.#chart.get(this.#biasSeriesId).setData(sorted, false);
     this.#chart.redraw(false);
   }
 
