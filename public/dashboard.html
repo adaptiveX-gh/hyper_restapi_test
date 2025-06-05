@@ -15,6 +15,9 @@
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/dashboard.css"/>
   <link rel="stylesheet" href="css/theme.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
+  <script>NProgress.start();</script>
 
   <style>
     /* ─── Global & Sidebar ───────────────────────────────────────────────── */
@@ -340,8 +343,8 @@
         </div>
       </div>
       <div id="bullBearBar" class="center-spectrum">
-        <div class="bear-fill"><span id="bearPct">0%</span></div>
-        <div class="bull-fill"><span id="bullPct">0%</span></div>
+        <div class="bear-fill skel"><span id="bearPct">0%</span></div>
+        <div class="bull-fill skel"><span id="bullPct">0%</span></div>
       </div>
       <div class="score-buttons">
         <button id="score-reset" class="score-reset-btn">Reset Score</button>
@@ -524,6 +527,7 @@
   });
   </script>
   <script src="env.js"></script>
+  <script src="js/core/loader.js" defer></script>
   <script type="module" src="./js/core/dashboard.js"></script>
 </body>
 </html>
