@@ -205,6 +205,24 @@ function setTxt(id, txt) {
 
 
         // ─── lightweight CFD updater ──────────────────────────────────────────
+    const ADD_THROTTLE_MS = 500;
+    let   cfdPending  = null;
+    let   cfdTimer    = null;
+
+    function flushCFD(){
+      if (!cfdPending || !obCFD) { cfdPending = null; cfdTimer = null; return; }
+      const { ts, bidN, askN, mid } = cfdPending;
+      const shift = obCFD.series[0].data.length >= CFD_CAP;
+      obCFD.series[0].addPoint([ts, bidN],      false, shift);
+      obCFD.series[1].addPoint([ts, askN],      false, shift);
+      obCFD.series[2].addPoint([ts, bidN-askN], false, shift);
+      obCFD.series[3].addPoint([ts, mid],       false, shift);
+      obCFD.redraw(false);
+      feedCFD.lastDraw = ts;
+      cfdPending = null;
+      cfdTimer = null;
+    }
+
     function feedCFD(depthSnap) {
       if (!obCFD || obCFD.series.length < 4) return;   // safety guard
 
@@ -231,18 +249,20 @@ function setTxt(id, txt) {
       addPoint(cfdSeries.imb , [ts, bidN - askN]);
       addPoint(cfdSeries.mid , [ts, mid]);
 
-      // 2️⃣ push *one* point into each visible Highcharts series
-      const shift = obCFD.series[0].data.length >= CFD_CAP;   // drop oldest?
-      obCFD.series[0].addPoint([ts, bidN],      false, shift);
-      obCFD.series[1].addPoint([ts, askN],      false, shift);
-      obCFD.series[2].addPoint([ts, bidN-askN], false, shift);
-      obCFD.series[3].addPoint([ts, mid],       false, shift);
-
-      // 3️⃣ throttle expensive redraws (here: once per second)
-      if (!feedCFD.lastDraw || ts - feedCFD.lastDraw > 1000) {
+      // first paint uses setData then redraw once
+      if (!feedCFD.firstPaint) {
+        obCFD.series[0].setData(cfdSeries.bids, false);
+        obCFD.series[1].setData(cfdSeries.asks, false);
+        obCFD.series[2].setData(cfdSeries.imb , false);
+        obCFD.series[3].setData(cfdSeries.mid , false);
         obCFD.redraw(false);
+        feedCFD.firstPaint = true;
         feedCFD.lastDraw = ts;
+        return;
       }
+
+      cfdPending = { ts, bidN, askN, mid };
+      if (!cfdTimer) cfdTimer = setTimeout(flushCFD, ADD_THROTTLE_MS);
     }
     window.feedCFD = feedCFD;          // ← temporary debug hook
 
@@ -2148,6 +2168,7 @@ function stop () {
     obiSSE  && obiSSE.close();
     flowSSE && flowSSE.close();
     topSSE  && topSSE.close();
+    if (cfdTimer) { clearTimeout(cfdTimer); cfdTimer = null; cfdPending = null; }
   }
 
 
