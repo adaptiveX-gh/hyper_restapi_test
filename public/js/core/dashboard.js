@@ -427,7 +427,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
   // ②  Wire listeners *once*
   worker.addEventListener('message', ({ data }) => {
     if (thisGen !== workerGen) return;
-      if (data.type === 'cfdForecast') {
+    if (data.type === 'cfdForecast') {
         const { base, up, lo } = data.payload;
         if (!obCFD || obCFD.series.length < 7) {
             console.warn('CFD chart not ready for forecast lines!', obCFD);
@@ -435,14 +435,23 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         console.log('CFD Chart series IDs:', obCFD.series.map(s => s.id));
         updateForecastSeries(base, up, lo);      // existing call
         
-        metricsWorker.__lastFc = data.payload;   // (optional debug)
-      }
+      metricsWorker.__lastFc = data.payload;   // (optional debug)
+    }
 
     /* existing adaptive / gauges / anomaly routing  */
+    if (data.type === 'snapshot') {
+      const p = data.payload || {};
+      updateSpectrumBar(p.bearPct, p.bullPct);
+    }
     if (data.type === 'adapt')   { /* … */ }
     if (data.type === 'gauges')  { /* … */ }
     if (data.type === 'anomaly') { /* … */ }
   });
+
+  worker.addEventListener('error', () => {
+    console.warn('[worker] crashed – restarting in 1s');
+    setTimeout(() => { try { worker.terminate(); } catch {} worker = null; ensureWorker(); }, 1000);
+  }, { once: true });
 
   // ③  Push the full tunables object in **one** clean post
   sendConfig();         // <-- your existing helper stays unchanged
@@ -1682,7 +1691,7 @@ topSSE.onmessage = (e) => {
     const side = row.side === 'LONG' ? 'buy' : 'sell';
     worker.postMessage({
       type: 'trade',
-      payload: { side, notional: row.notional, kind: 'top' }
+      payload: { side, notional: row.notional, kind: 'top', price: row.price }
     });
   }
   const entry = {
@@ -1721,7 +1730,7 @@ flowSSE.onmessage = (e) => {
   /* ─── 1.  Forward to the Web-Worker  (cheap, non-blocking) ─── */
   worker.postMessage({
     type    : 'trade',
-    payload : { side: t.side, notional: t.notional, kind: t.type }
+    payload : { side: t.side, notional: t.notional, kind: t.type, price:+t.price }
   });
 
   const now      = Date.now();

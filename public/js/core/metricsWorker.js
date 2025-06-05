@@ -26,6 +26,9 @@ const depthStats = new RollingStats(120);   // ~2 min of 1-sec book snaps
 const buf = { c: [], w: [], s: [], f: [] };
 const push = (a, v, max) => { a.push(v); if (a.length > max) a.shift(); };
 
+let lastTradePx = NaN;
+let lastMPD     = 0;
+
 /*───────────────────────────────────────────────────────────────
  * Tunables (mutable from main thread)
  *───────────────────────────────────────────────────────────────*/
@@ -66,6 +69,8 @@ const fastAvg = (arr, lookBack = 25) => {
   for (let i = arr.length - n; i < arr.length; i++) s += arr[i];
   return s / n;
 };
+
+const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 
 const BIG_MULT = 3;                                  // “3 × normal” flag
 
@@ -118,71 +123,74 @@ function bigPrintThreshold () {
   return BIG_MULT * p90;
 }
 
+function processDepth (snap) {
+  const total = snap.bidDepth + snap.askDepth;
+  depthStats.push(total);
+  if (Number.isFinite(lastTradePx) && total > 0) {
+    const microPx = (
+      snap.topBid * snap.askDepth + snap.topAsk * snap.bidDepth
+    ) / total;
+    lastMPD = ((microPx / lastTradePx) - 1) * 1e4;
+  }
+  self.postMessage({ type:'adapt', payload: recalcAdaptive() });
+}
+
+function processTrade (t) {
+  sizeStats.push(t.notional);
+  if (Number.isFinite(t.price)) lastTradePx = t.price;
+  routeMegaWhale(t);
+  routeBabyWhale(t);
+
+  const huge = t.notional >= bigPrintThreshold();
+  if (huge && (t.kind === 'absorption' || t.kind === 'exhaustion')) {
+    self.postMessage({
+      type    : 'anomaly',
+      payload : {
+        ts   : t.ts || Date.now(),
+        side : t.side,
+        size : t.notional,
+        kind : t.kind === 'absorption' ? 'abs' : 'exh'
+      }
+    });
+  }
+
+  if (t.kind === 'absorption')
+    push(buf.c, t.side === 'buy' ? 1 : -1, cfg.WINDOW);
+
+  if (t.kind === 'exhaustion')
+    push(buf.w, t.side === 'buy' ? -1 : 1, cfg.WINDOW);
+}
+
+function snapshot () {
+  const confirm = fastAvg(buf.c);
+  const warn    = fastAvg(buf.w);
+  const squeeze = fastAvg(buf.s);
+  const fake    = fastAvg(buf.f);
+  const raw = [confirm, warn, squeeze, fake];
+  const W = [1.4,1.2,1.0,1.0];
+  const sumW = W.reduce((a,b)=>a+b,0);
+  const amplify = 1.5;
+  const bullPct = pct(amplify * raw.reduce((s,v,i)=>s + Math.max(0, v)*W[i],0) / sumW * 100);
+  const bearPct = pct(amplify * raw.reduce((s,v,i)=>s + Math.max(0,-v)*W[i],0) / sumW * 100);
+  return { confirm, warn, squeeze, fake, MPD:lastMPD, bullPct, bearPct };
+}
+
+setInterval(() => self.postMessage({ type:'snapshot', payload: snapshot() }), 200);
+
 /*───────────────────────────────────────────────────────────────
  * Message pump
  *───────────────────────────────────────────────────────────────*/
 self.onmessage = ({ data }) => {
   switch (data.type) {
-
-    /* 1. UI changed a knob – merge new cfg ................................*/
     case 'config':
       Object.assign(cfg, data.payload);
-      return;
-
-    /* 2. Depth snapshot  { bidDepth, askDepth, ts } ........................*/
-    case 'depthSnap': {
-      const snap = data.payload;
-      depthStats.push(snap.bidDepth + snap.askDepth);
-
-      /* ship back freshly recalculated scalers                              */
-      self.postMessage({ type:'adapt', payload: recalcAdaptive() });
-      return;
-    }
-
-    /* 3. Trade / flow event  { side, notional, kind, ts } .................*/
-    case 'trade': {
-      const t = data.payload;
-      sizeStats.push(t.notional);
-      routeMegaWhale(t);
-      routeBabyWhale(t);
-
-      /* 3-a  Scenario sign buffers (only the quick ones the worker owns) */
-      if (t.kind === 'absorption')
-        push(buf.c, t.side === 'buy' ?  1 : -1, cfg.WINDOW);
-
-      if (t.kind === 'exhaustion')
-        push(buf.w, t.side === 'buy' ? -1 :  1, cfg.WINDOW);
-
-      /* (If you later migrate s / f into the worker, slot code here) */
-
-      /* 3-b  Aggregate gauges & emit ......................................*/
-      self.postMessage({
-        type    : 'gauges',
-        payload : {
-          confirm : fastAvg(buf.c),
-          warn    : fastAvg(buf.w),
-          squeeze : fastAvg(buf.s),
-          fake    : fastAvg(buf.f)
-        }
-      });
-
-      /* 3-c  Detect “huge” prints and emit anomaly descriptor .............*/
-      const huge = t.notional >= bigPrintThreshold();
-      if (huge && (t.kind === 'absorption' || t.kind === 'exhaustion')) {
-        self.postMessage({
-          type    : 'anomaly',
-          payload : {
-            ts   : t.ts || Date.now(),       // fall back to now if missing
-            side : t.side,                   // 'buy' | 'sell'
-            size : t.notional,
-            kind : t.kind === 'absorption' ? 'abs' : 'exh'
-          }
-        });
-      }
-      return;
-    }
-
-    /* 4. Default – ignore unknown message types ...........................*/
+      break;
+    case 'depthSnap':
+      processDepth(data.payload);
+      break;
+    case 'trade':
+      processTrade(data.payload);
+      break;
   }
 };
 
@@ -251,4 +259,4 @@ function forecastAndPost () {
   });
 }
 
-export { routeBabyWhale }; // make testable
+export { routeBabyWhale, processTrade, processDepth, snapshot }; // make testable
