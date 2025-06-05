@@ -6,7 +6,8 @@
  * Perfect for bias lines, bull/bear meters, etc.                *
  *───────────────────────────────────────────────────────────────*/
 const URL = 'wss://api.hyperliquid.xyz/ws';
-const sock = new WebSocket(URL);
+let sock = null;
+let activeCoin = 'BTC';
 
 const listeners = { ctx: new Set(), candle: new Set() };
 
@@ -15,25 +16,23 @@ export function onCandle   (fn) { listeners.candle.add(fn); }
 export function offCtx     (fn) { listeners.ctx.delete(fn); }
 export function offCandle  (fn) { listeners.candle.delete(fn); }
 
-sock.addEventListener('open', () => {
-  // ① OI / Funding / MarkPx, pushed tick-by-tick
+function subscribe () {
+  if (!sock || sock.readyState !== WebSocket.OPEN) return;
   sock.send(JSON.stringify({
     method: 'subscribe',
-    subscription: { type: 'activeAssetCtx', coin: 'BTC' }
+    subscription: { type: 'activeAssetCtx', coin: activeCoin }
   }));
-  // ② One-minute candles for rolling vol; sum 8 for 8 h if you need it
   sock.send(JSON.stringify({
     method: 'subscribe',
-    subscription: { type: 'candle', coin: 'BTC', interval: '1m' }
+    subscription: { type: 'candle', coin: activeCoin, interval: '1m' }
   }));
-});
+}
 
-sock.addEventListener('message', ev => {
+function handleMessage(ev){
   const msg = JSON.parse(ev.data);
   const sub  = msg.subscription?.type;
 
   if (sub === 'activeAssetCtx') {
-    /* tolerate both ctx wrappers and flat payloads */
     const ctx = msg.data?.ctx ?? msg.data ?? {};
 
     const openInterest = ctx.openInterest ?? ctx.oi;
@@ -54,4 +53,21 @@ sock.addEventListener('message', ev => {
     const last = Array.isArray(msg.data) ? msg.data.at(-1) : msg.data;
     if (last) listeners.candle.forEach(fn => fn(last));
   }
-});
+}
+
+export function connect(coin = 'BTC') {
+  activeCoin = coin.toUpperCase().replace(/-PERP$/, '');
+  if (sock) {
+    try { sock.close(1000, 'reconnect'); } catch {}
+  }
+  sock = new WebSocket(URL);
+  sock.addEventListener('open', subscribe);
+  sock.addEventListener('message', handleMessage);
+}
+
+export function setCoin(coin){
+  activeCoin = coin.toUpperCase().replace(/-PERP$/, '');
+  if (!sock) return connect(activeCoin);
+  try { sock.close(1000, 'change coin'); } catch {}
+  connect(activeCoin);
+}

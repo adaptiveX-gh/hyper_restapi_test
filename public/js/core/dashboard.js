@@ -1,5 +1,5 @@
 
-import { onCtx, onCandle } from './perpDataFeed.js';
+import { connect, setCoin, onCtx, onCandle } from './perpDataFeed.js';
 import { BookBiasLine } from '../lib/bookBiasLine.js';
 import { classifyObi, classifyBias, computeOverExt, computeTrap } from "./utils.js";
 import { formatCompact } from '../lib/formatCompact.js';
@@ -2139,6 +2139,7 @@ $('obi-coin').addEventListener('change', async (e) => {
   abortBookFetch();
   stopPriceFeed();                        // close old socket
   startPriceFeed(sym);                    // open a new one
+  setCoin(sym);
 });
 
 $('toggle-advanced').onclick = function(){
@@ -2160,6 +2161,7 @@ $('liqTxt').title = () =>
 
 document.addEventListener('DOMContentLoaded', async () => {
   const firstSym = $('obi-coin').value;          // e.g. "BTC-PERP"
+  connect(firstSym);
   radar = new SignalRadar('signalRadar');
   window.radar = radar; // <----- add this
   const resetBtn = document.getElementById('score-reset');
