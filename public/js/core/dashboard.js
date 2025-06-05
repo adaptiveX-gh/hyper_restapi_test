@@ -14,6 +14,7 @@ import { logMiss } from './missLogger.js';
 import { getBook, abortBookFetch } from './bookCache.js';
 import { handleWhaleAnomaly } from './whaleHandler.js';
 import { handleStrongBounce, handleLiquidityVacuum } from './minorityTicker.js';
+import './bubbleStream.js';
 
     let obCFD = null;          // ← visible to every function in the module
     let macroChart = null;

@@ -1,14 +1,18 @@
 /** @jest-environment jsdom */
 import { handleStrongBounce, resetStrongBounce, computeBounce } from '../public/js/core/minorityTicker.js';
+import bus from '../public/js/core/eventBus.js';
+import '../public/js/core/bubbleStream.js';
 
 describe('Strong Bounce ticker', () => {
   beforeEach(() => {
     resetStrongBounce();
+    bus.removeAllListeners();
     document.body.innerHTML = '<div id="ticker-box"><span id="ticker-inner"></span></div>';
   });
 
   test('fires ticker and bubble once', () => {
     const radar = { addBubble: jest.fn() };
+    global.window.radar = radar;
     const ctx = { earlyWarn: 0.06, confirm: 0.3, LaR: 0.35, momentum: 0.11, MPD: 0.6 };
     handleStrongBounce(radar, ctx, 1000);
     expect(document.getElementById('ticker-inner').textContent)

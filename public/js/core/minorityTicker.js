@@ -23,15 +23,15 @@ export function computeBounce({ earlyWarn = 0, confirm = 0, LaR = 0, momentum = 
   );
 }
 
+import { push } from './eventNormalize.js';
+
 export function handleStrongBounce(radar, ctx = {}, now = Date.now()) {
   if (
     computeBounce(ctx) &&
     now - lastBounce > STRONG_BOUNCE_DEDUP_MS
   ) {
     showTicker('⚡ Strong Bounce Incoming', 'bull');
-    if (radar && typeof radar.addBubble === 'function') {
-      radar.addBubble('strong_bounce_incoming', { ts: now, strength: 1 });
-    }
+    push({ kind:'strong_bounce_incoming', strength:1, ts: now, side:'neutral' });
     lastBounce = now;
   }
 }
@@ -56,9 +56,7 @@ export function computeFlush({
 export function handleLiquidityVacuum(radar, ctx = {}, now = Date.now()) {
   if (computeFlush(ctx) && now - lastVacuum > LIQUIDITY_VACUUM_DEDUP_MS) {
     showTicker('🩸 Liquidity Vacuum — Expect Flush', 'bear');
-    if (radar && typeof radar.addBubble === 'function') {
-      radar.addBubble('liquidity_vacuum_flush', { ts: now, strength: 1 });
-    }
+    push({ kind:'liquidity_vacuum_flush', strength:1, ts: now, side:'neutral' });
     lastVacuum = now;
   }
 }
