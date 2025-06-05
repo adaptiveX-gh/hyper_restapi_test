@@ -17,6 +17,7 @@ import { handleStrongBounce, handleLiquidityVacuum } from './minorityTicker.js';
 import './bubbleStream.js';
 import './themeToggle.js';
 import { darkTheme } from './themes/highchartsThemes.js';
+import { mountProgressBar, setProgress } from './progress.js';
 
 if (document.body.classList.contains('theme-dark') && window.Highcharts) {
   window.Highcharts.setOptions(darkTheme);
@@ -26,6 +27,14 @@ if (document.body.classList.contains('theme-dark') && window.Highcharts) {
     let macroChart = null;
     let price24hAgo = null;     // fetched once per coin switch
 let hlWs = null;          // keep a reference so we can close / restart
+const COIN_BAR = 'coin-progress';
+let waitingCoin = null;
+
+function hideCoinProgress() {
+  const bar = document.getElementById(COIN_BAR);
+  if (bar) bar.parentElement.remove();
+  waitingCoin = null;
+}
 
   // signal radar & buffers
   let radar;
@@ -131,6 +140,7 @@ function startPriceFeed(coin = 'BTC') {
   };
 
   hlWs.onmessage = (ev) => {
+    if (waitingCoin) hideCoinProgress();
     const msg = JSON.parse(ev.data);
     if (msg.channel !== 'activeAssetCtx') return;   // ignore other feeds
 
@@ -1426,6 +1436,7 @@ async function start () {
 
 
 obiSSE.onmessage = async (e) => {
+  if (waitingCoin) hideCoinProgress();
   recordSuccess();
   /* 0. Parse payload (skip heartbeats) */
   let d; try { d = JSON.parse(e.data); } catch { return; }
@@ -1653,6 +1664,7 @@ topSSE = new EventSource('/top-trader-stream');
 // keep a reference for diagnostics
 window.topTraderFeed.socket = topSSE;
 topSSE.onmessage = (e) => {
+  if (waitingCoin) hideCoinProgress();
   if (e.data.trim().endsWith('heartbeat')) return;
   let row; try { row = JSON.parse(e.data); } catch { return; }
   topTraderData.unshift(row);
@@ -1688,6 +1700,7 @@ flowSSE.onerror = () => {
 };
 
 flowSSE.onmessage = (e) => {
+  if (waitingCoin) hideCoinProgress();
   recordSuccess();
   /* ─── 0.  Parse & filter ───────────────────────────────────── */
   if (e.data.trim().endsWith('heartbeat')) return;
@@ -2136,6 +2149,9 @@ $('update-conn-btn').onclick = ()=>{
 
 $('obi-coin').addEventListener('change', async (e) => {
   const sym = e.target.value;             // "ETH-PERP", …
+  waitingCoin = sym;
+  mountProgressBar('obi-alert-ticker', COIN_BAR, 'after');
+  setProgress(COIN_BAR, 1);
   abortBookFetch();
 
   // 1 ░ close existing streams ---------------------------------------
