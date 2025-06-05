@@ -17,7 +17,11 @@
   <link rel="stylesheet" href="css/dashboard.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
-  <script>NProgress.start();</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.NProgress) NProgress.start();
+    });
+  </script>
 
   <style>
     /* ─── Global & Sidebar ───────────────────────────────────────────────── */
