@@ -1068,12 +1068,12 @@ function colourBands(){
   if(!pSeries || !up1Series || !up2Series || !dn1Series || !dn2Series) return;
   if(!Array.isArray(pSeries.yData) || !Array.isArray(up1Series.yData)) return;
 
-  const price = pSeries.yData.at(-1);
+  const price = pSeries.yData[pSeries.yData.length - 1];
   const b = {
-    up1: up1Series.yData.at(-1),
-    up2: up2Series.yData.at(-1),
-    dn1: dn1Series.yData.at(-1),
-    dn2: dn2Series.yData.at(-1)
+    up1: up1Series.yData[up1Series.yData.length - 1],
+    up2: up2Series.yData[up2Series.yData.length - 1],
+    dn1: dn1Series.yData[dn1Series.yData.length - 1],
+    dn2: dn2Series.yData[dn2Series.yData.length - 1]
   };
   const block=document.getElementById('macroBlock');
   block.className='obi-block';
