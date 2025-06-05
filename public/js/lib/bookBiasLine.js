@@ -22,6 +22,7 @@ export class BookBiasLine {
   #containerSelector;
   #chart        = null;
   #biasSeriesId = 'bias';
+  #data         = [];
 
   /* ── redraw throttle (max ≈12 fps) ────────────────────────── */
   #lastDraw       = 0;
@@ -33,6 +34,7 @@ export class BookBiasLine {
   constructor (containerSelector = '#biasLine') {
     this.#containerSelector = containerSelector;
     this.#initChart();
+    this.#data = [];
   }
 
   /****************************************************************
@@ -42,15 +44,26 @@ export class BookBiasLine {
   /** Append one [timestamp, value] pair */
   pushBias (ts, value) {
     if (!Number.isFinite(value)) return;
-    this.#chart.get(this.#biasSeriesId)
-               .addPoint([ts, value], false, false);
+    const series = this.#chart.get(this.#biasSeriesId);
+    const lastTs = series.xData?.[series.xData.length - 1];
+
+    this.#data.push([ts, value]);
+
+    if (!Number.isFinite(lastTs) || ts >= lastTs) {
+      series.addPoint([ts, value], false, false);
+    } else {
+      this.#data.sort((a, b) => a[0] - b[0]);
+      series.setData(this.#data, false);
+    }
+
     this.#maybeRedraw();
   }
 
   /** Replace the whole bias line (only use when you *must*) */
   resetBiasSeries (arr /* [[ts,val], …] */) {
     const sorted = Array.isArray(arr) ? [...arr].sort((a, b) => a[0] - b[0]) : [];
-    this.#chart.get(this.#biasSeriesId).setData(sorted, false);
+    this.#data = sorted;
+    this.#chart.get(this.#biasSeriesId).setData(this.#data, false);
     this.#chart.redraw(false);
   }
 
