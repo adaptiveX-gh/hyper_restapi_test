@@ -1178,6 +1178,26 @@ app.get('/api/24hMetrics', async (req,res)=>{
   }
 });
 
+// ------------------------------------------------------------------
+//  GET /api/dashboardBootstrap  – cached snapshot for SPA boot
+// ------------------------------------------------------------------
+app.get('/api/dashboardBootstrap', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const coin = (req.query.coin || 'BTC').trim().toUpperCase();
+    const key  = `snap:${coin}`;
+    const client = req.app.locals.redis;
+    const raw = await (client && typeof client.get === 'function'
+      ? client.get(key)
+      : undefined);
+    if (!raw) return res.status(204).end();
+    res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('dashboardBootstrap error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/slow-stats', (_, res) => res.json(slowStatsCache.current));
 
 // recent top-trader trades (JSON array)
@@ -1227,3 +1247,6 @@ if (resolve(process.argv[1] || '') === thisFile) {
   startTopTraderService();
   global.topTraderAddrWeights = addrWeights;
 }
+
+export { app };
+
