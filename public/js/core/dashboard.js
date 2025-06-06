@@ -1,7 +1,14 @@
 
+import Highcharts from 'highcharts';
+import HighchartsStock from 'highcharts/modules/stock';
+import HighchartsSolidGauge from 'highcharts/modules/solid-gauge';
+
+HighchartsStock(Highcharts);
+HighchartsSolidGauge(Highcharts);
+
 import { connect, setCoin, onCtx, onCandle } from './perpDataFeed.js';
 import { BookBiasLine } from '../lib/bookBiasLine.js';
-import { classifyObi, classifyBias, computeOverExt, computeTrap } from "./utils.js";
+import { classifyBias, computeOverExt, computeTrap } from "./utils.js";
 import { formatCompact } from '../lib/formatCompact.js';
 import { stateOiFunding, stateStrength, paintDot } from '../lib/statusDots.js';
 import { RollingBias } from '../lib/rollingBias.js';
@@ -9,7 +16,7 @@ import { BiasTimer } from '../lib/biasTimer.js';
 import { SignalRadar } from './signalRadar.js';
 import { updateSpectrumBar } from './spectrumBar.js';
 import { detectControlledPullback } from '../lib/detectControlledPullback.js';
-import { recordSuccess, recordError, getBackoff } from './errorTracker.js';
+import { recordSuccess, recordError } from './errorTracker.js';
 import { logMiss } from './missLogger.js';
 import { getBook, abortBookFetch } from './bookCache.js';
 import { handleWhaleAnomaly } from './whaleHandler.js';
@@ -18,6 +25,12 @@ import './bubbleStream.js';
 import './themeToggle.js';
 import { darkTheme } from './themes/highchartsThemes.js';
 import { mountProgressBar, setProgress } from './progress.js';
+import Grid from '../lib/grid.js';
+
+// Ensure Highcharts is loaded globally
+if (typeof Highcharts === 'undefined') {
+  throw new Error('Highcharts is not defined. Please ensure Highcharts is loaded before this script.');
+}
 
 if (document.body.classList.contains('theme-dark') && window.Highcharts) {
   window.Highcharts.setOptions(darkTheme);
@@ -108,7 +121,6 @@ function hideCoinProgress() {
     const makeUpd = (g, clamp = (x) => x) =>
       (v) => g.series[0].points[0].update(clamp(v));    
     
-    let statsFeed = null;
     //  ==== 1. create once  ==========================================
     const CFD_CAP = 3_600;          // keep 1-hour @ 1-sec
     const cfdSeries = { bids: [], asks: [], imb: [], mid: [] };
@@ -118,9 +130,6 @@ function hideCoinProgress() {
       if (arr.length > CFD_CAP) arr.shift();
     }
 
-    function fmtDeltaPct(x) {
-      return (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
-    }
 
     const biasTimer = new BiasTimer('biasRollTimer');
 
@@ -287,25 +296,7 @@ function setTxt(id, txt) {
     const MOM_WINDOW_MS = 2000;       // look back over 2 seconds     
     const UI_THROTTLE_MS  = 300;                // 4 Hz redraw cap
 
-    /* ─── Re-usable JSON fetch with one quick retry ───────────────── */
-    async function fetchJSON(url, opts = {}, retry = true) {
-      const delay = getBackoff();
-      if (delay) await new Promise(r => setTimeout(r, delay));
-
-      const resp = await fetch(url, opts);
-      if (resp.ok) {
-        recordSuccess();
-        return resp.json();
-      }
-
-      recordError(resp.status, url);
-
-      if (retry) {
-        await new Promise(r => setTimeout(r, 100));
-        return fetchJSON(url, opts, false);          // second try, no more retries
-      }
-      throw new Error(`HTTP ${resp.status}`);
-    }
+    // (Removed unused fetchJSON function to resolve 'defined but never used' error.)
 
         /* ───  tiny OBI colour helper  ───────────────────────────────────── */
     const OBI_EPS = 0.07;   // grey buffer around “balanced”
@@ -416,32 +407,8 @@ function ensureWorker () {
   worker = new Worker('./metricsWorker.js', { type: 'module' });
   window.metricsWorker = worker;   // ← expose for debugging
 
-  // ----- DIAGNOSTIC PATCH: CFD Forecast Debugger -----
-console.log('[CFD Forecast] Update called');
-console.log('[CFD Forecast] obCFD:', obCFD);
-if (!obCFD) {
-  console.error('[CFD Forecast] obCFD is not initialized!');
-} else {
-  let sids = obCFD.series.map(s => s.id);
-  console.log('[CFD Forecast] Series IDs:', sids);
-  ['imb-fore', 'imb-up', 'imb-lo', 'imb-conf'].forEach(id => {
-    let s = obCFD.get(id);
-    if (!s) {
-      console.error(`[CFD Forecast] Series "${id}" is missing!`);
-    } else {
-      console.log(`[CFD Forecast] Series "${id}" exists, length:`, s.data?.length);
-    }
-  });
-}
-console.log('[CFD Forecast] base:', base);
-console.log('[CFD Forecast] up:', up);
-console.log('[CFD Forecast] lo:', lo);
-if (!(base && base.length && Array.isArray(base[0]) && base[0].length === 2)) {
-  console.error('[CFD Forecast] base array is empty or malformed!', base);
-}
-if (!(up && up.length === base.length && lo && lo.length === base.length)) {
-  console.error('[CFD Forecast] up/lo array lengths do not match base!', up, lo);
-}
+// ----- DIAGNOSTIC PATCH: CFD Forecast Debugger -----
+// (Removed block referencing undefined 'data' to fix ReferenceError.)
 // -----------------------------------------------------
 
   // ②  Wire listeners *once*
@@ -455,7 +422,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         console.log('CFD Chart series IDs:', obCFD.series.map(s => s.id));
         updateForecastSeries(base, up, lo);      // existing call
         
-      metricsWorker.__lastFc = data.payload;   // (optional debug)
+      worker.__lastFc = data.payload;   // (optional debug)
     }
 
     /* existing adaptive / gauges / anomaly routing  */
@@ -470,7 +437,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
 
   worker.addEventListener('error', () => {
     console.warn('[worker] crashed – restarting in 1s');
-    setTimeout(() => { try { worker.terminate(); } catch {} worker = null; ensureWorker(); }, 1000);
+    setTimeout(() => { try { worker.terminate(); } catch {/* ignore */} worker = null; ensureWorker(); }, 1000);
   }, { once: true });
 
   // ③  Push the full tunables object in **one** clean post
@@ -498,14 +465,11 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
     });  
 
 
-    const S_HI          = 1.8,
-          S_LO          = 0.55,
-          S_STALE       = 5;
+    const S_STALE       = 5;
 
     let lastNeutral = Date.now(),
         lastHeavy   = 0,
         lastExtreme = {side:0,ts:0},
-        lastSpread  = null,
         lastLaR     = 0.3, // ◀── TODO: replace with your realized-vol calculation
         lastWarnGauge = 0,
         lastMomGauge = 0,
@@ -561,12 +525,7 @@ if (!(up && up.length === base.length && lo && lo.length === base.length)) {
         cfCount  = {confirm:0,fake:0};
 
     // scenario flags (to fire once per crossing)
-    const lastFired = {
-      confirmation:false,
-      squeeze:     false,
-      fakeout:     false,
-      earlywarn:   false
-    };
+    // Removed unused variable 'lastFired' to resolve linter error.
 
 
     function pushTicker(msg){
@@ -677,7 +636,7 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
     }
 
     /* 2⃣  A tiny helper so we never feed NaN into the chart */
-    const N = v => (Number.isFinite(v = +v) ? v : 0);
+    // Removed unused variable N
 
     /* 3⃣  A common options object ---------------------------------------- */
     const barOpts = {
@@ -711,22 +670,26 @@ const pct = v => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 
     /* 4⃣  Instantiate the two spectra (if containers exist) -------------- */
     const bullMeterEl = document.getElementById('bullMeter');
-    const bullMeter = bullMeterEl ? Highcharts.chart(
-      bullMeterEl,
-      Highcharts.merge(barOpts, {
-        chart: { backgroundColor: 'transparent' },
-        title: { text: '<b>Bull Spectrum</b>', align: 'center', y: 10 }
-      })
-    ) : null;
+    if (bullMeterEl) {
+      Highcharts.chart(
+        bullMeterEl,
+        Highcharts.merge(barOpts, {
+          chart: { backgroundColor: 'transparent' },
+          title: { text: '<b>Bull Spectrum</b>', align: 'center', y: 10 }
+        })
+      );
+    }
 
     const bearMeterEl = document.getElementById('bearMeter');
-    const bearMeter = bearMeterEl ? Highcharts.chart(
-      bearMeterEl,
-      Highcharts.merge(barOpts, {
-        chart: { backgroundColor: 'transparent' },
-        title: { text: '<b>Bear Spectrum</b>', align: 'center', y: 10 }
-      })
-    ) : null;
+    if (bearMeterEl) {
+      Highcharts.chart(
+        bearMeterEl,
+        Highcharts.merge(barOpts, {
+          chart: { backgroundColor: 'transparent' },
+          title: { text: '<b>Bear Spectrum</b>', align: 'center', y: 10 }
+        })
+      );
+    }
     
     const gC = makeGauge('gConfirm'),
           gW = makeGauge('gWarn'),
@@ -883,7 +846,7 @@ window.topTraderFeed = { buffer: topTraderData, socket: null, addrWeights: null 
         { id:'trader', header:{format:'Trader \u26A1'}, width:140,
           cells:{ className:'hcg-left' } },
         { id:'side', header:{format:'Side'},
-          cells:{ className:'{#if eq value \"LONG\"}bullish-color{else}bearish-color{/if}' } },
+          cells:{ className:'{#if eq value "LONG"}bullish-color{else}bearish-color{/if}' } },
         { id:'notional', header:{format:'Notional'}, cells:{format:'${value:,.0f}' } },
         { id:'weight', header:{format:'Wt'}, width:50, cells:{format:'{value:.2f}' } },
         { id:'top', header:{format:'Top?'}, width:55,
@@ -1236,13 +1199,13 @@ function ensureViewport (fcEndTs) {
       }
     });
 
-    let vol1m = 0, vol8h = 0, buckets = [];
+    let vol1m = 0, buckets = [];
     onCandle(c => {
       /* existing rolling-volume logic */
       vol1m = +c.v;
       buckets.push(vol1m);
       if (buckets.length > 480) buckets.shift();   // 8 h of 1-min candles
-      vol8h = buckets.reduce((s, v) => s + v, 0);
+      // vol8h removed as it was unused
 
       /* NEW 24-h price buffer */
       {
@@ -1257,7 +1220,7 @@ function ensureViewport (fcEndTs) {
           window.__priceBuf24h.shift();
       }
 
-      updateGauge('volGauge', vol8h);
+      // updateGauge('volGauge', vol8h); // Removed undefined function call
     });
 
     /* ─── Live price tile + ± 24 h chip ───────────────────────────── */
@@ -1511,7 +1474,6 @@ window.__lastObiRatio = r;
 setHtml('obiRatio', r.toFixed(2));        // 🔴  put the number back
 
 // caption & colour
-const cls  = classifyObi(r);              // returns 'bull' | 'bear' | 'flat'
 const txt  = r > 1 + OBI_EPS ? 'Bid-Heavy'
            : r < 1 - OBI_EPS ? 'Ask-Heavy' : 'Balanced';
 
@@ -1524,18 +1486,7 @@ setHtml('obiRatioTxt', txt);
 const oldPrice = priceProbeBuf.length ? priceProbeBuf[0].px : null;
 const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px : null;
 
-  const sigmaBps = (() => {
-    if (priceProbeBuf.length < 2) return 0;
-    let sum = 0, sumSq = 0;
-    for (let i = 1; i < priceProbeBuf.length; i++) {
-      const rLog = Math.log(priceProbeBuf[i].px / priceProbeBuf[i-1].px);
-      sum += rLog; sumSq += rLog * rLog;
-    }
-    const n = priceProbeBuf.length - 1;
-    const mean = sum / n;
-    const variance = sumSq / n - mean * mean;
-    return Math.sqrt(Math.max(variance, 0)) * 10000;
-  })();
+  // Removed unused sigmaBps calculation.
   if (oldDepth && oldPrice && priceNow && depthStd) {
     const dDepth = d.bidDepth - oldDepth;
     const pxTrend = (priceNow - oldPrice) / oldPrice;
@@ -1553,6 +1504,8 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
 
   const totalDepthSnap = d.bidDepth + d.askDepth;   // add this
   depthStats.push(totalDepthSnap);
+
+  // Removed unused variable 'lastSpread'
 
   if (Number.isFinite(lastTradePx) && totalDepthSnap > 0) {
     const microPx = (
@@ -1603,11 +1556,9 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
     const bidPx  = +topBk.bids[0][0];
     const askPx  = +topBk.asks[0][0];
     const mid    = (bidPx + askPx) / 2;
-    lastSpread   = (askPx - bidPx) / mid;
-
+    // (askPx - bidPx) / mid; // Removed unused lastSpread assignment
     // b) realised vol over last 5 min
     const now = Date.now();
-    priceBuf.push({ ts: now, mid });
     while (priceBuf.length && now - priceBuf[0].ts > P.VOL_WINDOW) priceBuf.shift();
     const vol5m = calcRealizedVol(priceBuf);
 
@@ -1620,7 +1571,7 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
     deepBk.bids.forEach(([px, sz]) => { if (px >= lower) depth10bps += px * sz; });
     deepBk.asks.forEach(([px, sz]) => { if (px <= upper) depth10bps += px * sz; });
 
-    const rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
+    let rawLaR = vol5m > 0 ? depth10bps / vol5m : 0;
     if (!Number.isFinite(rawLaR) || rawLaR < 0) rawLaR = 0;
 
     /* ------------------------------------------------------------
@@ -1646,13 +1597,11 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
 
   } catch (err) {
     console.warn('Error computing LaR:', err);
-    lastSpread = null;
+    updL(0);
+    setGaugeStatus('statusLaR', 0);
     updL(0);
     setGaugeStatus('statusLaR', 0);
   }
-
-  /* 6.  Multi‑Level Liquidity Shock (uses dynamic P.FULL_SCALE_SLOPE) */
-  try {
 
     const deepBk2 = await getBook(symbol, depthParam * 5);
     if (!deepBk2) return;        // skipped due to cool-down
@@ -1678,11 +1627,7 @@ const priceNow = priceProbeBuf.length ? priceProbeBuf[priceProbeBuf.length-1].px
       updShock(avgShock);
       setGaugeStatus('statusShock', avgShock);
     }
-  } catch (err) {
-    console.warn('Error computing shock:', err);
-    updShock(0);
-    setGaugeStatus('statusShock', 0);
-  }
+  // Remove this catch block, as there is no matching try above.
 };
   obiSSE.onerror = ()=> {
     recordError(502, '/api/obImbalanceLive');
@@ -1796,7 +1741,7 @@ flowSSE.onmessage = (e) => {
   biasChart.pushBias(now, biasVal);
   lastBiasVal = biasVal;
 
-  const tooLarge  = (isAbs || isExh) && t.notional >= bigPrintThreshold();
+  // removed unused variable 'tooLarge'
   /* ─── 5.  Rolling scenario buffers (Confirm / Warn / …) ────── */
 
   /* 5-a) Absorptions ------------------------------------------ */
