@@ -1,10 +1,5 @@
 
-import Highcharts from 'highcharts';
-import HighchartsStock from 'highcharts/modules/stock';
-import HighchartsSolidGauge from 'highcharts/modules/solid-gauge';
-
-HighchartsStock(Highcharts);
-HighchartsSolidGauge(Highcharts);
+const Highcharts = window.Highcharts;
 
 import { connect, setCoin, onCtx, onCandle } from './perpDataFeed.js';
 import { BookBiasLine } from '../lib/bookBiasLine.js';
