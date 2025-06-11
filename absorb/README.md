@@ -22,9 +22,3 @@ of absorption/exhaustion events and returns the current bias value.
 These utilities do not depend on the rest of the repository and can be
 imported in isolation for further experimentation or integration.
 
-## Demo
-
-Run `node demo.js` to stream live trades from Hyperliquid.  Set the `COIN`
-environment variable to choose the market (default `BTC`).  The script fetches
-order book snapshots around each trade and prints the detected tape flow event
-along with the current rolling bias value.
