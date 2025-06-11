@@ -1,32 +1,14 @@
 import { TapeFlowAnalyzer } from './tapeFlow.js';
+import axios from 'axios';
+import WebSocket from 'ws';
 
-const DEMO_MODE = process.env.DEMO === '1'; // set DEMO=1 for simple/fake demo
-
-if (DEMO_MODE) {
-  // Simple demo using fabricated data
-  const analyzer = new TapeFlowAnalyzer(5);
-  const pre = {
-    bids: [[100, 2]],
-    asks: [[101, 1]]
-  };
-  const post = {
-    bids: [[100, 2]],
-    asks: [[101, 0.5]]
-  };
-  const trade = { side: 'A', sz: 0.6, px: 101 };
-
-  analyzer.process(trade, pre, post);
-  console.log('Rolling bias:', analyzer.getBias().toFixed(2));
-} else {
-  // Live Hyperliquid demo (requires `axios` and `ws`)
-  import axios from 'axios';
-  import WebSocket from 'ws';
-
-  const COIN = process.env.COIN || 'BTC';
-  const DEPTH = 20;
-  const analyzer = new TapeFlowAnalyzer(20);
-
-  function toPair({ px, sz }) {
+const DEMO_MODE = process.env.DEMO === '0'; // set DEMO=1 for simple/fake demo
+const COIN = process.env.COIN || 'BTC';
+const DEPTH = 20;
+const analyzer = new TapeFlowAnalyzer(20);
+  
+  
+ function toPair({ px, sz }) {
     return [+px, +sz];
   }
 
@@ -65,4 +47,3 @@ if (DEMO_MODE) {
   });
 
   ws.on('close', () => process.exit(0));
-}
