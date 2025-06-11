@@ -1,19 +1,48 @@
+import axios from 'axios';
+import WebSocket from 'ws';
 import { TapeFlowAnalyzer } from './tapeFlow.js';
 
-// Simple demo using fabricated data
-const analyzer = new TapeFlowAnalyzer(5);
+// Demo using live data from Hyperliquid
+const COIN = process.env.COIN || 'BTC';
+const DEPTH = 20;               // depth snapshot size
+const analyzer = new TapeFlowAnalyzer(20);
 
-const pre = {
-  bids: [[100, 2]],
-  asks: [[101, 1]]
-};
+function toPair({ px, sz }) {
+  return [+px, +sz];
+}
 
-const post = {
-  bids: [[100, 2]],
-  asks: [[101, 0.5]]
-};
+async function fetchBook() {
+  const body = { type: 'l2Book', coin: COIN, depth: DEPTH };
+  const { data } = await axios.post('https://api.hyperliquid.xyz/info', body);
+  return {
+    bids: data.levels[0].map(toPair),
+    asks: data.levels[1].map(toPair)
+  };
+}
 
-const trade = { side: 'A', sz: 0.6, px: 101 };
+const ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
+ws.on('open', () => {
+  ws.send(JSON.stringify({
+    method: 'subscribe',
+    subscription: { type: 'trades', coin: COIN }
+  }));
+});
 
-analyzer.process(trade, pre, post);
-console.log('Rolling bias:', analyzer.getBias().toFixed(2));
+ws.on('message', async buf => {
+  let msg;
+  try { msg = JSON.parse(buf); } catch { return; }
+  if (msg.channel !== 'trades') return;
+
+  for (const trade of msg.data || []) {
+    try {
+      const preBook = await fetchBook();
+      const postBookPromise = fetchBook();
+      const event = analyzer.process(trade, preBook, await postBookPromise);
+      console.log('Bias', analyzer.getBias().toFixed(2));
+    } catch (err) {
+      console.error('Error processing trade', err.message);
+    }
+  }
+});
+
+ws.on('close', () => process.exit(0));
