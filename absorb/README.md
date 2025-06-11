@@ -21,3 +21,4 @@ of absorption/exhaustion events and returns the current bias value.
 
 These utilities do not depend on the rest of the repository and can be
 imported in isolation for further experimentation or integration.
+
