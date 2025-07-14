@@ -3,7 +3,7 @@
     Coin‑Activity pane – start / stop stream + progress & timer
 */
 
-import { $, append, text, readLines } from '../core/dom.js';
+import { $, append, text, readLines, downloadTextFile } from '../core/dom.js';
 import { loadSheetAddresses }          from '../core/api.js';
 import { mountProgressBar, setProgress, resetProgress } from '../core/progress.js';
 
@@ -22,6 +22,7 @@ const ANCHOR   = 'coin-progress-anchor';
 
 /* ─────────────────────────────  Event wiring  ───────────────────────── */
 $('coin-load')?.addEventListener('click', loadAddresses);
+$('coin-download')?.addEventListener('click', downloadYaml);
 btnStart      ?.addEventListener('click', startCoinStream);
 btnStop       ?.addEventListener('click', stopCoinStream);
 
@@ -60,6 +61,13 @@ async function loadAddresses(){
     addrBox.value=addrs.join('\n');
     text(statsBox,`✅ ${addrs.length} addresses loaded`);
   }catch(err){text(statsBox,`❌ ${err.message}`);console.error('[coin] loadSheetAddresses failed',err);}
+}
+
+function downloadYaml(){
+  const addrs=readLines(addrBox);
+  if(!addrs.length) return;
+  const yaml=addrs.map(a=>`- address: "${a}"\n  threshold_usd: 50000`).join('\n');
+  downloadTextFile('addresses.yml',yaml);
 }
 
 /* ============================================================ */

@@ -42,6 +42,19 @@ export function copyText (elOrId) {
 /*  🔒 alias for older modules that still import this name  */
 export const copyToClipboard = copyText;
 
+/* ---------- file download helper ----------------------------- */
+export function downloadTextFile (filename, textContent = '') {
+  const blob = new Blob([textContent], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /* ---------- global console → log pane funnel ---------------- */
 const logPane = $('logs-global');        // may be null on very early import
 const origLog = console.log.bind(console);
