@@ -3,7 +3,7 @@
     Position‑Delta‑Pulse pane – start / stop stream + progress & timer
 */
 
-import { $, append, text, readLines } from '../core/dom.js';
+import { $, append, text, readLines, downloadTextFile } from '../core/dom.js';
 import { loadSheetAddresses }          from '../core/api.js';
 import { mountProgressBar, setProgress, resetProgress } from '../core/progress.js';
 
@@ -22,6 +22,7 @@ const ANCHOR   = 'delta-progress-anchor';
 
 /* ─────────────────────────────  Event wiring  ───────────────────────── */
 $('delta-load')       ?.addEventListener('click', handleLoadAddrs);
+$('delta-download')   ?.addEventListener('click', downloadYaml);
 btnStart              ?.addEventListener('click', startDeltaStream);
 btnStop               ?.addEventListener('click', stopDeltaStream);
 $('delta-clear-results')?.addEventListener('click', () => text(resBox, ''));
@@ -80,6 +81,15 @@ async function handleLoadAddrs () {
     text(statsBox, `❌ ${err.message}`);
     console.error('[delta] loadSheetAddresses failed', err);
   }
+}
+
+function downloadYaml () {
+  const addrs = readLines(addrBox);
+  if (!addrs.length) return;
+  const yaml = addrs
+    .map(a => `- address: "${a}"\n  threshold_usd: 50000`)
+    .join('\n');
+  downloadTextFile('addresses.yml', yaml);
 }
 
 /* ============================================================ */
