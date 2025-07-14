@@ -3,7 +3,7 @@
     Market Sentiment pane – start / stop stream + progress & timer
 */
 
-import { $, append, text, readLines } from '../core/dom.js';
+import { $, append, text, readLines, downloadTextFile } from '../core/dom.js';
 import { loadSheetAddresses }          from '../core/api.js';
 import { mountProgressBar, setProgress, resetProgress } from '../core/progress.js';
 
@@ -22,6 +22,7 @@ const ANCHOR   = 'sentiment-progress-anchor';
 
 /* ─────────────────────────────  Event wiring  ───────────────────────── */
 $('sentiment-load')?.addEventListener('click', loadAddresses);
+$('sentiment-download')?.addEventListener('click', downloadYaml);
 btnStart?.addEventListener('click', startSentimentStream);
 btnStop?.addEventListener('click', stopSentimentStream);
 
@@ -70,6 +71,13 @@ async function loadAddresses () {
     text(statsBox, `❌ ${err.message}`);
     console.error('[sentiment] loadSheetAddresses failed', err);
   }
+}
+
+function downloadYaml () {
+  const addrs = Array.from(new Set(readLines(addrBox)));
+  if (!addrs.length) return;
+  const yaml = addrs.map(a => `- address: "${a}"\n  threshold_usd: 50000`).join('\n');
+  downloadTextFile('addresses.yml', yaml);
 }
 
 /* ============================================================ */
