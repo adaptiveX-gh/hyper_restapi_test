@@ -63,8 +63,8 @@ async function loadAddresses(){
   }catch(err){text(statsBox,`❌ ${err.message}`);console.error('[coin] loadSheetAddresses failed',err);}
 }
 
-function downloadYaml(){
-  const addrs=readLines(addrBox);
+  const addrs=Array.from(new Set(readLines(addrBox)));
+
   if(!addrs.length) return;
   const yaml=addrs.map(a=>`- address: "${a}"\n  threshold_usd: 50000`).join('\n');
   downloadTextFile('addresses.yml',yaml);
